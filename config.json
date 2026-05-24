@@ -1,0 +1,16 @@
+{
+  "pause_between": [
+    120,
+    300
+  ],
+  "max_per_session": 5,
+  "max_per_day": 15,
+  "pause_between_sessions": 2700,
+  "warmup_count": 3,
+  "warmup_pause": [
+    300,
+    600
+  ],
+  "human_browsing": true,
+  "antispam_mode": true
+}

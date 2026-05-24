@@ -1,0 +1,110 @@
+"""
+Serveur Flask — Mini App selfie avec détection de visage OpenCV.
+Tourne dans un thread en parallèle du bot Telegram.
+"""
+import base64
+import logging
+import threading
+
+import cv2
+import numpy as np
+from flask import Flask, jsonify, render_template, request
+
+logger = logging.getLogger(__name__)
+
+app = Flask(__name__)
+app.config["MAX_CONTENT_LENGTH"] = 10 * 1024 * 1024  # H6: 10 MB max
+
+
+@app.after_request
+def _bypass_ngrok_warning(response):
+    """Indique à ngrok de ne PAS afficher la page d'avertissement browser.
+    Fonctionne avec le free tier : ngrok vérifie ce header dans les réponses
+    serveur et bypasse l'interstitiel pour tous les clients."""
+    response.headers["ngrok-skip-browser-warning"] = "true"
+    return response
+
+_lock = threading.Lock()
+_store: dict  = {}   # {user_id: {"photo": bytes}}
+_tokens: dict = {}   # C1: {user_id: token_str}
+
+_face_cascade = cv2.CascadeClassifier(
+    cv2.data.haarcascades + "haarcascade_frontalface_default.xml"
+)
+
+
+def register_token(user_id: str, token: str) -> None:
+    """C1: Enregistre le token one-time pour cet utilisateur."""
+    with _lock:
+        _tokens[str(user_id)] = token
+
+
+@app.route("/selfie")
+def selfie_page():
+    user_id = request.args.get("user_id", "")
+    return render_template("selfie.html", user_id=user_id)
+
+
+@app.route("/verify", methods=["POST"])
+def verify():
+    try:
+        data      = request.get_json(force=True)
+        user_id   = str(data.get("user_id", ""))
+        token     = str(data.get("token", ""))
+        photo_b64 = data.get("photo", "")
+
+        # C1: Valider le token avant tout traitement
+        with _lock:
+            expected = _tokens.get(user_id)
+        if not expected or token != expected:
+            logger.warning("Token invalide pour user_id=%s", user_id)
+            return jsonify({"ok": False, "error": "Token invalide ou expiré"})
+
+        # Retirer le préfixe data:image/...;base64,
+        if "," in photo_b64:
+            photo_b64 = photo_b64.split(",", 1)[1]
+
+        photo_b64 = photo_b64.strip().replace("\n", "").replace("\r", "").replace(" ", "")
+        missing = len(photo_b64) % 4
+        if missing:
+            photo_b64 += "=" * (4 - missing)
+
+        photo_bytes = base64.b64decode(photo_b64)
+        logger.info("Photo reçue : %d octets pour user=%s", len(photo_bytes), user_id)
+
+        if len(photo_bytes) < 100:
+            return jsonify({"ok": False, "error": "Image trop petite ou corrompue"})
+
+        nparr = np.frombuffer(photo_bytes, np.uint8)
+        img   = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+
+        if img is None:
+            return jsonify({"ok": False, "error": "Format image non reconnu — réessayez"})
+
+        gray  = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+        faces = _face_cascade.detectMultiScale(
+            gray, scaleFactor=1.1, minNeighbors=5, minSize=(60, 60)
+        )
+
+        if len(faces) == 0:
+            return jsonify({"ok": False, "error": "Aucun visage détecté — repositionnez-vous face à la caméra"})
+
+        # C1: Consommer le token seulement en cas de succès
+        with _lock:
+            _tokens.pop(user_id, None)
+            _store[user_id] = {"photo": photo_bytes}
+
+        return jsonify({"ok": True})
+
+    except Exception as exc:
+        logger.error("Erreur verify: %s", exc)
+        return jsonify({"ok": False, "error": "Erreur serveur, réessayez"})
+
+
+def get_selfie(user_id: str) -> dict | None:
+    with _lock:
+        return _store.pop(str(user_id), None)
+
+
+def run_server(port: int = 5000):
+    app.run(host="0.0.0.0", port=port, debug=False, use_reloader=False, threaded=True)  # H4

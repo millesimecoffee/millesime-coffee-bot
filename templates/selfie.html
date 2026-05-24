@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Selfie en direct</title>
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--tg-theme-bg-color, #0f0f1a);
+    color: var(--tg-theme-text-color, #ffffff);
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 24px 16px;
+    gap: 16px;
+  }
+
+  .title {
+    font-size: 20px;
+    font-weight: 700;
+    text-align: center;
+  }
+
+  .subtitle {
+    font-size: 13px;
+    opacity: 0.6;
+    text-align: center;
+    line-height: 1.5;
+  }
+
+  /* Conteneur vidéo avec cadre ovale */
+  .cam-wrapper {
+    width: 100%;
+    max-width: 320px;
+    aspect-ratio: 3 / 4;
+    position: relative;
+    border-radius: 24px;
+    overflow: hidden;
+    background: #000;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+  }
+
+  #video {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    transform: scaleX(-1); /* miroir naturel */
+  }
+
+  /* Masque sombre avec découpe ovale */
+  .cam-mask {
+    position: absolute;
+    inset: 0;
+    background: radial-gradient(
+      ellipse 60% 72% at 50% 45%,
+      transparent 99%,
+      rgba(0,0,0,0.55) 100%
+    );
+    pointer-events: none;
+  }
+
+  /* Bordure ovale animée */
+  .cam-border {
+    position: absolute;
+    top: 50%; left: 50%;
+    transform: translate(-50%, -48%);
+    width: 62%; height: 75%;
+    border: 2.5px solid rgba(255,255,255,0.75);
+    border-radius: 50%;
+    pointer-events: none;
+    animation: pulse 2s ease-in-out infinite;
+  }
+
+  @keyframes pulse {
+    0%, 100% { border-color: rgba(255,255,255,0.55); }
+    50%       { border-color: rgba(255,255,255,1); }
+  }
+
+  /* Canvas caché pour capturer la photo */
+  #canvas { display: none; }
+
+  /* Zone de statut */
+  #status {
+    font-size: 14px;
+    text-align: center;
+    min-height: 20px;
+    font-weight: 500;
+  }
+  .ok  { color: #4CAF50; }
+  .err { color: #ff5252; }
+
+  /* Bouton principal */
+  .btn {
+    background: var(--tg-theme-button-color, #2979ff);
+    color: var(--tg-theme-button-text-color, #ffffff);
+    border: none;
+    padding: 16px 0;
+    border-radius: 16px;
+    font-size: 16px;
+    font-weight: 700;
+    cursor: pointer;
+    width: 100%;
+    max-width: 320px;
+    letter-spacing: 0.3px;
+    transition: opacity 0.15s, transform 0.1s;
+  }
+  .btn:active:not(:disabled) { transform: scale(0.97); }
+  .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+  .hint {
+    font-size: 11px;
+    opacity: 0.4;
+    text-align: center;
+  }
+</style>
+</head>
+<body>
+
+<div class="title">📸 Selfie en direct</div>
+<p class="subtitle">Placez votre visage dans l'ovale.<br>Bonne luminosité recommandée.</p>
+
+<div class="cam-wrapper">
+  <video id="video" autoplay playsinline muted></video>
+  <div class="cam-mask"></div>
+  <div class="cam-border"></div>
+</div>
+
+<canvas id="canvas"></canvas>
+
+<div id="status"></div>
+
+<button class="btn" id="captureBtn" onclick="capture()">📷 Prendre le selfie</button>
+<p class="hint">Votre photo est uniquement utilisée pour vérifier votre identité.</p>
+
+<script>
+  const tg     = window.Telegram.WebApp;
+  const _params = new URLSearchParams(window.location.search);
+  const userId  = _params.get('user_id') || "{{ user_id }}";
+  const token   = _params.get('token') || '';
+
+  tg.ready();
+  tg.expand();
+
+  const video  = document.getElementById('video');
+  const canvas = document.getElementById('canvas');
+  const status = document.getElementById('status');
+  const btn    = document.getElementById('captureBtn');
+
+  // Démarrage caméra frontale
+  navigator.mediaDevices.getUserMedia({
+    video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 } }
+  })
+  .then(stream => { video.srcObject = stream; })
+  .catch(() => {
+    status.innerHTML = '<span class="err">❌ Accès à la caméra refusé</span>';
+    btn.disabled = true;
+  });
+
+  async function capture() {
+    btn.disabled = true;
+    status.innerHTML = '⏳ Analyse du visage…';
+
+    // Capture frame (annuler le miroir CSS pour que OpenCV voie l'image normale)
+    canvas.width  = video.videoWidth;
+    canvas.height = video.videoHeight;
+    const ctx = canvas.getContext('2d');
+    ctx.translate(canvas.width, 0);
+    ctx.scale(-1, 1);
+    ctx.drawImage(video, 0, 0);
+
+    const photoData = canvas.toDataURL('image/jpeg', 0.88);
+
+    try {
+      const resp   = await fetch('/verify', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ user_id: userId, token: token, photo: photoData })
+      });
+      const result = await resp.json();
+
+      if (result.ok) {
+        status.innerHTML = '<span class="ok">✅ Visage détecté !</span>';
+        video.srcObject.getTracks().forEach(t => t.stop());
+        setTimeout(() => tg.sendData("SELFIE_OK"), 1000);
+      } else {
+        status.innerHTML = `<span class="err">❌ ${result.error}</span>`;
+        btn.disabled = false;
+      }
+    } catch {
+      status.innerHTML = '<span class="err">❌ Erreur réseau — réessayez</span>';
+      btn.disabled = false;
+    }
+  }
+</script>
+</body>
+</html>

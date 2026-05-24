@@ -1,0 +1,34 @@
+# Secrets
+.env
+*.env.local
+
+# Données persistantes (gérées par le volume Railway)
+orders.json
+blacklist.json
+blocked.json
+
+# Logs
+*.log
+*.log.*
+bot_stdout*.txt
+bot_stderr*.txt
+bot_run*.log
+
+# Rapports générés
+rapport_*.html
+envois_log.csv
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.python-version
+
+# Divers
+ngrok.yml
+whatsapp_session/
+backups/
+.claude/
+startup_*.txt
+login_*.txt
