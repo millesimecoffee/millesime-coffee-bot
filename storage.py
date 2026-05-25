@@ -43,13 +43,17 @@ def _use_supabase() -> bool:
 # Lecture / écriture orders — Supabase
 # ═══════════════════════════════════════════════════════════════════════════════
 
+_SUPABASE_LIMIT = 50000  # H13: cap raisonnable (au-delà → pagination requise)
+
 def _load_from_supabase() -> list:
     """SELECT data FROM orders ORDER BY created_at ASC  →  list[dict]."""
     now = time.time()
     if _ALL_CACHE["data"] is not None and now - _ALL_CACHE["ts"] < _ALL_CACHE_TTL:
         return _ALL_CACHE["data"]
 
-    rows = _sb.select("orders", select="data", order="created_at.asc", limit=10000)
+    rows = _sb.select("orders", select="data", order="created_at.asc", limit=_SUPABASE_LIMIT)
+    if len(rows) >= _SUPABASE_LIMIT:
+        logger.warning("⚠ _load_from_supabase: limite %d atteinte, données tronquées !", _SUPABASE_LIMIT)
     orders = [r.get("data") or {} for r in rows]
     _ALL_CACHE["data"] = orders
     _ALL_CACHE["ts"]   = now
@@ -122,15 +126,20 @@ def save_order(order: dict) -> None:
 
 
 def get_order(order_id: str) -> dict | None:
-    """Retourne la commande par son ID — O(1) en mémoire, fallback DB."""
-    if order_id in _order_index:
-        return _order_index[order_id]
+    """Retourne la commande par son ID — O(1) en mémoire, fallback DB.
+    H14: lecture/écriture de _order_index toujours sous _lock.
+    """
+    with _lock:
+        cached = _order_index.get(order_id)
+    if cached is not None:
+        return cached
 
     if _use_supabase():
         rows = _sb.select("orders", id=f"eq.{order_id}", select="data", limit=1)
         if rows:
             order = rows[0].get("data") or {}
-            _order_index[order_id] = order
+            with _lock:
+                _order_index[order_id] = order
             return order
         return None
 
@@ -341,12 +350,12 @@ def load_blacklist() -> set:
 
 
 def save_blacklist(blacklist: set) -> None:
+    """H10: en mode Supabase, on upsert au lieu de DELETE+INSERT (atomique).
+    Les suppressions sont gérées séparément (cf. delete_from_blacklist)."""
     if _use_supabase():
-        # Approche simple : DELETE puis INSERT en bulk (sets sont petits)
-        _sb.delete("blacklist", user_id="gte.0")
         if blacklist:
             rows = [{"user_id": int(uid)} for uid in blacklist]
-            _sb.insert("blacklist", rows)
+            _sb.upsert("blacklist", rows, on_conflict="user_id")
         return
 
     try:
@@ -355,6 +364,13 @@ def save_blacklist(blacklist: set) -> None:
         _gh.backup_file_async("blacklist.json")
     except Exception as exc:
         logger.error("Écriture blacklist.json : %s", exc)
+
+
+def delete_from_blacklist(user_id: int) -> bool:
+    """Supprime un user de la blacklist (atomique en mode Supabase)."""
+    if _use_supabase():
+        return _sb.delete("blacklist", user_id=f"eq.{int(user_id)}")
+    return True  # le fichier sera réécrit par save_blacklist(set sans ce uid)
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -401,9 +417,15 @@ def load_blocked() -> dict[int, datetime]:
 
 
 def save_blocked(blocked: dict[int, datetime]) -> None:
-    """Persiste {user_id: expires_at}. Remplace tout le contenu."""
+    """Persiste {user_id: expires_at}.
+    H10: upsert au lieu de DELETE+INSERT pour éviter la fenêtre vide.
+    Purge des entrées expirées avant l'écriture.
+    """
+    now = datetime.now()
+    # Purger les expirés
+    blocked = {uid: exp for uid, exp in blocked.items() if exp > now}
+
     if _use_supabase():
-        _sb.delete("blocked", user_id="gte.0")
         if blocked:
             rows = [
                 {
@@ -412,7 +434,13 @@ def save_blocked(blocked: dict[int, datetime]) -> None:
                 }
                 for uid, exp in blocked.items()
             ]
-            _sb.insert("blocked", rows)
+            _sb.upsert("blocked", rows, on_conflict="user_id")
+        # Supprimer les expirés côté serveur aussi
+        try:
+            now_iso = datetime.now(timezone.utc).isoformat()
+            _sb.delete("blocked", expires_at=f"lt.{now_iso}")
+        except Exception:
+            pass
         return
 
     blocked_file = _DATA_DIR / "blocked.json"

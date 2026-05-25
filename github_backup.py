@@ -31,6 +31,19 @@ _FILES = ["orders.json", "blacklist.json", "blocked.json"]
 _sha_cache: dict[str, str] = {}
 _lock = threading.Lock()
 
+# H11: un lock PAR fichier — sérialise les uploads concurrents pour éviter
+# les conflits SHA (409 GitHub) quand 5 commandes arrivent en 1 seconde
+_upload_locks: dict[str, threading.Lock] = {}
+
+
+def _get_upload_lock(filename: str) -> threading.Lock:
+    with _lock:
+        lk = _upload_locks.get(filename)
+        if lk is None:
+            lk = threading.Lock()
+            _upload_locks[filename] = lk
+        return lk
+
 
 def is_enabled() -> bool:
     return bool(_TOKEN)
@@ -77,58 +90,90 @@ def download_file(filename: str) -> bool:
 
 
 def upload_file(filename: str) -> bool:
-    """Upload (create or update) un fichier vers le repo."""
+    """Upload (create or update) un fichier vers le repo.
+    H11: sérialisé par fichier — pas de conflit SHA même avec 10 uploads concurrents.
+    H12: SHA cache invalidé sur réponse vide au lieu d'être mis à "".
+    """
     if not _TOKEN:
         return False
     src = _DATA_DIR / filename
     if not src.exists():
         return False
-    try:
-        content_bytes = src.read_bytes()
-        content_b64   = base64.b64encode(content_bytes).decode("ascii")
 
-        # Récupérer le sha actuel si pas en cache
-        with _lock:
-            sha = _sha_cache.get(filename)
-        if not sha:
-            try:
-                r = httpx.get(_file_url(filename), headers=_headers(), timeout=10.0,
-                              params={"ref": _BRANCH})
-                if r.status_code == 200:
-                    sha = r.json().get("sha", "")
-                    with _lock:
-                        _sha_cache[filename] = sha
-            except Exception:
-                pass
+    upload_lock = _get_upload_lock(filename)
+    with upload_lock:
+        try:
+            content_bytes = src.read_bytes()
+            content_b64   = base64.b64encode(content_bytes).decode("ascii")
 
-        payload = {
-            "message": f"Auto-backup: {filename}",
-            "content": content_b64,
-            "branch":  _BRANCH,
-        }
-        if sha:
-            payload["sha"] = sha
+            # Récupérer le sha actuel si pas en cache
+            with _lock:
+                sha = _sha_cache.get(filename)
+            if not sha:
+                try:
+                    r = httpx.get(_file_url(filename), headers=_headers(), timeout=10.0,
+                                  params={"ref": _BRANCH})
+                    if r.status_code == 200:
+                        sha = r.json().get("sha")
+                        if sha:
+                            with _lock:
+                                _sha_cache[filename] = sha
+                except Exception:
+                    pass
 
-        r = httpx.put(_file_url(filename), headers=_headers(), json=payload, timeout=20.0)
-        r.raise_for_status()
-        new_sha = r.json().get("content", {}).get("sha", "")
-        with _lock:
-            _sha_cache[filename] = new_sha
-        return True
-    except Exception as exc:
-        logger.warning("Github upload %s : %s", filename, exc)
-        return False
+            payload = {
+                "message": f"Auto-backup: {filename}",
+                "content": content_b64,
+                "branch":  _BRANCH,
+            }
+            if sha:
+                payload["sha"] = sha
+
+            r = httpx.put(_file_url(filename), headers=_headers(), json=payload, timeout=20.0)
+
+            # H12: retry une fois sur 409 (sha obsolète) — refetch + retry
+            if r.status_code == 409 or r.status_code == 422:
+                logger.info("Github upload %s : sha obsolète, refetch + retry", filename)
+                r2 = httpx.get(_file_url(filename), headers=_headers(), timeout=10.0,
+                               params={"ref": _BRANCH})
+                if r2.status_code == 200:
+                    fresh_sha = r2.json().get("sha")
+                    if fresh_sha:
+                        payload["sha"] = fresh_sha
+                        r = httpx.put(_file_url(filename), headers=_headers(), json=payload, timeout=20.0)
+
+            r.raise_for_status()
+            new_sha = r.json().get("content", {}).get("sha")
+            with _lock:
+                # H12: ne JAMAIS cacher "" — sinon empoisonne tous les uploads futurs
+                if new_sha:
+                    _sha_cache[filename] = new_sha
+                else:
+                    _sha_cache.pop(filename, None)
+            return True
+        except Exception as exc:
+            logger.warning("Github upload %s : %s", filename, exc)
+            # Invalider le cache en cas d'erreur pour forcer un refetch propre
+            with _lock:
+                _sha_cache.pop(filename, None)
+            return False
 
 
 def restore_all() -> None:
-    """Au démarrage : restaure chaque fichier manquant depuis GitHub."""
+    """Au démarrage : télécharge TOUJOURS depuis GitHub (source of truth).
+    H15: avant on skippait si le fichier local existait — mais sur Render free
+    le filesystem est éphémère, donc les fichiers locaux sont stale ou inexistants.
+    GitHub est la source de vérité.
+    """
     if not _TOKEN:
         logger.info("Github backup désactivé (GITHUB_TOKEN absent)")
         return
     for fn in _FILES:
-        local = _DATA_DIR / fn
-        if not local.exists():
-            download_file(fn)
+        ok = download_file(fn)
+        if not ok:
+            local = _DATA_DIR / fn
+            if local.exists():
+                logger.info("Github: %s introuvable sur le repo, fichier local conservé", fn)
 
 
 def backup_all() -> None:

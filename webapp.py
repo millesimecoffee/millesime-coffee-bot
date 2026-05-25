@@ -13,16 +13,28 @@ from flask import Flask, jsonify, render_template, request
 logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
-app.config["MAX_CONTENT_LENGTH"] = 10 * 1024 * 1024  # H6: 10 MB max
+app.config["MAX_CONTENT_LENGTH"] = 3 * 1024 * 1024  # 3 MB max (selfie réaliste)
+
+# Cap dimensions image pour éviter les bombes décompression (50000x50000 → 7 GB RAM)
+_MAX_IMAGE_PIXELS = 5_000_000  # 5 MP — largement suffisant pour un selfie
 
 
 @app.after_request
 def _bypass_ngrok_warning(response):
-    """Indique à ngrok de ne PAS afficher la page d'avertissement browser.
-    Fonctionne avec le free tier : ngrok vérifie ce header dans les réponses
-    serveur et bypasse l'interstitiel pour tous les clients."""
+    """Indique à ngrok de ne PAS afficher la page d'avertissement browser."""
     response.headers["ngrok-skip-browser-warning"] = "true"
     return response
+
+
+@app.route("/")
+def root():
+    """Health endpoint pour keep-alive Render + check uptime."""
+    return "ok", 200
+
+
+@app.route("/health")
+def health():
+    return {"ok": True}, 200
 
 _lock = threading.Lock()
 _store: dict  = {}   # {user_id: {"photo": bytes}}
@@ -42,6 +54,9 @@ def register_token(user_id: str, token: str) -> None:
 @app.route("/selfie")
 def selfie_page():
     user_id = request.args.get("user_id", "")
+    # H3: refuser tout user_id non numérique (anti-XSS dans le template)
+    if not user_id.isdigit() or len(user_id) > 20:
+        return "Bad request", 400
     return render_template("selfie.html", user_id=user_id)
 
 
@@ -80,6 +95,13 @@ def verify():
 
         if img is None:
             return jsonify({"ok": False, "error": "Format image non reconnu — réessayez"})
+
+        # H2: refuser les images trop grandes en pixels (anti-décompression-bomb)
+        h, w = img.shape[:2]
+        if h * w > _MAX_IMAGE_PIXELS:
+            logger.warning("Image bombe rejetée: %dx%d = %d MP", w, h, h*w // 1_000_000)
+            del img, nparr
+            return jsonify({"ok": False, "error": "Image trop grande, réduisez la résolution"})
 
         gray  = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
         faces = _face_cascade.detectMultiScale(

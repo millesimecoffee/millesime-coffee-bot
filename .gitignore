@@ -1,22 +1,33 @@
-# Secrets
+# Secrets — JAMAIS commit
 .env
 *.env.local
+.env.*.local
 
-# Données persistantes (gérées par le volume Railway)
+# Sessions Telethon
+*.session
+*.session-journal
+new_session*.txt
+
+# Données persistantes (gérées par GitHub backup ou Supabase)
 orders.json
 blacklist.json
 blocked.json
 
-# Logs
+# Logs (toutes variantes)
 *.log
 *.log.*
 bot_stdout*.txt
 bot_stderr*.txt
+bot_out*.txt
+bot_err*.txt
 bot_run*.log
+startup_*.txt
+login_*.txt
+watchdog.log
+envois_log.csv
 
 # Rapports générés
 rapport_*.html
-envois_log.csv
 
 # Python
 __pycache__/
@@ -24,11 +35,13 @@ __pycache__/
 *.pyo
 *.pyd
 .python-version
+*.egg-info/
+venv/
+.venv/
 
 # Divers
 ngrok.yml
 whatsapp_session/
 backups/
 .claude/
-startup_*.txt
-login_*.txt
+messages.json

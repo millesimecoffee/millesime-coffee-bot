@@ -61,7 +61,16 @@ logger = logging.getLogger(__name__)
 BOT_TOKEN      = os.getenv("BOT_TOKEN", "")
 BOT_PASSWORD   = os.getenv("BOT_PASSWORD", "SECRET123")
 OWNER_CHAT_ID  = os.getenv("OWNER_CHAT_ID", "")   # où arrivent les notifs (privé ou groupe)
-OWNER_USER_ID  = os.getenv("OWNER_USER_ID", OWNER_CHAT_ID)  # qui est autorisé à gérer les commandes
+
+# OWNER_USER_ID = ID Telegram personnel de l'admin (jamais un groupe = jamais négatif)
+# Fallback OWNER_CHAT_ID seulement s'il est positif (chat privé), sinon vide
+_raw_owner_uid = os.getenv("OWNER_USER_ID", "")
+if not _raw_owner_uid and OWNER_CHAT_ID and not OWNER_CHAT_ID.lstrip("-").isdigit():
+    _raw_owner_uid = ""
+elif not _raw_owner_uid and OWNER_CHAT_ID:
+    # Si OWNER_CHAT_ID est positif (chat privé), on peut l'utiliser comme user_id
+    _raw_owner_uid = OWNER_CHAT_ID if not OWNER_CHAT_ID.startswith("-") else ""
+OWNER_USER_ID = _raw_owner_uid
 WEBAPP_URL     = os.getenv("WEBAPP_URL", "")
 NGROK_TOKEN    = os.getenv("NGROK_AUTH_TOKEN", "")
 
@@ -174,6 +183,35 @@ def _generate_order_id() -> str:
     ORDER_MANAGEMENT,
 ) = range(13)
 AWAITING_TRANSFER_PROOF = 13   # état supplémentaire hors range
+
+
+# ═════════════════════════════════════════════════════════════════════════════
+# Helpers d'échappement texte
+# ═════════════════════════════════════════════════════════════════════════════
+
+def _md_escape(text) -> str:
+    """Échappe les caractères Markdown legacy Telegram (`* _ [ ] ` `).
+    Accepte None et le convertit en '?'.
+    """
+    if text is None:
+        return "?"
+    s = str(text)
+    for ch in ("\\", "*", "_", "`", "["):
+        s = s.replace(ch, "\\" + ch)
+    return s
+
+
+def _safe_html(text) -> str:
+    """Wrapper sur html.escape qui gère None."""
+    return _html.escape(str(text)) if text is not None else "?"
+
+
+def _user_display(user) -> str:
+    """Nom utilisateur formatté pour affichage (jamais None, jamais vide)."""
+    if user is None:
+        return "?"
+    name = user.first_name or user.username or f"id_{user.id}"
+    return name
 
 
 # ═════════════════════════════════════════════════════════════════════════════
@@ -312,11 +350,19 @@ async def _notify_owner(context: ContextTypes.DEFAULT_TYPE, user, ud: dict, orde
                 caption=f"📸 Selfie client — {order_id}",
             )
         elif selfie_bytes:
-            await context.bot.send_photo(
+            sent_msg = await context.bot.send_photo(
                 chat_id=OWNER_CHAT_ID,
                 photo=BytesIO(selfie_bytes),
                 caption=f"📸 Selfie client — {order_id}",
             )
+            # H8: dès que Telegram a la photo, on remplace les bytes (lourd)
+            # par le file_id (léger) et on libère la RAM
+            try:
+                if sent_msg.photo:
+                    ud["selfie_file_id"] = sent_msg.photo[-1].file_id
+            except Exception:
+                pass
+            ud.pop("selfie_bytes", None)
         proof_fid = ud.get("transfer_proof_file_id")
         if proof_fid:
             await context.bot.send_photo(
@@ -402,8 +448,10 @@ async def select_language(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         lang = "fr"
     context.user_data["lang"] = lang
     _touch(context.user_data)
+    # H4: escape Markdown du first_name (sinon "Jean_Pierre" casse le parsing)
+    safe_name = _md_escape(update.effective_user.first_name or "?")
     await query.edit_message_text(
-        t("welcome_after_lang", lang, name=update.effective_user.first_name),
+        t("welcome_after_lang", lang, name=safe_name),
         parse_mode="Markdown",
     )
     return WAITING_PASSWORD
@@ -540,6 +588,11 @@ async def select_country(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     await query.answer()
     _touch(context.user_data)
     country = query.data.split(":", 1)[1]
+    # Validation : refuser les pays inconnus (injection callback)
+    if country not in catalog_mod.CATALOG:
+        lang = _lang(context.user_data)
+        await query.answer("Pays invalide", show_alert=True)
+        return await _show_countries(update, context)
     context.user_data["country"] = country
     context.user_data["cart"]    = {}
     return await _show_cities(update, context)
@@ -569,6 +622,11 @@ async def select_city(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int
     if query.data == "back:countries":
         return await _show_countries(update, context)
     city = query.data.split(":", 1)[1]
+    # Validation : refuser les villes inconnues pour le pays sélectionné
+    country = context.user_data.get("country")
+    if not country or country not in catalog_mod.CATALOG or city not in catalog_mod.CATALOG[country]:
+        await query.answer("Ville invalide", show_alert=True)
+        return await _show_cities(update, context)
     context.user_data["city"] = city
     context.user_data["cart"] = {}
     return await _show_menu(update, context)
@@ -1107,9 +1165,15 @@ async def handle_address(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     country_clean = country.split(" ", 1)[1].strip() if " " in country else country
 
     loading_msg = await update.message.reply_text(t("searching_address", lang))
-    result      = _geocode_nominatim(address_text,
-                                     city_hint=city,
-                                     country_hint=country_clean)
+    # C10: Nominatim est sync (requests) → wrap dans un thread pour ne pas
+    # freezer tout le bot pendant les ~10s du timeout HTTP
+    import asyncio
+    result = await asyncio.to_thread(
+        _geocode_nominatim,
+        address_text,
+        city_hint=city,
+        country_hint=country_clean,
+    )
 
     keyboard = InlineKeyboardMarkup([
         [InlineKeyboardButton(t("btn_addr_yes", lang), callback_data="addr:confirm")],
@@ -1173,9 +1237,9 @@ async def confirm_address(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
                 await context.bot.send_message(
                     chat_id=OWNER_CHAT_ID,
                     text=(
-                        f"✏️ <b>Adresse modifiée</b> — Commande <code>{_html.escape(order_id)}</code>\n"
-                        f"Client : {_html.escape(user.first_name)}\n"
-                        f"Nouvelle adresse : <code>{_html.escape(address)}</code>"
+                        f"✏️ <b>Adresse modifiée</b> — Commande <code>{_safe_html(order_id)}</code>\n"
+                        f"Client : {_safe_html(user.first_name)}\n"
+                        f"Nouvelle adresse : <code>{_safe_html(address)}</code>"
                     ),
                     parse_mode="HTML",
                 )
@@ -1379,8 +1443,37 @@ async def confirm_order(update: Update, context: ContextTypes.DEFAULT_TYPE) -> i
         await query.edit_message_text(t("order_cancelled", lang))
         return ConversationHandler.END
 
+    # H1 + H9: Générer l'ID ET sauvegarder en DB AVANT de notifier le owner.
+    # Sinon (1) collision possible sur 2 commandes simultanées, (2) si save
+    # échoue, owner croit avoir reçu une cmd qui n'existe pas en DB.
     order_id = _generate_order_id()
     ud["order_id"] = order_id
+
+    user = update.effective_user
+    pay_label = ud.get("payment_label") or (
+        t(ud["payment_key"], "fr") if ud.get("payment_key") else ""
+    )
+    order_data = {
+        "order_id":  order_id,
+        "user_id":   user.id,
+        "user_name": user.first_name,
+        "username":  user.username,
+        "lang":      lang,
+        "country":   ud.get("country"),
+        "city":      ud.get("city"),
+        "cart":      ud.get("cart", {}),
+        "total":     ud.get("order_total", 0),
+        "payment":   pay_label,
+        "address":   ud.get("address"),
+        "phone":     ud.get("phone", ""),
+        "maps_link": ud.get("maps_link", ""),
+        "status":    "pending",
+    }
+    try:
+        save_order(order_data)
+    except Exception as exc:
+        logger.error("Sauvegarde commande échouée: %s", exc)
+        # Continuer quand même : l'owner doit voir la cmd même si DB down.
 
     await query.edit_message_text(
         t("order_confirmed", lang, id=order_id),
@@ -1398,32 +1491,6 @@ async def confirm_order(update: Update, context: ContextTypes.DEFAULT_TYPE) -> i
     ud.pop("selfie_file_id",         None)
     ud.pop("selfie_token",           None)
     ud.pop("transfer_proof_file_id", None)
-
-    # Sauvegarder la commande AVANT d'afficher le bouton d'annulation
-    # (sinon le callback ne trouverait pas la commande si cliqué immédiatement)
-    try:
-        user = update.effective_user
-        pay_label = ud.get("payment_label") or (
-            t(ud["payment_key"], "fr") if ud.get("payment_key") else ""
-        )
-        save_order({
-            "order_id":  order_id,
-            "user_id":   user.id,
-            "user_name": user.first_name,
-            "username":  user.username,
-            "lang":      lang,
-            "country":   ud.get("country"),
-            "city":      ud.get("city"),
-            "cart":      ud.get("cart", {}),
-            "total":     ud.get("order_total", 0),
-            "payment":   pay_label,
-            "address":   ud.get("address"),
-            "phone":     ud.get("phone", ""),
-            "maps_link": ud.get("maps_link", ""),
-            "status":    "pending",
-        })
-    except Exception as exc:
-        logger.error("Sauvegarde commande échouée: %s", exc)
 
     # Fenêtre d'annulation 2 min — message bot avec bouton
     try:
@@ -1477,6 +1544,11 @@ async def order_management(update: Update, context: ContextTypes.DEFAULT_TYPE) -
 
     elif action == "do_cancel":
         order_id = ud.get("order_id", "N/A")
+        # Mettre à jour le status en DB (sinon /stats compte la cmd comme pending)
+        try:
+            update_order(order_id, {"status": "cancelled"})
+        except Exception as exc:
+            logger.error("update_order cancelled: %s", exc)
         if OWNER_CHAT_ID:
             try:
                 user = update.effective_user
@@ -1484,7 +1556,7 @@ async def order_management(update: Update, context: ContextTypes.DEFAULT_TYPE) -
                     chat_id=OWNER_CHAT_ID,
                     text=(
                         f"❌ <b>Commande annulée</b> : <code>{_html.escape(order_id)}</code>\n"
-                        f"Client : {_html.escape(user.first_name)}"
+                        f"Client : {_html.escape(user.first_name or '?')}"
                     ),
                     parse_mode="HTML",
                 )
@@ -1507,7 +1579,7 @@ async def order_management(update: Update, context: ContextTypes.DEFAULT_TYPE) -
 
     elif action == "address":
         ud["modifying"] = "address"
-        await query.edit_message_text(t("enter_new_address", lang))
+        await query.edit_message_text(t("enter_new_address", lang), parse_mode="Markdown")
         return ENTERING_ADDRESS
 
     elif action == "cart":
@@ -1553,8 +1625,8 @@ async def _finalize_cart_modification(update: Update, context: ContextTypes.DEFA
                 chat_id=OWNER_CHAT_ID,
                 text=(
                     f"✏️ <b>Panier modifié</b> — "
-                    f"Commande <code>{_html.escape(order_id)}</code>\n"
-                    f"Client : {_html.escape(user.first_name)}\n\n"
+                    f"Commande <code>{_safe_html(order_id)}</code>\n"
+                    f"Client : {_safe_html(user.first_name)}\n\n"
                     f"🛒 Nouveau panier :\n{cart_html}\n\n"
                     f"💸 Nouveau total : <b>{new_total:,.0f} {currency}</b>"
                 ),
@@ -1597,15 +1669,21 @@ async def owner_status_update(update: Update, context: ContextTypes.DEFAULT_TYPE
     client_id = int(parts[2])
     order_id  = parts[3] if len(parts) > 3 else "N/A"
 
-    # Récupérer langue du client depuis orders.json
-    client_lang = "fr"
+    # H6: idempotence — si la cmd est déjà dans ce statut, on ignore (évite spam client)
+    current_order = get_order(order_id)
+    if current_order:
+        client_lang = current_order.get("lang", "fr")
+        if current_order.get("status") == status:
+            await query.answer(f"Statut déjà = {status}", show_alert=False)
+            return
+    else:
+        client_lang = "fr"
+
+    # Marquer le nouveau statut en DB immédiatement (évite double-clic concurrent)
     try:
-        for o in reversed(_load_orders()):
-            if o.get("order_id") == order_id:
-                client_lang = o.get("lang", "fr")
-                break
-    except Exception:
-        pass
+        update_order(order_id, {"status": status})
+    except Exception as exc:
+        logger.warning("update_order(%s, status=%s): %s", order_id, status, exc)
 
     # Texte du message selon le statut
     messages = {
@@ -1837,6 +1915,7 @@ async def cmd_broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         f"📤 Envoi en cours à {len(user_ids)} client(s)…"
     )
     sent = failed = 0
+    import asyncio
     for uid in user_ids:
         try:
             from personal_sender import send_personal_message, is_ready
@@ -1849,6 +1928,8 @@ async def cmd_broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         except Exception as exc:
             logger.warning("Broadcast uid=%s : %s", uid, exc)
             failed += 1
+        # H7: throttle ~25 msg/s (Telegram limite à 30/s, marge de sécurité)
+        await asyncio.sleep(0.04)
 
     await progress.edit_text(
         f"✅ Broadcast terminé !\n"
@@ -1958,9 +2039,12 @@ async def handle_client_cancel(update: Update, context: ContextTypes.DEFAULT_TYP
         await query.answer("⛔ Cette commande ne vous appartient pas.", show_alert=True)
         return
 
-    # Vérifier la fenêtre 2 min
+    # Vérifier la fenêtre 2 min — robuste aux datetime timezone-aware (Supabase)
     try:
         created = datetime.fromisoformat(order.get("created_at", ""))
+        # Normaliser : si aware, convertir en naïf UTC ; sinon supposer local
+        if created.tzinfo is not None:
+            created = created.astimezone().replace(tzinfo=None)
     except (ValueError, TypeError):
         created = datetime.now()
     age = (datetime.now() - created).total_seconds()
@@ -2009,18 +2093,35 @@ async def handle_rating(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     """Gère les callbacks rate:SCORE:ORDER_ID envoyés par le client."""
     query    = update.callback_query
     parts    = query.data.split(":")      # rate:SCORE:ORDER_ID
-    score    = int(parts[1])
-    order_id = parts[2] if len(parts) > 2 else "N/A"
 
-    # Récupérer la langue du client depuis orders.json
-    client_lang = "fr"
+    # Validation stricte des paramètres
     try:
-        for o in reversed(_load_orders()):
-            if o.get("order_id") == order_id:
-                client_lang = o.get("lang", "fr")
-                break
-    except Exception:
-        pass
+        score    = int(parts[1])
+        order_id = parts[2] if len(parts) > 2 else ""
+    except (ValueError, IndexError):
+        await query.answer("Callback invalide", show_alert=True)
+        return
+
+    if not (1 <= score <= 5) or not order_id:
+        await query.answer("Note invalide", show_alert=True)
+        return
+
+    # Récupérer la commande et vérifier le owner
+    order = get_order(order_id)
+    if not order:
+        await query.answer("Commande introuvable.", show_alert=True)
+        return
+
+    if int(order.get("user_id", 0)) != int(update.effective_user.id):
+        await query.answer("⛔ Cette commande ne vous appartient pas.", show_alert=True)
+        return
+
+    # Pas de double-notation
+    if order.get("rating"):
+        await query.answer("Vous avez déjà noté cette commande.", show_alert=True)
+        return
+
+    client_lang = order.get("lang", "fr")
 
     # Sauvegarder la note
     try:
@@ -2039,7 +2140,7 @@ async def handle_rating(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     if OWNER_CHAT_ID:
         try:
             user = update.effective_user
-            full = user.first_name or ""
+            full = user.first_name or "?"
             if getattr(user, "last_name", None):
                 full = f"{full} {user.last_name}".strip()
             await context.bot.send_message(
@@ -2048,7 +2149,7 @@ async def handle_rating(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
                     f"⭐ <b>Note reçue !</b>\n"
                     f"📦 Commande : <code>{_html.escape(order_id)}</code>\n"
                     f"👤 Client : {_html.escape(full)}\n"
-                    f"Note : {'⭐' * score} <b>({score}/5)</b>"
+                    f"Note : {stars} <b>({score}/5)</b>"
                 ),
                 parse_mode="HTML",
             )
@@ -2260,6 +2361,16 @@ async def cmd_reload(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
         await update.message.reply_text(f"❌ Erreur reload : `{exc}`", parse_mode="Markdown")
 
 
+def _csv_safe(value) -> str:
+    """Préfixe ' devant les caractères dangereux pour Excel (=, +, -, @)."""
+    if value is None:
+        return ""
+    s = str(value)
+    if s and s[0] in ("=", "+", "-", "@", "\t", "\r"):
+        s = "'" + s
+    return s
+
+
 async def cmd_export(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """B5: Exporte toutes les commandes en CSV (Excel-compatible UTF-8 BOM)."""
     if not _is_owner(update):
@@ -2274,7 +2385,8 @@ async def cmd_export(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
     writer = csv.DictWriter(output, fieldnames=fields, extrasaction="ignore")
     writer.writeheader()
     for o in orders:
-        writer.writerow({k: o.get(k, "") for k in fields})
+        # Échapper CSV injection (formules Excel)
+        writer.writerow({k: _csv_safe(o.get(k, "")) for k in fields})
     csv_bytes = output.getvalue().encode("utf-8-sig")
     await update.message.reply_document(
         document=BytesIO(csv_bytes),
@@ -2541,8 +2653,39 @@ def main():
     app.job_queue.run_repeating(_github_backup_job, interval=600, first=300, name="github_backup_sync")
     logger.info("Job sync GitHub enregistré (toutes les 10 min)")
 
+    # ── Job toutes les 15 min : purge des entrées _blocked expirées ──────────
+    async def _purge_blocked_job(ctx):
+        now = datetime.now()
+        before = len(_blocked)
+        expired = [uid for uid, exp in _blocked.items() if exp <= now]
+        for uid in expired:
+            del _blocked[uid]
+        if expired:
+            try:
+                _save_blocked()
+            except Exception:
+                pass
+            logger.info("Purge anti-spam : %d entrées expirées supprimées (avant=%d après=%d)",
+                        len(expired), before, len(_blocked))
+
+    app.job_queue.run_repeating(_purge_blocked_job, interval=900, first=120, name="purge_blocked")
+
+    # ── Error handler global — évite que les conflits 409 ou autres erreurs crashent l'app ──
+    async def _error_handler(update, context):
+        err = context.error
+        # Conflict polling = ancien instance pas encore tué pendant un redeploy
+        from telegram.error import Conflict
+        if isinstance(err, Conflict):
+            logger.warning("Conflict polling (redeploy overlap) — ignoré")
+            return
+        logger.error("Erreur non gérée: %s", err, exc_info=err)
+    app.add_error_handler(_error_handler)
+
     logger.info("Bot démarré. Ctrl+C pour arrêter.")
-    app.run_polling(allowed_updates=Update.ALL_TYPES)
+    app.run_polling(
+        allowed_updates=Update.ALL_TYPES,
+        drop_pending_updates=True,    # évite Conflict 409 sur redeploy
+    )
 
 
 if __name__ == "__main__":
