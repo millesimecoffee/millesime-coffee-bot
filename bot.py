@@ -99,9 +99,8 @@ def _is_open() -> bool:
         return OPEN_HOUR <= h < CLOSE_HOUR
     return h >= OPEN_HOUR or h < CLOSE_HOUR
 
-# ── Anti-spam — persisté dans blocked.json (C3) ───────────────────────────────
-_DATA_DIR     = Path(os.getenv("DATA_DIR", str(Path(__file__).parent)))
-_BLOCKED_FILE = _DATA_DIR / "blocked.json"
+# ── Anti-spam — persisté via storage (Supabase ou fichier) ─────────────────────
+_DATA_DIR = Path(os.getenv("DATA_DIR", str(Path(__file__).parent)))
 _password_attempts: dict[int, list[datetime]] = {}
 _blocked: dict[int, datetime] = {}
 
@@ -110,29 +109,20 @@ _blacklist: set = set()
 
 
 def _load_blocked() -> dict[int, datetime]:
-    if not _BLOCKED_FILE.exists():
-        return {}
+    from storage import load_blocked
     try:
-        with _BLOCKED_FILE.open("r", encoding="utf-8") as f:
-            data = json.load(f)
-        now = datetime.now()
-        return {
-            int(uid): datetime.fromisoformat(ts)
-            for uid, ts in data.items()
-            if datetime.fromisoformat(ts) > now  # purge les blocs expirés
-        }
+        return load_blocked()
     except Exception as exc:
-        logger.error("Lecture blocked.json : %s", exc)
+        logger.error("Chargement blocked : %s", exc)
         return {}
 
 
 def _save_blocked() -> None:
+    from storage import save_blocked
     try:
-        data = {str(uid): ts.isoformat() for uid, ts in _blocked.items()}
-        with _BLOCKED_FILE.open("w", encoding="utf-8") as f:
-            json.dump(data, f)
+        save_blocked(_blocked)
     except Exception as exc:
-        logger.error("Écriture blocked.json : %s", exc)
+        logger.error("Sauvegarde blocked : %s", exc)
 
 
 # ── États ─────────────────────────────────────────────────────────────────────
@@ -2306,6 +2296,13 @@ def main():
     except OSError:
         logger.info("Logging fichier désactivé (répertoire non accessible)")
 
+    # Restauration des fichiers depuis le repo GitHub (free-tier persistence)
+    try:
+        import github_backup
+        github_backup.restore_all()
+    except Exception as exc:
+        logger.warning("Restauration GitHub : %s", exc)
+
     # C3: Charger les blocages persistés
     _blocked = _load_blocked()
     if _blocked:
@@ -2385,6 +2382,18 @@ def main():
         name="daily_backup",
     )
     logger.info("Job backup enregistré (00:00:10 Europe/Paris)")
+
+    # ── Job toutes les 10 min : sync vers le repo GitHub de données ──────────
+    async def _github_backup_job(ctx):
+        try:
+            import github_backup
+            github_backup.backup_all()
+            logger.info("Backup GitHub effectué (orders/blacklist/blocked)")
+        except Exception as exc:
+            logger.warning("Backup GitHub : %s", exc)
+
+    app.job_queue.run_repeating(_github_backup_job, interval=600, first=300, name="github_backup_sync")
+    logger.info("Job sync GitHub enregistré (toutes les 10 min)")
 
     logger.info("Bot démarré. Ctrl+C pour arrêter.")
     app.run_polling(allowed_updates=Update.ALL_TYPES)
