@@ -125,6 +125,38 @@ def _save_blocked() -> None:
         logger.error("Sauvegarde blocked : %s", exc)
 
 
+# ── Génération de l'ID commande : DDMMSS (séquence journalière) ───────────────
+_oid_lock = threading.Lock()
+
+def _generate_order_id() -> str:
+    """Format : DDMMSS — DD=jour, MM=mois, SS=numéro de la commande du jour.
+
+    Exemple : 25 mai, 1re commande -> '250501'
+              25 mai, 2e commande -> '250502'
+
+    Si la séquence dépasse 99, passe à 3 chiffres (250100 -> '2501100').
+    """
+    from storage import _load as _load_orders
+    with _oid_lock:
+        now = datetime.now()
+        prefix = now.strftime("%d%m")              # ex. "2505"
+        today  = now.strftime("%Y-%m-%d")          # ex. "2026-05-25"
+        try:
+            orders = _load_orders()
+        except Exception:
+            orders = []
+        # Compte les commandes du jour (par leur created_at OU leur order_id préfixe)
+        count = 0
+        for o in orders:
+            if o.get("created_at", "").startswith(today):
+                count += 1
+            elif isinstance(o.get("order_id"), str) and o["order_id"].startswith(prefix):
+                count += 1
+        seq = count + 1
+        width = 2 if seq < 100 else 3
+        return f"{prefix}{seq:0{width}d}"
+
+
 # ── États ─────────────────────────────────────────────────────────────────────
 (
     SELECTING_LANGUAGE,
@@ -1347,7 +1379,7 @@ async def confirm_order(update: Update, context: ContextTypes.DEFAULT_TYPE) -> i
         await query.edit_message_text(t("order_cancelled", lang))
         return ConversationHandler.END
 
-    order_id = f"ORD-{datetime.now().strftime('%Y%m%d%H%M%S')}"
+    order_id = _generate_order_id()
     ud["order_id"] = order_id
 
     await query.edit_message_text(
