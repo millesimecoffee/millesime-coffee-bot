@@ -42,7 +42,7 @@ from telegram.ext import (
 import catalog as catalog_mod
 from translations import t
 from storage import (
-    save_order, update_order, get_stats, get_stats_period,
+    save_order, update_order, get_order, get_stats, get_stats_period,
     get_orders_by_user, get_all_user_ids,
     load_blacklist, save_blacklist,
     backup_orders,
@@ -1399,6 +1399,8 @@ async def confirm_order(update: Update, context: ContextTypes.DEFAULT_TYPE) -> i
     ud.pop("selfie_token",           None)
     ud.pop("transfer_proof_file_id", None)
 
+    # Sauvegarder la commande AVANT d'afficher le bouton d'annulation
+    # (sinon le callback ne trouverait pas la commande si cliqué immédiatement)
     try:
         user = update.effective_user
         pay_label = ud.get("payment_label") or (
@@ -1422,6 +1424,31 @@ async def confirm_order(update: Update, context: ContextTypes.DEFAULT_TYPE) -> i
         })
     except Exception as exc:
         logger.error("Sauvegarde commande échouée: %s", exc)
+
+    # Fenêtre d'annulation 2 min — message bot avec bouton
+    try:
+        cancel_kb = InlineKeyboardMarkup([[
+            InlineKeyboardButton(t("client_cancel_btn", lang),
+                                 callback_data=f"client_cancel:{order_id}")
+        ]])
+        cancel_msg = await context.bot.send_message(
+            chat_id=update.effective_user.id,
+            text=t("client_cancel_window", lang),
+            reply_markup=cancel_kb,
+            parse_mode="Markdown",
+        )
+        # Programme l'expiration du bouton dans 120 s
+        if context.job_queue:
+            context.job_queue.run_once(
+                _expire_cancel_button,
+                when=120,
+                data={"chat_id": cancel_msg.chat_id,
+                      "message_id": cancel_msg.message_id,
+                      "lang": lang},
+                name=f"cancel_expire_{order_id}",
+            )
+    except Exception as exc:
+        logger.warning("Envoi bouton annulation : %s", exc)
 
     return ORDER_MANAGEMENT
 
@@ -1886,6 +1913,92 @@ async def cmd_banlist(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         f"🚫 <b>Utilisateurs bannis ({len(_blacklist)}) :</b>\n{ids}",
         parse_mode="HTML",
     )
+
+
+# ═════════════════════════════════════════════════════════════════════════════
+# Annulation client (fenêtre 2 min)
+# ═════════════════════════════════════════════════════════════════════════════
+
+async def _expire_cancel_button(context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Edite le message d'annulation après 2 min pour retirer le bouton."""
+    data = context.job.data
+    try:
+        await context.bot.edit_message_text(
+            chat_id=data["chat_id"],
+            message_id=data["message_id"],
+            text=t("client_cancel_expired_msg", data.get("lang", "fr")),
+            parse_mode="Markdown",
+        )
+    except Exception as exc:
+        # Message déjà supprimé/modifié → ignore
+        logger.debug("Expire cancel button : %s", exc)
+
+
+async def handle_client_cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Gère le callback client_cancel:ORDER_ID — annulation par le client."""
+    query    = update.callback_query
+    parts    = query.data.split(":", 1)
+    order_id = parts[1] if len(parts) > 1 else ""
+    user     = update.effective_user
+
+    if not order_id:
+        await query.answer("Order ID invalide", show_alert=True)
+        return
+
+    order = get_order(order_id)
+    if not order:
+        await query.answer("Commande introuvable.", show_alert=True)
+        return
+
+    # Langue : prendre celle stockée sur la commande (plus fiable que la session)
+    lang = order.get("lang") or (_lang(context.user_data) if context.user_data else "fr")
+
+    # Vérifier que c'est bien le bon client
+    if int(order.get("user_id", 0)) != int(user.id):
+        await query.answer("⛔ Cette commande ne vous appartient pas.", show_alert=True)
+        return
+
+    # Vérifier la fenêtre 2 min
+    try:
+        created = datetime.fromisoformat(order.get("created_at", ""))
+    except (ValueError, TypeError):
+        created = datetime.now()
+    age = (datetime.now() - created).total_seconds()
+
+    if age > 120:
+        await query.answer()
+        await query.edit_message_text(
+            t("client_cancel_too_late", lang),
+            parse_mode="Markdown",
+        )
+        return
+
+    # OK — annuler
+    update_order(order_id, {"status": "cancelled_by_client"})
+
+    # Annuler le job d'expiration (le bouton est consommé)
+    if context.job_queue:
+        for job in context.job_queue.get_jobs_by_name(f"cancel_expire_{order_id}"):
+            job.schedule_removal()
+
+    await query.answer("Annulation effectuée")
+    await query.edit_message_text(
+        t("client_cancel_done", lang, id=order_id),
+        parse_mode="Markdown",
+    )
+
+    # Notifier le owner
+    name = user.first_name or "?"
+    if user.username:
+        name = f"{name} (@{user.username})"
+    try:
+        await context.bot.send_message(
+            chat_id=OWNER_CHAT_ID,
+            text=t("owner_client_cancelled", "fr", name=_html.escape(name), id=_html.escape(order_id)),
+            parse_mode="HTML",
+        )
+    except Exception as exc:
+        logger.warning("Notification annulation owner : %s", exc)
 
 
 # ═════════════════════════════════════════════════════════════════════════════
@@ -2389,6 +2502,7 @@ def main():
     app.add_handler(CommandHandler("unblock",   cmd_unblock))
     app.add_handler(CommandHandler("banlist",   cmd_banlist))
     app.add_handler(CallbackQueryHandler(handle_rating, pattern="^rate:"))
+    app.add_handler(CallbackQueryHandler(handle_client_cancel, pattern="^client_cancel:"))
 
     # ── Job minuit : rapport automatique à 00h00:05 heure de Paris ───────────
     app.job_queue.run_daily(

@@ -544,6 +544,38 @@ T = {
         "en": "_Thank you for your order! We will contact you very soon for delivery._ 🙏",
     },
 
+    # ── Annulation client (fenêtre 2 min après confirmation) ─────────────────
+    "client_cancel_window": {
+        "fr": "⏱️ Vous avez *2 minutes* pour annuler cette commande si vous changez d'avis.",
+        "es": "⏱️ Tienes *2 minutos* para cancelar este pedido si cambias de opinión.",
+        "en": "⏱️ You have *2 minutes* to cancel this order if you change your mind.",
+    },
+    "client_cancel_btn": {
+        "fr": "❌ Annuler ma commande",
+        "es": "❌ Cancelar mi pedido",
+        "en": "❌ Cancel my order",
+    },
+    "client_cancel_expired_msg": {
+        "fr": "⏱️ _Le délai d'annulation (2 min) est expiré._",
+        "es": "⏱️ _El plazo de cancelación (2 min) ha expirado._",
+        "en": "⏱️ _The cancellation window (2 min) has expired._",
+    },
+    "client_cancel_too_late": {
+        "fr": "⏱️ Désolé, le délai d'annulation (2 min) est dépassé. Contactez-nous directement si besoin.",
+        "es": "⏱️ Lo sentimos, ha pasado el plazo de cancelación (2 min). Contáctanos directamente si lo necesitas.",
+        "en": "⏱️ Sorry, the cancellation window (2 min) has passed. Contact us directly if needed.",
+    },
+    "client_cancel_done": {
+        "fr": "✅ Votre commande *N° {id}* a été annulée.",
+        "es": "✅ Tu pedido *N° {id}* ha sido cancelado.",
+        "en": "✅ Your order *#{id}* has been cancelled.",
+    },
+    "owner_client_cancelled": {
+        "fr": "❌ <b>Annulation client</b> — Le client {name} a annulé la commande <code>{id}</code> (dans la fenêtre 2 min).",
+        "es": "❌ <b>Cancelación del cliente</b> — El cliente {name} ha cancelado el pedido <code>{id}</code> (dentro de la ventana de 2 min).",
+        "en": "❌ <b>Client cancellation</b> — Client {name} cancelled order <code>{id}</code> (within 2 min window).",
+    },
+
     # ── Divers ─────────────────────────────────────────────────────────────
     "restart_hint": {
         "fr": "↩️ Appuyez sur /start pour passer une nouvelle commande.",
