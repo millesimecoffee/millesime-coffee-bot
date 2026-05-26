@@ -28,6 +28,7 @@ from telegram import (
     ReplyKeyboardRemove,
     WebAppInfo,
     BotCommand,
+    CopyTextButton,
 )
 from telegram.ext import (
     Application,
@@ -877,6 +878,46 @@ async def _show_payment(update: Update, context: ContextTypes.DEFAULT_TYPE) -> i
     return SELECTING_PAYMENT
 
 
+async def _send_crypto_qr(query, context, lang: str, *, name: str, icon: str, address: str) -> None:
+    """Envoie l'adresse crypto sous forme de QR code + bouton 'Copier'.
+    Remplace l'écran texte précédent par une photo avec inline keyboard.
+    """
+    # API QR code publique, free, pas d'auth
+    qr_url = f"https://api.qrserver.com/v1/create-qr-code/?size=512x512&margin=10&data={address}"
+
+    caption = t("pay_crypto_caption", lang, icon=icon, name=name, address=address)
+
+    keyboard = InlineKeyboardMarkup([
+        [InlineKeyboardButton(t("btn_copy_address", lang), copy_text=CopyTextButton(text=address))],
+        [InlineKeyboardButton(t("btn_crypto_sent",  lang), callback_data="pay_crypto:paid")],
+        [InlineKeyboardButton(t("btn_pay_back",     lang), callback_data="pay:back")],
+    ])
+
+    # Supprimer le message texte précédent (panel de choix crypto) et envoyer la photo
+    try:
+        await query.message.delete()
+    except Exception as exc:
+        logger.debug("Impossible de supprimer le msg crypto précédent : %s", exc)
+
+    try:
+        await context.bot.send_photo(
+            chat_id=query.message.chat_id,
+            photo=qr_url,
+            caption=caption,
+            reply_markup=keyboard,
+            parse_mode="Markdown",
+        )
+    except Exception as exc:
+        # Fallback : si l'envoi photo échoue (API QR down, etc.), envoie juste le texte
+        logger.warning("Envoi QR %s échoué (%s) — fallback texte", name, exc)
+        await context.bot.send_message(
+            chat_id=query.message.chat_id,
+            text=caption,
+            reply_markup=keyboard,
+            parse_mode="Markdown",
+        )
+
+
 async def select_payment(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Gère tous les callbacks de l'écran paiement et ses sous-menus.
     IMPORTANT : query.answer() est appelé dans chaque branche (jamais en tête)
@@ -1006,15 +1047,7 @@ async def select_payment(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         await query.answer()
         ud["payment_key"]   = "pay_btn_crypto"
         ud["payment_label"] = "₿ Crypto — ETH"
-        keyboard = InlineKeyboardMarkup([
-            [InlineKeyboardButton(t("btn_crypto_sent", lang), callback_data="pay_crypto:paid")],
-            [InlineKeyboardButton(t("btn_pay_back",    lang), callback_data="pay:back")],
-        ])
-        await query.edit_message_text(
-            t("pay_crypto_address", lang, icon="⟠", name="ETH", address=CRYPTO_ETH),
-            reply_markup=keyboard,
-            parse_mode="Markdown",
-        )
+        await _send_crypto_qr(query, context, lang, name="ETH", icon="⟠", address=CRYPTO_ETH)
         return SELECTING_PAYMENT
 
     if data == "pay_crypto:usdt":
@@ -1024,15 +1057,7 @@ async def select_payment(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         await query.answer()
         ud["payment_key"]   = "pay_btn_crypto"
         ud["payment_label"] = "₿ Crypto — USDT"
-        keyboard = InlineKeyboardMarkup([
-            [InlineKeyboardButton(t("btn_crypto_sent", lang), callback_data="pay_crypto:paid")],
-            [InlineKeyboardButton(t("btn_pay_back",    lang), callback_data="pay:back")],
-        ])
-        await query.edit_message_text(
-            t("pay_crypto_address", lang, icon="₮", name="USDT", address=CRYPTO_USDT),
-            reply_markup=keyboard,
-            parse_mode="Markdown",
-        )
+        await _send_crypto_qr(query, context, lang, name="USDT", icon="₮", address=CRYPTO_USDT)
         return SELECTING_PAYMENT
 
     if data == "pay_crypto:paid":

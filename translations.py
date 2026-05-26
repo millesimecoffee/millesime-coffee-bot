@@ -252,6 +252,16 @@ T = {
         "es": "✅ He enviado la cripto",
         "en": "✅ I have sent the crypto",
     },
+    "btn_copy_address": {
+        "fr": "📋 Copier l'adresse",
+        "es": "📋 Copiar la dirección",
+        "en": "📋 Copy address",
+    },
+    "pay_crypto_caption": {
+        "fr": "{icon} *Paiement {name}*\n\n📲 *Scannez le QR* ou appuyez sur 📋 pour copier l'adresse :\n\n`{address}`\n\n_Une fois envoyé, appuyez sur ✅ ci-dessous._",
+        "es": "{icon} *Pago {name}*\n\n📲 *Escanea el QR* o pulsa 📋 para copiar la dirección:\n\n`{address}`\n\n_Una vez enviado, pulsa ✅ abajo._",
+        "en": "{icon} *{name} Payment*\n\n📲 *Scan the QR code* or tap 📋 to copy the address:\n\n`{address}`\n\n_Once sent, press ✅ below._",
+    },
     "pay_crypto_confirmed": {
         "fr": "✅ Paiement *{name}* noté.\n\n📍 *Adresse de livraison* :\n_Rue + ville, code postal, ou nom d'un lieu (Tour Eiffel, Moulin Rouge…)_",
         "es": "✅ Pago *{name}* registrado.\n\n📍 *Dirección de entrega* :\n_Calle, código postal o nombre de un lugar (Sagrada Família…)_",
