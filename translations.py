@@ -524,12 +524,47 @@ T = {
     "rating_request": {
         "fr": "⭐ *Comment s'est passée votre livraison ?*\n\n📦 N° `{id}`\n\nAppuyez sur une note :",
         "es": "⭐ *¿Cómo fue tu entrega?*\n\n📦 N° `{id}`\n\nPulsa una valoración:",
-        "en": "⭐ *How was your delivery?*\n\n📦 #{id}\n\nTap a rating:",
+        "en": "⭐ *How was your delivery?*\n\n📦 # `{id}`\n\nTap a rating:",
     },
     "rating_saved": {
         "fr": "{stars} Merci pour votre avis ! Votre note de *{score}/5* a bien été enregistrée.",
         "es": "{stars} ¡Gracias por tu opinión! Tu nota *{score}/5* ha sido guardada.",
         "en": "{stars} Thank you for your feedback! Your rating *{score}/5* has been saved.",
+    },
+    "rating_low_followup": {
+        "fr": "😕 Désolé que ça ne se soit pas bien passé. *Qu'est-ce qui n'a pas marché ?*",
+        "es": "😕 Lamentamos que no haya ido bien. *¿Qué no funcionó?*",
+        "en": "😕 Sorry it didn't go well. *What went wrong?*",
+    },
+    "feedback_btn_slow": {
+        "fr": "⏰ Livraison trop longue",
+        "es": "⏰ Entrega demasiado lenta",
+        "en": "⏰ Delivery too slow",
+    },
+    "feedback_btn_wrong": {
+        "fr": "❌ Erreur dans ma commande",
+        "es": "❌ Error en mi pedido",
+        "en": "❌ Wrong order",
+    },
+    "feedback_btn_cold": {
+        "fr": "🥶 Produit pas à bonne température",
+        "es": "🥶 Producto frío / mal conservado",
+        "en": "🥶 Wrong temperature",
+    },
+    "feedback_btn_quality": {
+        "fr": "⚠️ Qualité décevante",
+        "es": "⚠️ Calidad decepcionante",
+        "en": "⚠️ Disappointing quality",
+    },
+    "feedback_btn_other": {
+        "fr": "📝 Autre",
+        "es": "📝 Otro",
+        "en": "📝 Other",
+    },
+    "feedback_thanks": {
+        "fr": "🙏 Merci ! Votre retour a été transmis. Nous ferons mieux la prochaine fois.",
+        "es": "🙏 ¡Gracias! Tu opinión ha sido enviada. Lo haremos mejor la próxima vez.",
+        "en": "🙏 Thanks! Your feedback was sent. We'll do better next time.",
     },
 
     # ── Bon de commande automatique (envoyé au client à la confirmation) ─────

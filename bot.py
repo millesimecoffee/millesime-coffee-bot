@@ -117,6 +117,13 @@ _blocked: dict[int, datetime] = {}
 # ── Blacklist permanente ───────────────────────────────────────────────────────
 _blacklist: set = set()
 
+# ── Pause d'urgence (idée #40) ─────────────────────────────────────────────────
+# L'owner peut désactiver temporairement le bot via /pause (en cas de panne,
+# rupture de stock, problème de livraison, etc.) et le réactiver via /resume.
+# Mémoire-seule : un redémarrage réinitialise (= bot fonctionne par défaut).
+_paused: bool = False
+_paused_reason: str = ""
+
 
 def _load_blocked() -> dict[int, datetime]:
     from storage import load_blocked
@@ -415,6 +422,16 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     # Blacklist permanente
     if user_id_int in _blacklist:
         await update.message.reply_text(t("blacklisted", "fr"))
+        return ConversationHandler.END
+
+    # Pause d'urgence owner (#40)
+    if _paused and not is_owner_user:
+        reason = _paused_reason or "service temporairement indisponible"
+        await update.message.reply_text(
+            f"⏸️ *Service en pause*\n\n_{reason}_\n\nRéessayez plus tard. 🙏",
+            parse_mode="Markdown",
+            reply_markup=_restart_keyboard(),
+        )
         return ConversationHandler.END
 
     # Hors horaires : message "fermé" multi-langue et fin de session.
@@ -2022,6 +2039,62 @@ async def cmd_banlist(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
 
 
 # ═════════════════════════════════════════════════════════════════════════════
+# Pause d'urgence (idée #40)
+# ═════════════════════════════════════════════════════════════════════════════
+
+async def cmd_pause(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Owner : pause d'urgence du bot. Usage : /pause [raison libre]
+    Tant que pausé, les clients reçoivent un message d'indisponibilité.
+    """
+    if not _is_owner(update):
+        return
+    global _paused, _paused_reason
+    _paused = True
+    _paused_reason = " ".join(context.args).strip() if context.args else "Service temporairement indisponible"
+    await update.message.reply_text(
+        f"🔴 <b>Bot en pause</b>\n"
+        f"Raison : <i>{_safe_html(_paused_reason)}</i>\n\n"
+        f"Utilise /resume pour réactiver.",
+        parse_mode="HTML",
+    )
+
+
+async def cmd_resume(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Owner : réactive le bot après /pause."""
+    if not _is_owner(update):
+        return
+    global _paused, _paused_reason
+    was_paused = _paused
+    _paused = False
+    _paused_reason = ""
+    msg = "🟢 <b>Bot réactivé</b>" if was_paused else "🟢 Le bot n'était pas en pause."
+    await update.message.reply_text(msg, parse_mode="HTML")
+
+
+# ═════════════════════════════════════════════════════════════════════════════
+# Version (debug owner)
+# ═════════════════════════════════════════════════════════════════════════════
+
+async def cmd_version(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Owner : version actuelle (commit + branche) du bot déployé."""
+    if not _is_owner(update):
+        return
+    sha    = os.getenv("RENDER_GIT_COMMIT", "")[:7] or "local"
+    branch = os.getenv("RENDER_GIT_BRANCH", "") or "?"
+    service= os.getenv("RENDER_SERVICE_NAME", "local")
+    is_paused = "🔴 Oui" if _paused else "🟢 Non"
+    pause_info = f"\nRaison : {_paused_reason}" if _paused else ""
+    await update.message.reply_text(
+        f"📦 <b>Version</b>\n"
+        f"Commit : <code>{sha}</code>\n"
+        f"Branche : <code>{branch}</code>\n"
+        f"Service : <code>{service}</code>\n"
+        f"En pause : {is_paused}{pause_info}",
+        parse_mode="HTML",
+    )
+
+
+# ═════════════════════════════════════════════════════════════════════════════
 # Annulation client (fenêtre 2 min)
 # ═════════════════════════════════════════════════════════════════════════════
 
@@ -2180,6 +2253,84 @@ async def handle_rating(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
             )
         except Exception as exc:
             logger.warning("Notif note owner : %s", exc)
+
+    # Idée #30 : si note ≤ 3, demander un feedback détaillé
+    if score <= 3:
+        try:
+            fkb = InlineKeyboardMarkup([
+                [InlineKeyboardButton(t("feedback_btn_slow",    client_lang), callback_data=f"fb:slow:{order_id}")],
+                [InlineKeyboardButton(t("feedback_btn_wrong",   client_lang), callback_data=f"fb:wrong:{order_id}")],
+                [InlineKeyboardButton(t("feedback_btn_cold",    client_lang), callback_data=f"fb:cold:{order_id}")],
+                [InlineKeyboardButton(t("feedback_btn_quality", client_lang), callback_data=f"fb:quality:{order_id}")],
+                [InlineKeyboardButton(t("feedback_btn_other",   client_lang), callback_data=f"fb:other:{order_id}")],
+            ])
+            await context.bot.send_message(
+                chat_id=update.effective_user.id,
+                text=t("rating_low_followup", client_lang),
+                reply_markup=fkb,
+                parse_mode="Markdown",
+            )
+        except Exception as exc:
+            logger.debug("Envoi follow-up feedback : %s", exc)
+
+
+async def handle_feedback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Reçoit le motif de note basse via les boutons fb:REASON:ORDER_ID."""
+    query = update.callback_query
+    parts = query.data.split(":", 2)
+    if len(parts) < 3:
+        await query.answer("Callback invalide", show_alert=True)
+        return
+    reason   = parts[1]
+    order_id = parts[2]
+
+    order = get_order(order_id)
+    if not order:
+        await query.answer("Commande introuvable.", show_alert=True)
+        return
+
+    if int(order.get("user_id", 0)) != int(update.effective_user.id):
+        await query.answer("⛔ Cette commande ne vous appartient pas.", show_alert=True)
+        return
+
+    client_lang = order.get("lang", "fr")
+
+    # Sauvegarder le motif dans la commande
+    try:
+        update_order(order_id, {"feedback_reason": reason})
+    except Exception as exc:
+        logger.warning("Sauvegarde feedback : %s", exc)
+
+    await query.answer()
+    await query.edit_message_text(t("feedback_thanks", client_lang), parse_mode="Markdown")
+
+    # Alerter l'owner immédiatement — note basse + motif
+    if OWNER_CHAT_ID:
+        reason_labels = {
+            "slow":    "⏰ Livraison trop longue",
+            "wrong":   "❌ Erreur dans la commande",
+            "cold":    "🥶 Produit pas à bonne température",
+            "quality": "⚠️ Qualité décevante",
+            "other":   "📝 Autre",
+        }
+        rating = order.get("rating", "?")
+        try:
+            user = update.effective_user
+            full = (user.first_name or "?") + (f" (@{user.username})" if user.username else "")
+            await context.bot.send_message(
+                chat_id=OWNER_CHAT_ID,
+                text=(
+                    f"⚠️ <b>RETOUR CLIENT NÉGATIF</b>\n\n"
+                    f"📦 Commande : <code>{_safe_html(order_id)}</code>\n"
+                    f"👤 Client : {_safe_html(full)}\n"
+                    f"⭐ Note : <b>{rating}/5</b>\n"
+                    f"💬 Motif : {reason_labels.get(reason, reason)}\n\n"
+                    f"<i>Contacte ce client rapidement.</i>"
+                ),
+                parse_mode="HTML",
+            )
+        except Exception as exc:
+            logger.warning("Notif feedback owner : %s", exc)
 
 
 # ═════════════════════════════════════════════════════════════════════════════
@@ -2534,11 +2685,14 @@ async def _post_init(app: Application) -> None:
         BotCommand("stats",      "📊 Statistiques"),
         BotCommand("orders",     "📋 Mes commandes"),
         BotCommand("broadcast",  "📣 Diffuser un message"),
+        BotCommand("pause",      "⏸️ Mettre le bot en pause"),
+        BotCommand("resume",     "▶️ Réactiver le bot"),
         BotCommand("block",      "🚫 Bannir un utilisateur"),
         BotCommand("unblock",    "✅ Débannir un utilisateur"),
         BotCommand("banlist",    "📋 Liste des bannis"),
         BotCommand("reload",     "🔄 Recharger le catalogue"),
         BotCommand("export",     "📁 Exporter commandes CSV"),
+        BotCommand("version",    "📦 Version du bot"),
         BotCommand("getid",      "🆔 Obtenir l'ID du chat"),
     ]
     try:
@@ -2638,7 +2792,11 @@ def main():
     app.add_handler(CommandHandler("block",     cmd_block))
     app.add_handler(CommandHandler("unblock",   cmd_unblock))
     app.add_handler(CommandHandler("banlist",   cmd_banlist))
-    app.add_handler(CallbackQueryHandler(handle_rating, pattern="^rate:"))
+    app.add_handler(CommandHandler("pause",     cmd_pause))
+    app.add_handler(CommandHandler("resume",    cmd_resume))
+    app.add_handler(CommandHandler("version",   cmd_version))
+    app.add_handler(CallbackQueryHandler(handle_rating,        pattern="^rate:"))
+    app.add_handler(CallbackQueryHandler(handle_feedback,      pattern="^fb:"))
     app.add_handler(CallbackQueryHandler(handle_client_cancel, pattern="^client_cancel:"))
 
     # ── Job minuit : rapport automatique à 00h00:05 heure de Paris ───────────
