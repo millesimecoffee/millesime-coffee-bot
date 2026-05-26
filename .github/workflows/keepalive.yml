@@ -1,8 +1,10 @@
-name: Keep Render service alive
+name: Keep alive PRIMARY (every 5min)
 
-# Render free tier endort après 15 min sans HTTP entrant.
-# GitHub Actions cron est "best effort" (peut avoir 5-15 min de retard).
-# On ping toutes les 5 min pour garder une marge confortable.
+# 3 workflows à offsets différents pour blindage maximal :
+#   - keepalive.yml      → 0, 5, 10, 15, 20, 25... (offset 0)
+#   - keepalive-bis.yml  → 2, 7, 12, 17, 22, 27... (offset 2)
+#   - keepalive-ter.yml  → 4, 9, 14, 19, 24, 29... (offset 4)
+# Résultat : un ping toutes les ~1m40 en moyenne, plusieurs sources indépendantes.
 
 on:
   schedule:
@@ -12,16 +14,15 @@ on:
 jobs:
   ping:
     runs-on: ubuntu-latest
-    timeout-minutes: 2
+    timeout-minutes: 3
     steps:
-      - name: Ping Render service
+      - name: Ping Render service (3 tentatives)
         run: |
-          # 3 tentatives en cas de cold start lent (peut prendre 30-60s)
           for i in 1 2 3; do
             HTTP=$(curl -fsS -o /dev/null -w "%{http_code}" -m 90 \
-              https://millesime-coffee-bot.onrender.com/ || echo "fail")
+              https://millesime-coffee-bot.onrender.com/health || echo "fail")
             echo "Tentative $i : HTTP $HTTP"
             [ "$HTTP" = "200" ] && exit 0
-            sleep 5
+            sleep 8
           done
-          exit 0  # Ne pas casser le workflow même si le bot est down
+          exit 0

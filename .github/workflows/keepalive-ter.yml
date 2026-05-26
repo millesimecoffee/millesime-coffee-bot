@@ -1,0 +1,22 @@
+name: Keep alive TER (offset +4min)
+
+on:
+  schedule:
+    - cron: "4-59/5 * * * *"
+  workflow_dispatch:
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Ping Render service
+        run: |
+          for i in 1 2 3; do
+            HTTP=$(curl -fsS -o /dev/null -w "%{http_code}" -m 90 \
+              https://millesime-coffee-bot.onrender.com/health || echo "fail")
+            echo "Tentative $i : HTTP $HTTP"
+            [ "$HTTP" = "200" ] && exit 0
+            sleep 8
+          done
+          exit 0
