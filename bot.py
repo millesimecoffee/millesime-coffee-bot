@@ -2853,6 +2853,25 @@ def main():
 
     app.job_queue.run_repeating(_purge_blocked_job, interval=900, first=120, name="purge_blocked")
 
+    # ── Self keep-alive : ping HTTP propre URL toutes les 4 min ─────────────
+    # Render free tier dort après 15 min sans HTTP entrant. Le GitHub Actions
+    # peut avoir des délais. Le self-ping en COMPLÉMENT garantit qu'on reste
+    # éveillé tant que le process tourne (pendant qu'il tourne, il hit son URL).
+    async def _self_keepalive(ctx):
+        url = os.getenv("WEBAPP_URL", "").rstrip("/")
+        if not url:
+            return
+        try:
+            import httpx
+            async with httpx.AsyncClient(timeout=10.0) as c:
+                r = await c.get(f"{url}/health")
+                logger.debug("Self keep-alive: %s -> HTTP %s", url, r.status_code)
+        except Exception as exc:
+            logger.debug("Self keep-alive failed (normal si premier ping): %s", exc)
+
+    app.job_queue.run_repeating(_self_keepalive, interval=240, first=240, name="self_keepalive")
+    logger.info("Self keep-alive enregistré (toutes les 4 min)")
+
     # ── Error handler global — évite que les conflits 409 ou autres erreurs crashent l'app ──
     async def _error_handler(update, context):
         err = context.error
