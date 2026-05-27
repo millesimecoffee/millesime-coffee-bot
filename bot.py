@@ -876,7 +876,7 @@ async def manage_cart(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int
 async def _show_payment(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     lang  = _lang(context.user_data)
     query = update.callback_query
-    keyboard = [
+    keyboard = InlineKeyboardMarkup([
         [
             InlineKeyboardButton(t("pay_btn_cash",     lang), callback_data="pay_method:cash"),
             InlineKeyboardButton(t("pay_btn_virement", lang), callback_data="pay_method:virement"),
@@ -886,12 +886,29 @@ async def _show_payment(update: Update, context: ContextTypes.DEFAULT_TYPE) -> i
             InlineKeyboardButton(t("pay_btn_crypto", lang), callback_data="pay_method:crypto"),
         ],
         [InlineKeyboardButton(t("back_cart", lang), callback_data="back:cart")],
-    ]
-    await query.edit_message_text(
-        t("choose_payment", lang),
-        reply_markup=InlineKeyboardMarkup(keyboard),
-        parse_mode="Markdown",
-    )
+    ])
+    text = t("choose_payment", lang)
+    # Si le message courant est une photo (cas du retour depuis QR crypto),
+    # on ne peut pas edit_message_text → on supprime et on envoie un nouveau message.
+    msg = query.message
+    is_photo = bool(getattr(msg, "photo", None))
+    if is_photo:
+        try:
+            await msg.delete()
+        except Exception:
+            pass
+        await context.bot.send_message(
+            chat_id=msg.chat_id,
+            text=text,
+            reply_markup=keyboard,
+            parse_mode="Markdown",
+        )
+    else:
+        await query.edit_message_text(
+            text,
+            reply_markup=keyboard,
+            parse_mode="Markdown",
+        )
     return SELECTING_PAYMENT
 
 
@@ -1102,10 +1119,23 @@ async def select_payment(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     if data == "pay_crypto:paid":
         await query.answer()
         name = ud.get("payment_label", "Crypto").replace("₿ Crypto — ", "")
-        await query.edit_message_text(
-            t("pay_crypto_confirmed", lang, name=name),
-            parse_mode="Markdown",
-        )
+        msg = query.message
+        # Si on est sur le message-photo du QR, edit_message_text ne marche pas.
+        if getattr(msg, "photo", None):
+            try:
+                await msg.delete()
+            except Exception:
+                pass
+            await context.bot.send_message(
+                chat_id=msg.chat_id,
+                text=t("pay_crypto_confirmed", lang, name=name),
+                parse_mode="Markdown",
+            )
+        else:
+            await query.edit_message_text(
+                t("pay_crypto_confirmed", lang, name=name),
+                parse_mode="Markdown",
+            )
         return ENTERING_ADDRESS
 
     await query.answer(t("generic_error", lang), show_alert=True)
