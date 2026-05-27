@@ -149,11 +149,7 @@ CATALOG = {
     },
     "🇦🇱 Albanie": {
         "Tirana": {
-            "❄️ COCA 1G":    80.00,
-            "🍾 MDMA 1G":    60.00,
-            "🍬 EXTA 10PCS": 60.00,
-            "🐘 KETA 1G":    60.00,
-            "🌸 TUCI 1G":   100.00,
+            "❄️ COCA 1G":   120.00,
         },
     },
     "🇳🇱 Pays-Bas": {
@@ -275,7 +271,7 @@ MIN_ORDER: dict[str, dict] = {
     # Hongrie
     "Budapest":    {"type": "amount", "value": 60},
     # Albanie
-    "Tirana":      {"type": "amount", "value": 60},
+    "Tirana":      {"type": "amount", "value": 120},
     # Pays-Bas
     "Amsterdam":   {"type": "amount", "value": 60},
     # Allemagne
