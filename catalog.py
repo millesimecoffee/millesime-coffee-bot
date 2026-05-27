@@ -150,6 +150,17 @@ CATALOG = {
             "🍫 HASH 10G":   60.00,
         },
     },
+    "🇩🇪 Allemagne": {
+        "Berlin": {
+            "❄️ COCA 1G":    80.00,
+            "🍾 MDMA 1G":    60.00,
+            "🍬 EXTA 10PCS": 60.00,
+            "🐘 KETA 1G":    60.00,
+            "🌸 TUCI 1G":   100.00,
+            "🥦 WEED 5G":    60.00,
+            "🍫 HASH 10G":   60.00,
+        },
+    },
     "🇺🇸 États-Unis": {
         "Las Vegas": {
             "❄️ COCA 1G":   120.00,
@@ -207,6 +218,7 @@ CURRENCIES = {
     "🇮🇹 Italie":     "€",
     "🇭🇺 Hongrie":    "€",
     "🇳🇱 Pays-Bas":    "€",
+    "🇩🇪 Allemagne":   "€",
     "🇺🇸 États-Unis":  "€",
     "🇹🇭 Thaïlande":   "€",
     "🇲🇦 Maroc":       "€",
@@ -246,6 +258,8 @@ MIN_ORDER: dict[str, dict] = {
     "Budapest":    {"type": "amount", "value": 60},
     # Pays-Bas
     "Amsterdam":   {"type": "amount", "value": 60},
+    # Allemagne
+    "Berlin":      {"type": "amount", "value": 60},
     # États-Unis
     "Las Vegas":   {"type": "amount", "value": 80},
     # Thaïlande
