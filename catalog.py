@@ -14,7 +14,7 @@ CATALOG = {
     },
     "🇧🇪 Belgique": {
         "Bruxelles": {
-            "❄️ COCA 0.6G": 50.00,
+            "❄️ COCA 1G": 100.00,
         },
     },
     "🇬🇧 Angleterre": {
@@ -245,7 +245,7 @@ MIN_ORDER: dict[str, dict] = {
     # France
     "Paris":       {"type": "amount", "value": 70},
     # Belgique
-    "Bruxelles":   {"type": "amount", "value": 50},
+    "Bruxelles":   {"type": "amount", "value": 100},
     # Angleterre
     "Londres":     {"type": "amount", "value": 40},
     "Manchester":  {"type": "amount", "value": 40},
