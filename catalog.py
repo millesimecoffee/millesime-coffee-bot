@@ -147,6 +147,15 @@ CATALOG = {
             "🌸 TUCI 1G":   100.00,
         },
     },
+    "🇦🇱 Albanie": {
+        "Tirana": {
+            "❄️ COCA 1G":    80.00,
+            "🍾 MDMA 1G":    60.00,
+            "🍬 EXTA 10PCS": 60.00,
+            "🐘 KETA 1G":    60.00,
+            "🌸 TUCI 1G":   100.00,
+        },
+    },
     "🇳🇱 Pays-Bas": {
         "Amsterdam": {
             "❄️ COCA 1G":    80.00,
@@ -224,6 +233,7 @@ CURRENCIES = {
     "🇵🇹 Portugal":   "€",
     "🇮🇹 Italie":     "€",
     "🇭🇺 Hongrie":    "€",
+    "🇦🇱 Albanie":    "€",
     "🇳🇱 Pays-Bas":    "€",
     "🇩🇪 Allemagne":   "€",
     "🇺🇸 États-Unis":  "€",
@@ -264,6 +274,8 @@ MIN_ORDER: dict[str, dict] = {
     "Florence":    {"type": "amount", "value": 70},
     # Hongrie
     "Budapest":    {"type": "amount", "value": 60},
+    # Albanie
+    "Tirana":      {"type": "amount", "value": 60},
     # Pays-Bas
     "Amsterdam":   {"type": "amount", "value": 60},
     # Allemagne
