@@ -62,6 +62,13 @@ CATALOG = {
             "🐘 KETA 1G":     70.00,
             "🥦 WEED 1.2G":   30.00,
         },
+        "Tenerife": {
+            "❄️ COCA 1G":    120.00,
+            "🍬 EXTA 10PCS":  70.00,
+            "🍾 MDMA 1G":     70.00,
+            "🐘 KETA 1G":     70.00,
+            "🥦 WEED 1.2G":   30.00,
+        },
     },
     "🇬🇷 Grèce": {
         "Mykonos": {
@@ -241,6 +248,7 @@ MIN_ORDER: dict[str, dict] = {
     "Marbella":    {"type": "amount", "value": 200},   # ← minimum 200 €
     "Malaga":      {"type": "amount", "value": 200},   # ← minimum 200 €
     "Majorque":    {"type": "amount", "value": 70},
+    "Tenerife":    {"type": "amount", "value": 70},
     # Grèce — minimum 2 articles (toutes villes)
     "Mykonos":     {"type": "qty",    "value": 2},
     "Santorini":   {"type": "qty",    "value": 2},
