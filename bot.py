@@ -898,10 +898,11 @@ async def _show_payment(update: Update, context: ContextTypes.DEFAULT_TYPE) -> i
 async def _send_crypto_qr(query, context, lang: str, *, name: str, icon: str, address: str) -> None:
     """Envoie l'adresse crypto sous forme de QR code + bouton 'Copier'.
     Remplace l'écran texte précédent par une photo avec inline keyboard.
-    """
-    # API QR code publique, free, pas d'auth
-    qr_url = f"https://api.qrserver.com/v1/create-qr-code/?size=512x512&margin=10&data={address}"
 
+    Download le QR en bytes nous-mêmes (httpx) puis upload à Telegram :
+    plus fiable que de passer une URL externe que Telegram doit fetcher
+    (certaines APIs sont bloquées côté serveurs Telegram → HTTP 400).
+    """
     caption = t("pay_crypto_caption", lang, icon=icon, name=name, address=address)
 
     keyboard = InlineKeyboardMarkup([
@@ -910,29 +911,50 @@ async def _send_crypto_qr(query, context, lang: str, *, name: str, icon: str, ad
         [InlineKeyboardButton(t("btn_pay_back",     lang), callback_data="pay:back")],
     ])
 
-    # Supprimer le message texte précédent (panel de choix crypto) et envoyer la photo
+    # Télécharger le QR code via plusieurs services (failover)
+    qr_bytes = None
+    import httpx
+    qr_services = [
+        f"https://quickchart.io/qr?text={address}&size=512&margin=4",
+        f"https://api.qrserver.com/v1/create-qr-code/?size=512x512&margin=10&data={address}",
+    ]
+    async with httpx.AsyncClient(timeout=10.0, follow_redirects=True) as client:
+        for url in qr_services:
+            try:
+                r = await client.get(url)
+                if r.status_code == 200 and len(r.content) > 100:
+                    qr_bytes = r.content
+                    break
+            except Exception as exc:
+                logger.debug("QR service %s failed: %s", url, exc)
+
+    # Supprimer le message texte précédent (panel de choix crypto)
     try:
         await query.message.delete()
     except Exception as exc:
         logger.debug("Impossible de supprimer le msg crypto précédent : %s", exc)
 
-    try:
-        await context.bot.send_photo(
-            chat_id=query.message.chat_id,
-            photo=qr_url,
-            caption=caption,
-            reply_markup=keyboard,
-            parse_mode="Markdown",
-        )
-    except Exception as exc:
-        # Fallback : si l'envoi photo échoue (API QR down, etc.), envoie juste le texte
-        logger.warning("Envoi QR %s échoué (%s) — fallback texte", name, exc)
-        await context.bot.send_message(
-            chat_id=query.message.chat_id,
-            text=caption,
-            reply_markup=keyboard,
-            parse_mode="Markdown",
-        )
+    # Envoyer la photo (bytes) avec fallback texte si tout a échoué
+    if qr_bytes:
+        try:
+            await context.bot.send_photo(
+                chat_id=query.message.chat_id,
+                photo=BytesIO(qr_bytes),
+                caption=caption,
+                reply_markup=keyboard,
+                parse_mode="Markdown",
+            )
+            return
+        except Exception as exc:
+            logger.warning("send_photo %s échoué (%s) — fallback texte", name, exc)
+
+    # Fallback : juste le texte avec l'adresse (pas de QR)
+    await context.bot.send_message(
+        chat_id=query.message.chat_id,
+        text=caption,
+        reply_markup=keyboard,
+        parse_mode="Markdown",
+    )
 
 
 async def select_payment(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
