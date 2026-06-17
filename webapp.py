@@ -119,6 +119,183 @@ def api_catalog():
         logger.error("api_catalog: %s", exc)
         return jsonify({"error": "load_failed"}), 500
 
+
+# Cart en attente entre la Mini App et le clic paiement dans le chat
+# Clé : user_id (str). Expire après 1h.
+_pending_carts: dict[str, dict] = {}
+_pending_lock = threading.Lock()
+_PENDING_TTL  = 3600  # 1h
+
+
+def get_pending_cart(user_id: str) -> dict | None:
+    """Lit (et conserve) le panier en attente pour un user_id donné."""
+    with _pending_lock:
+        item = _pending_carts.get(str(user_id))
+        if not item:
+            return None
+        if time.time() - item["ts"] > _PENDING_TTL:
+            _pending_carts.pop(str(user_id), None)
+            return None
+        return item
+
+
+def pop_pending_cart(user_id: str) -> dict | None:
+    """Consomme le panier en attente pour un user_id (le supprime ensuite)."""
+    with _pending_lock:
+        return _pending_carts.pop(str(user_id), None)
+
+
+def _verify_init_data(init_data: str, bot_token: str) -> dict | None:
+    """Valide l'initData Telegram via HMAC-SHA256.
+    Retourne le dict des champs si valide, None sinon.
+    Voir https://core.telegram.org/bots/webapps#validating-data-received-via-the-mini-app
+    """
+    import hashlib
+    import hmac
+    from urllib.parse import parse_qsl
+
+    if not init_data or not bot_token:
+        return None
+    try:
+        pairs = dict(parse_qsl(init_data, keep_blank_values=True, strict_parsing=False))
+        their_hash = pairs.pop("hash", "")
+        if not their_hash:
+            return None
+        # Data-check-string : trier alphabétiquement et joindre par \n
+        dcs = "\n".join(f"{k}={v}" for k, v in sorted(pairs.items()))
+        secret = hmac.new(b"WebAppData", bot_token.encode(), hashlib.sha256).digest()
+        my_hash = hmac.new(secret, dcs.encode(), hashlib.sha256).hexdigest()
+        if hmac.compare_digest(my_hash, their_hash):
+            return pairs
+    except Exception as exc:
+        logger.warning("verify_init_data exception: %s", exc)
+    return None
+
+
+@app.route("/api/submit_cart", methods=["POST"])
+def api_submit_cart():
+    """Reçoit le panier final de la Mini App.
+    Valide initData → user_id authentique → stocke + envoie message paiement.
+    """
+    try:
+        data = request.get_json(force=True) or {}
+    except Exception:
+        return jsonify({"ok": False, "error": "bad_json"}), 400
+
+    bot_token = os.getenv("BOT_TOKEN", "")
+    init_data = data.get("initData", "")
+    parsed = _verify_init_data(init_data, bot_token)
+    if not parsed:
+        return jsonify({"ok": False, "error": "auth_failed"}), 401
+
+    # Extraire user_id de l'objet user JSON dans initData
+    try:
+        import json as _json
+        user_obj = _json.loads(parsed.get("user", "{}"))
+        user_id  = int(user_obj.get("id", 0))
+    except Exception:
+        return jsonify({"ok": False, "error": "no_user"}), 400
+    if not user_id:
+        return jsonify({"ok": False, "error": "no_user"}), 400
+
+    # Charger catalogue serveur pour valider
+    try:
+        import catalog as catalog_mod
+        importlib.reload(catalog_mod)
+    except Exception as exc:
+        logger.error("submit_cart catalog: %s", exc)
+        return jsonify({"ok": False, "error": "catalog_failed"}), 500
+
+    lang    = data.get("lang", "fr") if data.get("lang") in ("fr","es","en") else "fr"
+    country = data.get("country", "")
+    city    = data.get("city", "")
+    cart    = data.get("cart", {}) or {}
+
+    if country not in catalog_mod.CATALOG or city not in catalog_mod.CATALOG.get(country, {}):
+        return jsonify({"ok": False, "error": "bad_location"}), 400
+
+    products = catalog_mod.CATALOG[country][city]
+    total = 0.0
+    safe_cart = {}
+    for prod, qty in cart.items():
+        try:
+            q = int(qty)
+        except (ValueError, TypeError):
+            continue
+        if q <= 0 or q > 99 or prod not in products:
+            continue
+        safe_cart[prod] = q
+        total += products[prod] * q
+
+    if not safe_cart:
+        return jsonify({"ok": False, "error": "empty_cart"}), 400
+
+    # Vérifier min
+    min_order = catalog_mod.MIN_ORDER.get(city)
+    if min_order:
+        if min_order["type"] == "amount" and total < min_order["value"]:
+            return jsonify({"ok": False, "error": f"Minimum {min_order['value']} €"}), 400
+        if min_order["type"] == "qty":
+            tot_q = sum(safe_cart.values())
+            if tot_q < min_order["value"]:
+                return jsonify({"ok": False, "error": f"Minimum {min_order['value']} articles"}), 400
+
+    # OK — stocker pour récupération par le bot quand l'user clique le paiement
+    with _pending_lock:
+        _pending_carts[str(user_id)] = {
+            "lang":    lang,
+            "country": country,
+            "city":    city,
+            "cart":    safe_cart,
+            "total":   total,
+            "ts":      time.time(),
+        }
+
+    # Envoyer un message Telegram au user avec les boutons de paiement
+    # On utilise l'API Bot directement depuis Flask
+    import httpx
+    label_count = sum(safe_cart.values())
+    msg_text = (
+        f"✅ *Panier reçu !*\n\n"
+        f"🏙️ {city} — {label_count} article(s) — *{total:,.0f} €*\n\n"
+        f"Choisissez votre mode de paiement :"
+    )
+    # Boutons paiement (callback_data spéciaux pour notre nouveau entry_point)
+    keyboard = {
+        "inline_keyboard": [
+            [
+                {"text": "💵 Cash",     "callback_data": "mapay:cash"},
+                {"text": "🏦 Virement", "callback_data": "mapay:virement"},
+            ],
+            [
+                {"text": "💳 Lien",    "callback_data": "mapay:link"},
+                {"text": "₿ Crypto",   "callback_data": "mapay:crypto"},
+            ],
+            [
+                {"text": "❌ Annuler", "callback_data": "mapay:cancel"},
+            ],
+        ]
+    }
+    try:
+        r = httpx.post(
+            f"https://api.telegram.org/bot{bot_token}/sendMessage",
+            json={
+                "chat_id":      user_id,
+                "text":         msg_text,
+                "parse_mode":   "Markdown",
+                "reply_markup": keyboard,
+            },
+            timeout=10.0,
+        )
+        if r.status_code != 200:
+            logger.warning("submit_cart sendMessage failed: %s %s", r.status_code, r.text[:200])
+            return jsonify({"ok": False, "error": "telegram_send_failed"}), 502
+    except Exception as exc:
+        logger.error("submit_cart sendMessage exception: %s", exc)
+        return jsonify({"ok": False, "error": "telegram_send_failed"}), 502
+
+    return jsonify({"ok": True, "message": "Panier envoyé, choisissez votre paiement dans le chat."})
+
 _lock = threading.Lock()
 _store: dict  = {}   # {user_id: {"photo": bytes}}
 _tokens: dict = {}   # C1: {user_id: token_str}

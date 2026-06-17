@@ -1968,6 +1968,128 @@ async def cmd_app(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     )
 
 
+async def handle_miniapp_payment_choice(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Entrée du flow paiement quand l'user clique un bouton paiement
+    envoyé par la Mini App via /api/submit_cart.
+
+    Charge le panier en attente depuis webapp._pending_carts, populate
+    user_data, et délègue à select_payment() pour la suite du flow.
+    """
+    query = update.callback_query
+    if not query or not query.data:
+        return ConversationHandler.END
+
+    await query.answer()
+    parts  = query.data.split(":")            # mapay:cash | virement | link | crypto | cancel
+    action = parts[1] if len(parts) > 1 else ""
+
+    user   = update.effective_user
+    if not user:
+        return ConversationHandler.END
+
+    # Récupérer (et consommer) le panier en attente
+    from webapp import pop_pending_cart
+    pending = pop_pending_cart(str(user.id))
+    if not pending:
+        await query.edit_message_text(
+            "⚠️ Panier expiré ou introuvable. Ouvrez la Mini App pour recommencer.",
+        )
+        return ConversationHandler.END
+
+    # Annulation ?
+    if action == "cancel":
+        await query.edit_message_text("❌ Commande annulée.")
+        return ConversationHandler.END
+
+    # Reconstruire l'état conversation (comme si l'user avait fait le flow classique)
+    ud = context.user_data
+    ud.clear()
+    ud["lang"]         = pending.get("lang", "fr")
+    ud["country"]      = pending.get("country", "")
+    ud["city"]         = pending.get("city", "")
+    ud["cart"]         = pending.get("cart", {}) or {}
+    ud["order_total"]  = pending.get("total", 0.0)
+    ud["from_miniapp"] = True
+    _touch(ud)
+
+    lang = ud["lang"]
+
+    # Edit le message pour confirmer le choix paiement + déléguer
+    # On simule un callback "pay_method:X" en réutilisant select_payment via un faux update
+    # Plus simple : appeler directement la branche correspondante
+
+    # Construire un faux callback_query data adapté à select_payment
+    # Mais on ne peut pas modifier query.data → on inline le code des branches ici
+    if action == "cash":
+        currencies = [
+            ("EUR", "🇪🇺 EUR — Euro"),
+            ("USD", "🇺🇸 USD — Dollar"),
+            ("GBP", "🇬🇧 GBP — Livre sterling"),
+            ("CHF", "🇨🇭 CHF — Franc suisse"),
+            ("AED", "🇦🇪 AED — Dirham EAU"),
+            ("MAD", "🇲🇦 MAD — Dirham marocain"),
+        ]
+        kb = [[InlineKeyboardButton(label, callback_data=f"pay_cash:{code}")]
+              for code, label in currencies]
+        kb.append([InlineKeyboardButton(t("btn_pay_back", lang), callback_data="pay:back")])
+        await query.edit_message_text(
+            t("pay_choose_currency", lang),
+            reply_markup=InlineKeyboardMarkup(kb),
+            parse_mode="Markdown",
+        )
+        return SELECTING_PAYMENT
+
+    if action == "virement":
+        ud["payment_key"]   = "pay_btn_virement"
+        ud["payment_label"] = t("pay_btn_virement", lang)
+        iban_display = BANK_IBAN if BANK_IBAN else "⚠️ Non configuré"
+        back_kb = InlineKeyboardMarkup([
+            [InlineKeyboardButton(t("btn_pay_back", lang), callback_data="pay:back")],
+        ])
+        await query.edit_message_text(
+            t("pay_virement_info", lang, iban=iban_display),
+            reply_markup=back_kb,
+            parse_mode="Markdown",
+        )
+        return AWAITING_TRANSFER_PROOF
+
+    if action == "link":
+        if not PAYMENT_LINK:
+            await query.edit_message_text(t("pay_link_not_configured", lang))
+            return ConversationHandler.END
+        ud["payment_key"]   = "pay_btn_link"
+        ud["payment_label"] = t("pay_btn_link", lang)
+        kb = InlineKeyboardMarkup([
+            [InlineKeyboardButton(t("btn_i_paid",   lang), callback_data="pay_link:paid")],
+            [InlineKeyboardButton(t("btn_pay_back", lang), callback_data="pay:back")],
+        ])
+        await query.edit_message_text(
+            t("pay_link_info", lang, link=PAYMENT_LINK),
+            reply_markup=kb,
+            parse_mode="Markdown",
+        )
+        return SELECTING_PAYMENT
+
+    if action == "crypto":
+        kb = InlineKeyboardMarkup([
+            [
+                InlineKeyboardButton("⟠ ETH",  callback_data="pay_crypto:eth"),
+                InlineKeyboardButton("₮ USDT", callback_data="pay_crypto:usdt"),
+            ],
+            [InlineKeyboardButton(t("btn_pay_back", lang), callback_data="pay:back")],
+        ])
+        await query.edit_message_text(
+            t("pay_crypto_choose", lang),
+            reply_markup=kb,
+            parse_mode="Markdown",
+        )
+        return SELECTING_PAYMENT
+
+    # Action inconnue
+    await query.edit_message_text("⚠️ Action inconnue.")
+    return ConversationHandler.END
+
+
 async def handle_miniapp_cart(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Handler appelé quand la Mini App envoie le panier finalisé via tg.sendData().
 
@@ -2845,10 +2967,11 @@ def build_conv_handler() -> ConversationHandler:
     return ConversationHandler(
         entry_points=[
             CommandHandler("start", start),
-            # Mini App : panier soumis via tg.sendData() ouvre une nouvelle
-            # conversation en état SELECTING_PAYMENT (jamais en plein selfie
-            # car celui-ci est intercepté par son MessageHandler en SENDING_SELFIE)
+            # Mini App via sendData (keyboard button)
             MessageHandler(filters.StatusUpdate.WEB_APP_DATA, handle_miniapp_cart),
+            # Mini App via POST /api/submit_cart : user clique un bouton paiement
+            # envoyé par Flask → on récupère le panier en attente et on continue
+            CallbackQueryHandler(handle_miniapp_payment_choice, pattern="^mapay:"),
         ],
         per_message=False,
         conversation_timeout=1800,   # 30 min d'inactivité → session_timeout

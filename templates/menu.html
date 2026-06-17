@@ -954,17 +954,34 @@ function buildCartScreen() {
   } catch {}
 }
 
-function submitCart() {
+async function submitCart() {
   try {
     const payload = {
-      type:    "cart_submit",
-      lang:    state.lang,
-      country: state.country,
-      city:    state.city,
-      cart:    state.cart,
-      total:   computeCartTotal(),
+      lang:     state.lang,
+      country:  state.country,
+      city:     state.city,
+      cart:     state.cart,
+      total:    computeCartTotal(),
+      initData: tg.initData || "",   // pour validation server-side
     };
-    tg.sendData(JSON.stringify(payload));
+
+    // POST plutôt que sendData() — sendData ne marche que depuis Keyboard
+    // button, alors qu'on peut être lancé depuis le menu button.
+    const r = await fetch("/api/submit_cart", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body:    JSON.stringify(payload),
+    });
+    const data = await r.json();
+
+    if (data.ok) {
+      showToast("✓ " + (data.message || "Panier envoyé !"));
+      setTimeout(() => {
+        try { tg.close(); } catch {}
+      }, 800);
+    } else {
+      showToast(data.error || t("err_network"), true);
+    }
   } catch (e) {
     showToast(t("err_network"), true);
   }
