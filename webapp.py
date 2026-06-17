@@ -554,7 +554,13 @@ def api_finalize_order():
     with _pending_lock:  # réutilise le lock existant
         order_id = _generate_miniapp_order_id()
 
-    # Construire l'ordre
+    # Construire l'ordre. On stocke les photos base64 (sans le préfixe data:)
+    # pour que le panel admin puisse les afficher plus tard.
+    def _strip_data_url(b: str) -> str:
+        if not b:
+            return ""
+        return b.split(",", 1)[1] if "," in b else b
+
     pay_label = payment.get("label") or payment.get("method", "?")
     order_dict = {
         "order_id":  order_id,
@@ -576,6 +582,9 @@ def api_finalize_order():
         "maps_link": address.get("maps_link", ""),
         "status":    "pending",
         "source":    "miniapp",
+        # Photos en base64 pour le panel admin (sans préfixe data:)
+        "selfie_b64": _strip_data_url(selfie_b64),
+        "proof_b64":  _strip_data_url(payment.get("proof_b64", "")),
     }
 
     # Sauvegarder
@@ -697,6 +706,251 @@ def api_finalize_order():
         logger.warning("finalize notify client: %s", exc)
 
     return jsonify({"ok": True, "order_id": order_id})
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# PANEL ADMIN OWNER (Mini App) — gestion des commandes
+# ═══════════════════════════════════════════════════════════════════════════
+
+def _is_owner_init(parsed_init: dict | None) -> int | None:
+    """Si initData parsed correspond au OWNER_USER_ID, retourne le user_id, sinon None."""
+    if not parsed_init:
+        return None
+    try:
+        import json as _json
+        user_obj = _json.loads(parsed_init.get("user", "{}"))
+        uid = int(user_obj.get("id", 0))
+        owner_id = os.getenv("OWNER_USER_ID", "")
+        if owner_id and str(uid) == str(owner_id):
+            return uid
+    except Exception:
+        return None
+    return None
+
+
+def _check_owner(req) -> int | None:
+    """Lit initData depuis le body JSON (POST) ou la query string (GET)
+    et vérifie que c'est bien le owner. Retourne user_id ou None.
+    """
+    bot_token = os.getenv("BOT_TOKEN", "")
+    if req.method == "POST":
+        try:
+            data = req.get_json(force=True, silent=True) or {}
+        except Exception:
+            data = {}
+        init_data = data.get("initData", "")
+    else:
+        init_data = req.args.get("initData", "")
+    parsed = _verify_init_data(init_data, bot_token)
+    return _is_owner_init(parsed)
+
+
+@app.route("/api/admin/orders", methods=["POST"])
+def api_admin_orders():
+    """Retourne la liste des commandes pour le panel owner.
+    POST {initData, limit?, status_filter?}
+    """
+    if _check_owner(request) is None:
+        return jsonify({"ok": False, "error": "not_owner"}), 403
+
+    try:
+        data = request.get_json(force=True, silent=True) or {}
+    except Exception:
+        data = {}
+    limit  = int(data.get("limit", 50))
+    sfilt  = data.get("status_filter", "")  # "", "pending", "confirmed", "delivering", "delivered", "cancelled"
+
+    try:
+        from storage import _load as _load_orders
+        orders = _load_orders() or []
+    except Exception as exc:
+        logger.error("admin_orders load: %s", exc)
+        return jsonify({"ok": False, "error": "load_failed"}), 500
+
+    # Trier du plus récent au plus ancien
+    orders = sorted(orders, key=lambda o: o.get("created_at", ""), reverse=True)
+
+    # Filtrer + tronquer
+    if sfilt:
+        orders = [o for o in orders if (o.get("status") or "pending") == sfilt]
+    orders = orders[:limit]
+
+    # Construire une version allégée (sans les photos b64 — trop lourd pour la liste)
+    light = []
+    for o in orders:
+        light.append({
+            "order_id":   o.get("order_id"),
+            "created_at": o.get("created_at"),
+            "user_id":    o.get("user_id"),
+            "user_name":  o.get("user_name"),
+            "username":   o.get("username"),
+            "city":       o.get("city"),
+            "country":    o.get("country"),
+            "total":      o.get("total"),
+            "payment":    o.get("payment"),
+            "status":     o.get("status") or "pending",
+            "source":     o.get("source"),
+            "rating":     o.get("rating"),
+            "has_selfie": bool(o.get("selfie_b64")),
+            "has_proof":  bool(o.get("proof_b64")),
+            "cart_count": sum((o.get("cart") or {}).values()) if isinstance(o.get("cart"), dict) else 0,
+        })
+
+    # Stats utiles : counts par status
+    counts = {"pending": 0, "confirmed": 0, "delivering": 0, "delivered": 0, "cancelled": 0}
+    try:
+        from storage import _load as _load_all
+        all_orders = _load_all() or []
+        for o in all_orders:
+            s = o.get("status") or "pending"
+            if s in counts:
+                counts[s] += 1
+    except Exception:
+        pass
+
+    return jsonify({"ok": True, "orders": light, "counts": counts})
+
+
+@app.route("/api/admin/order/<order_id>", methods=["POST"])
+def api_admin_order_detail(order_id):
+    """Détail complet d'une commande (avec photos b64).
+    POST {initData}
+    """
+    if _check_owner(request) is None:
+        return jsonify({"ok": False, "error": "not_owner"}), 403
+
+    try:
+        from storage import get_order
+        order = get_order(order_id)
+    except Exception as exc:
+        logger.error("admin_order get: %s", exc)
+        return jsonify({"ok": False, "error": "load_failed"}), 500
+
+    if not order:
+        return jsonify({"ok": False, "error": "not_found"}), 404
+
+    return jsonify({"ok": True, "order": order})
+
+
+@app.route("/api/admin/order/<order_id>/status", methods=["POST"])
+def api_admin_set_status(order_id):
+    """Modifie le statut d'une commande + notifie le client.
+    POST {initData, status: "confirmed"|"delivering"|"delivered"|"cancelled"}
+    """
+    if _check_owner(request) is None:
+        return jsonify({"ok": False, "error": "not_owner"}), 403
+
+    try:
+        data = request.get_json(force=True, silent=True) or {}
+    except Exception:
+        data = {}
+    new_status = (data.get("status") or "").strip()
+    if new_status not in ("confirmed", "delivering", "delivered", "cancelled"):
+        return jsonify({"ok": False, "error": "bad_status"}), 400
+
+    # Charger order existant
+    try:
+        from storage import get_order, update_order
+        order = get_order(order_id)
+    except Exception as exc:
+        logger.error("admin_set_status load: %s", exc)
+        return jsonify({"ok": False, "error": "load_failed"}), 500
+    if not order:
+        return jsonify({"ok": False, "error": "not_found"}), 404
+
+    # Idempotence
+    if (order.get("status") or "pending") == new_status:
+        return jsonify({"ok": True, "unchanged": True})
+
+    # Update
+    try:
+        update_order(order_id, {"status": new_status})
+    except Exception as exc:
+        logger.error("admin_set_status update: %s", exc)
+        return jsonify({"ok": False, "error": "update_failed"}), 500
+
+    # Notifier le client via Bot API
+    client_id = order.get("user_id")
+    client_lang = order.get("lang", "fr") if order.get("lang") in ("fr","es","en") else "fr"
+    bot_token = os.getenv("BOT_TOKEN", "")
+    if client_id and bot_token:
+        msgs = {
+            "fr": {
+                "confirmed":  f"✅ Votre commande N° `{order_id}` est *confirmée* !",
+                "delivering": f"🚚 Votre commande N° `{order_id}` est *en cours de livraison*.",
+                "delivered":  f"📦 Votre commande N° `{order_id}` a été *livrée*. Merci !",
+                "cancelled":  f"❌ Votre commande N° `{order_id}` a été *annulée*.",
+            },
+            "en": {
+                "confirmed":  f"✅ Your order #{order_id} is *confirmed*!",
+                "delivering": f"🚚 Your order #{order_id} is *being delivered*.",
+                "delivered":  f"📦 Your order #{order_id} has been *delivered*. Thank you!",
+                "cancelled":  f"❌ Your order #{order_id} has been *cancelled*.",
+            },
+            "es": {
+                "confirmed":  f"✅ Tu pedido N° `{order_id}` está *confirmado*.",
+                "delivering": f"🚚 Tu pedido N° `{order_id}` está *en entrega*.",
+                "delivered":  f"📦 Tu pedido N° `{order_id}` ha sido *entregado*. ¡Gracias!",
+                "cancelled":  f"❌ Tu pedido N° `{order_id}` ha sido *cancelado*.",
+            },
+        }
+        text = (msgs.get(client_lang) or msgs["fr"]).get(new_status, "")
+        if text:
+            import httpx
+            try:
+                payload = {
+                    "chat_id":    client_id,
+                    "text":       text,
+                    "parse_mode": "Markdown",
+                }
+                # Si livré : envoyer aussi les boutons de notation 1-5⭐
+                if new_status == "delivered":
+                    payload["reply_markup"] = {
+                        "inline_keyboard": [[
+                            {"text": "⭐",     "callback_data": f"rate:1:{order_id}"},
+                            {"text": "⭐⭐",   "callback_data": f"rate:2:{order_id}"},
+                            {"text": "⭐⭐⭐", "callback_data": f"rate:3:{order_id}"},
+                            {"text": "⭐⭐⭐⭐",   "callback_data": f"rate:4:{order_id}"},
+                            {"text": "⭐⭐⭐⭐⭐", "callback_data": f"rate:5:{order_id}"},
+                        ]]
+                    }
+                httpx.post(
+                    f"https://api.telegram.org/bot{bot_token}/sendMessage",
+                    json=payload,
+                    timeout=10.0,
+                )
+            except Exception as exc:
+                logger.warning("admin_set_status notify client: %s", exc)
+
+    return jsonify({"ok": True, "status": new_status})
+
+
+@app.route("/api/admin/photo/<order_id>/<kind>", methods=["GET"])
+def api_admin_photo(order_id, kind):
+    """Sert une photo (selfie ou proof) de la commande en JPEG.
+    Auth via initData en query string : ?initData=...
+    """
+    if _check_owner(request) is None:
+        return ("Forbidden", 403)
+    if kind not in ("selfie", "proof"):
+        return ("Bad kind", 400)
+    try:
+        from storage import get_order
+        order = get_order(order_id)
+    except Exception:
+        return ("Server error", 500)
+    if not order:
+        return ("Not found", 404)
+    b64 = order.get("selfie_b64" if kind == "selfie" else "proof_b64", "")
+    if not b64:
+        return ("No photo", 404)
+    try:
+        photo_bytes = base64.b64decode(b64)
+    except Exception:
+        return ("Bad photo", 500)
+    from flask import Response
+    return Response(photo_bytes, mimetype="image/jpeg",
+                    headers={"Cache-Control": "private, max-age=300"})
 
 
 _lock = threading.Lock()

@@ -677,6 +677,112 @@
   }
   .next-btn:active { transform: scale(0.97); }
   .next-btn:disabled { opacity: 0.4; cursor: not-allowed; box-shadow: none; }
+
+  /* === PANEL OWNER === */
+  .order-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 14px 16px;
+    margin-bottom: 10px;
+    cursor: pointer;
+    transition: background .15s, transform .12s;
+  }
+  .order-card:active { transform: scale(0.985); background: var(--bg-card-hover); }
+  .order-card .top {
+    display: flex; justify-content: space-between; align-items: center;
+    margin-bottom: 8px;
+  }
+  .order-card .oid {
+    font-family: 'SF Mono', Menlo, Consolas, monospace;
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--accent);
+  }
+  .order-card .date {
+    font-size: 11px;
+    opacity: 0.5;
+  }
+  .order-card .mid {
+    display: flex; justify-content: space-between;
+    margin-bottom: 6px;
+    font-size: 13px;
+  }
+  .order-card .name { font-weight: 600; }
+  .order-card .total {
+    font-weight: 700;
+    background: var(--accent-grad);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+  .order-card .bottom {
+    display: flex; justify-content: space-between; align-items: center;
+    font-size: 11px;
+  }
+  .order-card .city { opacity: 0.7; }
+  .status-badge {
+    display: inline-block;
+    padding: 3px 8px;
+    border-radius: 6px;
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+  .status-pending    { background: rgba(245,158,11,0.18); color: #fbbf24; }
+  .status-confirmed  { background: rgba(59,130,246,0.18); color: #60a5fa; }
+  .status-delivering { background: rgba(168,85,247,0.18); color: #c084fc; }
+  .status-delivered  { background: rgba(16,185,129,0.18); color: #34d399; }
+  .status-cancelled  { background: rgba(239,68,68,0.18); color: #fca5a5; }
+  .status-cancelled_by_client { background: rgba(239,68,68,0.18); color: #fca5a5; }
+
+  /* Section detail */
+  .od-section {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 14px;
+    margin-bottom: 10px;
+  }
+  .od-section h4 {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    opacity: 0.5;
+    margin-bottom: 8px;
+  }
+  .od-row {
+    display: flex; justify-content: space-between;
+    padding: 3px 0; font-size: 13px;
+    line-height: 1.4;
+  }
+  .od-row .lbl { opacity: 0.7; flex: 1; }
+  .od-row .val { font-weight: 600; text-align: right; }
+  .od-photo {
+    width: 100%;
+    border-radius: 10px;
+    margin-top: 6px;
+  }
+  .od-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 14px; }
+  .od-actions .btn-act {
+    padding: 12px 8px;
+    border-radius: 12px;
+    border: none;
+    font-size: 13px;
+    font-weight: 700;
+    color: white;
+    cursor: pointer;
+    transition: transform .12s, opacity .15s;
+  }
+  .od-actions .btn-act:active { transform: scale(0.95); }
+  .od-actions .btn-act:disabled { opacity: 0.4; cursor: not-allowed; }
+  .btn-confirm  { background: linear-gradient(135deg, #3b82f6, #2563eb); }
+  .btn-delivery { background: linear-gradient(135deg, #a855f7, #9333ea); }
+  .btn-deliver  { background: linear-gradient(135deg, #10b981, #059669); }
+  .btn-cancel   { background: linear-gradient(135deg, #ef4444, #dc2626); }
+  .btn-contact  { background: linear-gradient(135deg, #6b7280, #4b5563); grid-column: span 2; }
+  .btn-mapview  { background: linear-gradient(135deg, #0ea5e9, #0284c7); grid-column: span 2; }
 </style>
 </head>
 <body>
@@ -910,6 +1016,92 @@
     <div class="section-title" data-i18n="confirm_title">Récapitulatif</div>
     <div class="recap" id="recapBox"></div>
     <button class="next-btn" id="finalizeBtn" onclick="finalizeOrder()" data-i18n="confirm_btn">✅ Confirmer la commande</button>
+  </div>
+</div>
+
+<!-- ═══ ÉCRANS OWNER (admin panel) ═══ -->
+
+<!-- Accueil owner : 2 boutons (commandes + nouvelle commande perso) -->
+<div class="screen" id="screen-owner-home">
+  <div class="welcome">
+    <div class="logo">👑</div>
+    <h1>Espace Admin</h1>
+    <p>Bienvenue Millésime ☕</p>
+  </div>
+  <div class="container">
+    <div class="card-grid full">
+      <div class="card" onclick="openOwnerOrders('')">
+        <span class="emoji">📋</span>
+        <div class="info">
+          <div class="name">Toutes les commandes</div>
+          <div class="meta" id="ownerAllCount">—</div>
+        </div>
+        <span class="arrow">›</span>
+      </div>
+      <div class="card" onclick="openOwnerOrders('pending')">
+        <span class="emoji">⏳</span>
+        <div class="info">
+          <div class="name">En attente</div>
+          <div class="meta" id="ownerPendingCount">—</div>
+        </div>
+        <span class="arrow">›</span>
+      </div>
+      <div class="card" onclick="openOwnerOrders('confirmed')">
+        <span class="emoji">✅</span>
+        <div class="info">
+          <div class="name">Confirmées</div>
+          <div class="meta" id="ownerConfirmedCount">—</div>
+        </div>
+        <span class="arrow">›</span>
+      </div>
+      <div class="card" onclick="openOwnerOrders('delivering')">
+        <span class="emoji">🚚</span>
+        <div class="info">
+          <div class="name">En livraison</div>
+          <div class="meta" id="ownerDeliveringCount">—</div>
+        </div>
+        <span class="arrow">›</span>
+      </div>
+      <div class="card" onclick="openOwnerOrders('delivered')">
+        <span class="emoji">📦</span>
+        <div class="info">
+          <div class="name">Livrées</div>
+          <div class="meta" id="ownerDeliveredCount">—</div>
+        </div>
+        <span class="arrow">›</span>
+      </div>
+      <div class="card" onclick="enterClientMode()">
+        <span class="emoji">🛍️</span>
+        <div class="info">
+          <div class="name">Passer une commande</div>
+          <div class="meta">Mode client</div>
+        </div>
+        <span class="arrow">›</span>
+      </div>
+      <div class="card" onclick="loadOwnerData(true)">
+        <span class="emoji">🔄</span>
+        <div class="info">
+          <div class="name">Rafraîchir</div>
+          <div class="meta">Recharger les compteurs</div>
+        </div>
+        <span class="arrow">›</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Liste de commandes owner -->
+<div class="screen" id="screen-owner-orders">
+  <div class="container">
+    <div class="section-title" id="ownerOrdersTitle">Commandes</div>
+    <div id="ownerOrdersList"></div>
+  </div>
+</div>
+
+<!-- Détail d'une commande owner -->
+<div class="screen" id="screen-owner-detail">
+  <div class="container">
+    <div id="ownerOrderDetail"></div>
   </div>
 </div>
 
@@ -1275,8 +1467,23 @@ async function checkPassword() {
       state.catalog = data.catalog;
       state.minOrders = data.min_orders;
       state.payment_config = data.payment_config || {};
-      buildCountryScreen();
-      setScreen("country");
+      // Détection owner via initData côté serveur ? On utilise un check ping
+      try {
+        const ownerCheck = await fetch("/api/admin/orders", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ initData: tg.initData || "", limit: 1 })
+        });
+        if (ownerCheck.status === 200) {
+          state.is_owner = true;
+        }
+      } catch {}
+      if (state.is_owner) {
+        showOwnerHome();
+      } else {
+        buildCountryScreen();
+        setScreen("country");
+      }
     } else {
       errEl.textContent = data.blocked ? t("pwd_blocked") : t("pwd_wrong");
       errEl.style.display = "block";
@@ -1856,6 +2063,253 @@ async function finalizeOrder() {
     btn.innerHTML = t("confirm_btn");
   }
 }
+
+// ═══════════════════════════════════════════════════════════════════════════
+// PANEL OWNER
+// ═══════════════════════════════════════════════════════════════════════════
+state.ownerData = null;          // {counts: {...}, orders: [...]}
+state.currentStatusFilter = "";  // pour le filtre courant
+
+function showOwnerHome() {
+  loadOwnerData(false);
+  setScreen("owner-home", false);  // ne pas pousser dans history (c'est la home owner)
+  state.history = [];               // reset history
+}
+
+async function loadOwnerData(showToastFlag) {
+  try {
+    const r = await fetch("/api/admin/orders", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ initData: tg.initData || "", limit: 100 })
+    });
+    if (r.status === 403) {
+      state.is_owner = false;
+      buildCountryScreen();
+      setScreen("country");
+      return;
+    }
+    const data = await r.json();
+    if (!data.ok) {
+      showToast(data.error || "Erreur", true);
+      return;
+    }
+    state.ownerData = data;
+    // Mettre à jour les compteurs sur l'accueil
+    const c = data.counts || {};
+    const total = (c.pending||0)+(c.confirmed||0)+(c.delivering||0)+(c.delivered||0)+(c.cancelled||0);
+    const e = document.getElementById;
+    e.call(document, "ownerAllCount").textContent        = `${total} au total`;
+    e.call(document, "ownerPendingCount").textContent    = `${c.pending||0}`;
+    e.call(document, "ownerConfirmedCount").textContent  = `${c.confirmed||0}`;
+    e.call(document, "ownerDeliveringCount").textContent = `${c.delivering||0}`;
+    e.call(document, "ownerDeliveredCount").textContent  = `${c.delivered||0}`;
+    if (showToastFlag) showToast("✓ Données à jour");
+  } catch (e) {
+    showToast(t("err_network"), true);
+  }
+}
+
+function openOwnerOrders(statusFilter) {
+  state.currentStatusFilter = statusFilter;
+  const titles = {
+    "": "Toutes les commandes",
+    "pending": "⏳ En attente",
+    "confirmed": "✅ Confirmées",
+    "delivering": "🚚 En livraison",
+    "delivered": "📦 Livrées",
+    "cancelled": "❌ Annulées",
+  };
+  document.getElementById("ownerOrdersTitle").textContent = titles[statusFilter] || "Commandes";
+  renderOwnerOrders();
+  setScreen("owner-orders");
+}
+
+function renderOwnerOrders() {
+  const list = document.getElementById("ownerOrdersList");
+  const all  = state.ownerData?.orders || [];
+  const sf   = state.currentStatusFilter;
+  const filtered = sf ? all.filter(o => (o.status || "pending") === sf) : all;
+
+  if (filtered.length === 0) {
+    list.innerHTML = `<div class="empty"><div class="emoji">📭</div><div class="text">Aucune commande</div></div>`;
+    return;
+  }
+
+  list.innerHTML = filtered.map(o => {
+    const date = (o.created_at || "").replace("T", " ").slice(0, 16);
+    const status = o.status || "pending";
+    const statusLabels = {
+      pending:"⏳ En attente", confirmed:"✅ Confirmée",
+      delivering:"🚚 Livraison", delivered:"📦 Livrée",
+      cancelled:"❌ Annulée", cancelled_by_client:"❌ Annulé client",
+    };
+    const photoIcons = (o.has_selfie ? "📸" : "") + (o.has_proof ? "🏦" : "");
+    const src = o.source === "miniapp" ? "📲" : "💬";
+    return `
+      <div class="order-card" onclick="openOrderDetail('${o.order_id}')">
+        <div class="top">
+          <span class="oid">${o.order_id}</span>
+          <span class="date">${date}</span>
+        </div>
+        <div class="mid">
+          <span class="name">${(o.user_name || '?').replace(/[<>]/g,'')}${o.username ? ' (@'+o.username+')' : ''}</span>
+          <span class="total">${(o.total||0).toLocaleString('fr-FR')} €</span>
+        </div>
+        <div class="bottom">
+          <span class="city">${src} ${o.city || '?'} · ${o.cart_count} art. ${photoIcons}</span>
+          <span class="status-badge status-${status}">${statusLabels[status] || status}</span>
+        </div>
+      </div>
+    `;
+  }).join("");
+}
+
+async function openOrderDetail(orderId) {
+  setScreen("owner-detail");
+  const el = document.getElementById("ownerOrderDetail");
+  el.innerHTML = `<div class="empty"><span class="loader"></span> Chargement...</div>`;
+  try {
+    const r = await fetch(`/api/admin/order/${encodeURIComponent(orderId)}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ initData: tg.initData || "" })
+    });
+    const data = await r.json();
+    if (!data.ok) {
+      el.innerHTML = `<div class="banner">${data.error || 'Erreur'}</div>`;
+      return;
+    }
+    renderOrderDetail(data.order);
+  } catch (e) {
+    el.innerHTML = `<div class="banner">${t("err_network")}</div>`;
+  }
+}
+
+function renderOrderDetail(o) {
+  const el = document.getElementById("ownerOrderDetail");
+  const status = o.status || "pending";
+  const statusLabels = {
+    pending:"⏳ En attente", confirmed:"✅ Confirmée",
+    delivering:"🚚 Livraison", delivered:"📦 Livrée",
+    cancelled:"❌ Annulée", cancelled_by_client:"❌ Annulé client",
+  };
+  const date = (o.created_at || "").replace("T", " ").slice(0, 16);
+  const cart = o.cart || {};
+  const cartHtml = Object.entries(cart).map(([name, qty]) =>
+    `<div class="od-row"><span class="lbl">${name} × ${qty}</span></div>`
+  ).join("");
+
+  const initDataQS = "?initData=" + encodeURIComponent(tg.initData || "");
+  const selfieImg = o.selfie_b64 ? `<img class="od-photo" src="/api/admin/photo/${o.order_id}/selfie${initDataQS}">` : "";
+  const proofImg  = o.proof_b64  ? `<img class="od-photo" src="/api/admin/photo/${o.order_id}/proof${initDataQS}">`  : "";
+
+  // Téléphone deeplink — pour appeler le client
+  const userLink = o.username ? `tg://resolve?domain=${o.username}` : `tg://user?id=${o.user_id}`;
+  const phoneTel = o.phone ? `tel:${o.phone.replace(/\s/g,'')}` : "";
+
+  el.innerHTML = `
+    <div class="od-section">
+      <h4>📦 Commande</h4>
+      <div class="od-row"><span class="lbl">N° de commande</span><span class="val" style="font-family:monospace;color:var(--accent);">${o.order_id}</span></div>
+      <div class="od-row"><span class="lbl">Statut</span><span class="val"><span class="status-badge status-${status}">${statusLabels[status] || status}</span></span></div>
+      <div class="od-row"><span class="lbl">Date</span><span class="val">${date}</span></div>
+      <div class="od-row"><span class="lbl">Source</span><span class="val">${o.source === 'miniapp' ? '📲 Mini App' : '💬 Bot'}</span></div>
+      ${o.rating ? `<div class="od-row"><span class="lbl">Note client</span><span class="val">${'⭐'.repeat(o.rating)}</span></div>` : ''}
+    </div>
+
+    <div class="od-section">
+      <h4>👤 Client</h4>
+      <div class="od-row"><span class="lbl">Nom</span><span class="val">${(o.user_name||'?').replace(/[<>]/g,'')}</span></div>
+      ${o.username ? `<div class="od-row"><span class="lbl">Username</span><span class="val">@${o.username}</span></div>` : ''}
+      <div class="od-row"><span class="lbl">ID</span><span class="val" style="font-family:monospace;">${o.user_id}</span></div>
+      <div class="od-row"><span class="lbl">Langue</span><span class="val">${(o.lang||'fr').toUpperCase()}</span></div>
+      ${o.phone ? `<div class="od-row"><span class="lbl">Téléphone</span><span class="val">${o.phone}</span></div>` : ''}
+    </div>
+
+    <div class="od-section">
+      <h4>🛒 Panier (${Object.keys(cart).length} articles)</h4>
+      ${cartHtml || '<div class="od-row"><span class="lbl">—</span></div>'}
+      <div class="od-row" style="margin-top:8px; padding-top:8px; border-top:1px solid var(--border);">
+        <span class="lbl">Total</span>
+        <span class="val" style="font-size:16px; background:var(--accent-grad); -webkit-background-clip:text; background-clip:text; color:transparent;">${(o.total||0).toLocaleString('fr-FR')} €</span>
+      </div>
+    </div>
+
+    <div class="od-section">
+      <h4>💳 Paiement</h4>
+      <div class="od-row"><span class="lbl">Mode</span><span class="val">${o.payment || '—'}</span></div>
+      ${o.payment_crypto ? `<div class="od-row"><span class="lbl">Crypto</span><span class="val">${o.payment_crypto}</span></div>` : ''}
+      ${o.payment_currency ? `<div class="od-row"><span class="lbl">Devise</span><span class="val">${o.payment_currency}</span></div>` : ''}
+      ${proofImg ? '<h4 style="margin-top:12px;">🏦 Preuve de virement</h4>' + proofImg : ''}
+    </div>
+
+    <div class="od-section">
+      <h4>📍 Adresse</h4>
+      <div class="od-row" style="font-family:monospace; white-space:pre-line;">
+        <span class="lbl" style="text-transform:uppercase; line-height:1.6;">${(o.address || '—').replace(/[<>]/g,'')}</span>
+      </div>
+      ${o.maps_link ? `<a href="${o.maps_link}" target="_blank" rel="noopener" style="display:inline-block; margin-top:8px; color:#7c3aed; font-size:13px;">🗺️ Ouvrir dans la carte</a>` : ''}
+    </div>
+
+    ${selfieImg ? `<div class="od-section"><h4>📸 Selfie client</h4>${selfieImg}</div>` : ''}
+
+    <div class="od-actions">
+      ${status !== 'confirmed' && status !== 'delivering' && status !== 'delivered' && status !== 'cancelled' ? `<button class="btn-act btn-confirm" onclick="setOrderStatus('${o.order_id}','confirmed')">✅ Confirmer</button>` : ''}
+      ${status === 'confirmed' ? `<button class="btn-act btn-delivery" onclick="setOrderStatus('${o.order_id}','delivering')">🚚 En livraison</button>` : ''}
+      ${status === 'delivering' ? `<button class="btn-act btn-deliver" onclick="setOrderStatus('${o.order_id}','delivered')">📦 Livrée</button>` : ''}
+      ${status !== 'delivered' && status !== 'cancelled' ? `<button class="btn-act btn-cancel" onclick="setOrderStatus('${o.order_id}','cancelled')">❌ Annuler</button>` : ''}
+      <a class="btn-act btn-contact" href="${userLink}" style="text-decoration:none; text-align:center; line-height:30px;">💬 Contacter le client</a>
+      ${o.maps_link ? `<a class="btn-act btn-mapview" href="${o.maps_link}" target="_blank" rel="noopener" style="text-decoration:none; text-align:center; line-height:30px;">🗺️ Voir l'adresse</a>` : ''}
+    </div>
+  `;
+}
+
+async function setOrderStatus(orderId, newStatus) {
+  if (newStatus === "cancelled" && !confirm("Annuler vraiment cette commande ?")) return;
+  try {
+    const r = await fetch(`/api/admin/order/${encodeURIComponent(orderId)}/status`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ initData: tg.initData || "", status: newStatus })
+    });
+    const data = await r.json();
+    if (data.ok) {
+      const lbls = {confirmed:"✅ Confirmée", delivering:"🚚 En livraison", delivered:"📦 Livrée", cancelled:"❌ Annulée"};
+      showToast(lbls[newStatus] || "✓ Mis à jour");
+      // Recharger detail + data principale
+      await openOrderDetail(orderId);
+      loadOwnerData(false);
+    } else {
+      showToast(data.error || "Erreur", true);
+    }
+  } catch (e) {
+    showToast(t("err_network"), true);
+  }
+}
+
+function enterClientMode() {
+  // L'owner veut passer une commande comme un client
+  state.is_owner = false;  // temporairement
+  buildCountryScreen();
+  setScreen("country");
+}
+
+// Override updateHeader pour gérer les nouveaux écrans owner
+const _origUpdateHeader = updateHeader;
+updateHeader = function(name) {
+  const ownerTitles = {
+    "owner-home":    { t: "👑 Espace Admin", s: "" },
+    "owner-orders":  { t: document.getElementById("ownerOrdersTitle")?.textContent || "Commandes", s: "" },
+    "owner-detail":  { t: "Détail commande", s: "" },
+  };
+  if (ownerTitles[name]) {
+    document.getElementById("headerTitle").textContent    = ownerTitles[name].t;
+    document.getElementById("headerSubtitle").textContent = ownerTitles[name].s;
+  } else {
+    _origUpdateHeader(name);
+  }
+};
 
 // ═══════════════════════════════════════════════════════════════════════════
 // INIT
