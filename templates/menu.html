@@ -475,7 +475,7 @@
     <p data-i18n="pwd_subtitle">Entrez le mot de passe d'accès au catalogue.</p>
   </div>
   <div class="pwd-screen">
-    <input type="password" id="pwdInput" class="pwd-input" autocomplete="off" inputmode="text">
+    <input type="text" id="pwdInput" class="pwd-input" autocomplete="off" inputmode="text" autocapitalize="none" autocorrect="off" spellcheck="false">
     <div id="pwdError" class="banner" style="display:none;"></div>
     <button class="pwd-btn" id="pwdBtn" onclick="checkPassword()">
       <span data-i18n="pwd_btn">Accéder au catalogue</span>
@@ -775,27 +775,32 @@ function buildCityScreen() {
   });
 }
 
+// Map nom de produit → index numérique (les emojis cassent btoa, on utilise un index)
+state.productNames = [];
+
 function buildMenuScreen() {
   const list = document.getElementById("productList");
   list.innerHTML = "";
   state.cart = {}; // reset cart au changement de ville
+  state.productNames = [];
   const products = state.catalog[state.country][state.city] || {};
-  Object.entries(products).forEach(([name, price]) => {
+  Object.entries(products).forEach(([name, price], idx) => {
+    state.productNames[idx] = name;
     const emoji = name.match(/^(\S+)/)?.[1] || "📦";
     const pname = name.replace(/^\S+\s*/, "");
     const div = document.createElement("div");
     div.className = "product";
-    div.dataset.product = name;
+    div.dataset.idx = idx;
     div.innerHTML = `
       <div class="emoji">${emoji}</div>
       <div class="info">
         <div class="name">${pname}</div>
         <div class="price">${fmtEUR(price)}</div>
       </div>
-      <div class="qty-control" id="qc-${btoa(name).replace(/=/g,'')}">
-        <div class="qty-btn" onclick="changeQty('${name.replace(/'/g,"\\'")}',-1)">−</div>
-        <div class="qty-value" id="qv-${btoa(name).replace(/=/g,'')}">0</div>
-        <div class="qty-btn" onclick="changeQty('${name.replace(/'/g,"\\'")}',1)">+</div>
+      <div class="qty-control">
+        <div class="qty-btn" onclick="changeQty(${idx},-1)">−</div>
+        <div class="qty-value" id="qv-${idx}">0</div>
+        <div class="qty-btn" onclick="changeQty(${idx},1)">+</div>
       </div>
     `;
     list.appendChild(div);
@@ -803,17 +808,32 @@ function buildMenuScreen() {
   updateMinOrderBanner();
 }
 
-function changeQty(name, delta) {
+function changeQty(idx, delta) {
+  const name = state.productNames[idx];
+  if (!name) return;
   const cur = state.cart[name] || 0;
   const next = Math.max(0, Math.min(99, cur + delta));
   if (next === 0) delete state.cart[name];
   else state.cart[name] = next;
-  const id = btoa(name).replace(/=/g,'');
-  const el = document.getElementById("qv-" + id);
+  const el = document.getElementById("qv-" + idx);
   if (el) el.textContent = next;
   if (delta > 0 && cur === 0) showToast("✓ " + t("added"));
   updateCartBar();
   updateMinOrderBanner();
+}
+
+// Compatibilité avec le cart screen qui utilise encore les noms
+function changeQtyByName(name, delta) {
+  const idx = state.productNames.indexOf(name);
+  if (idx >= 0) changeQty(idx, delta);
+  else {
+    // Fallback : modifier le cart directement (cas où on est dans le cart screen)
+    const cur = state.cart[name] || 0;
+    const next = Math.max(0, Math.min(99, cur + delta));
+    if (next === 0) delete state.cart[name];
+    else state.cart[name] = next;
+    updateCartBar();
+  }
 }
 
 function updateCartBar() {
@@ -878,6 +898,7 @@ function buildCartScreen() {
       const price = products[name] || 0;
       const emoji = name.match(/^(\S+)/)?.[1] || "📦";
       const pname = name.replace(/^\S+\s*/, "");
+      const idx   = state.productNames.indexOf(name);
       const div = document.createElement("div");
       div.className = "cart-item";
       div.innerHTML = `
@@ -887,9 +908,9 @@ function buildCartScreen() {
           <div class="unit-price">${fmtEUR(price)} × ${qty}</div>
         </div>
         <div class="qty-control">
-          <div class="qty-btn-sm" onclick="changeQty('${name.replace(/'/g,"\\'")}',-1); buildCartScreen();">−</div>
+          <div class="qty-btn-sm" onclick="changeQty(${idx},-1); buildCartScreen();">−</div>
           <div class="qty-val">${qty}</div>
-          <div class="qty-btn-sm" onclick="changeQty('${name.replace(/'/g,"\\'")}',1); buildCartScreen();">+</div>
+          <div class="qty-btn-sm" onclick="changeQty(${idx},1); buildCartScreen();">+</div>
         </div>
         <div class="line-total">${fmtEUR(price * qty)}</div>
       `;
