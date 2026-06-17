@@ -1906,6 +1906,191 @@ async def cmd_status(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
     await update.message.reply_text(t(key, lang), parse_mode="Markdown")
 
 
+# ═════════════════════════════════════════════════════════════════════════════
+# Mini App — /app (catalogue interactif)
+# ═════════════════════════════════════════════════════════════════════════════
+
+async def cmd_app(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Ouvre la Mini App du catalogue via une reply keyboard.
+
+    Cas particuliers gérés (comme /start) :
+    - Utilisateur banni → message + return
+    - Bot en pause → message + return
+    - Hors horaires → message d'erreur + return
+    """
+    user = update.effective_user
+    if not user or not update.message:
+        return
+    lang = _lang(context.user_data) if context.user_data else "fr"
+
+    # Blacklist
+    if int(user.id) in _blacklist:
+        await update.message.reply_text(t("blacklisted", "fr"))
+        return
+
+    is_owner_user = str(user.id) == str(OWNER_USER_ID)
+
+    # Pause d'urgence
+    if _paused and not is_owner_user:
+        reason = _paused_reason or "service temporairement indisponible"
+        await update.message.reply_text(
+            f"⏸️ *Service en pause*\n\n_{reason}_",
+            parse_mode="Markdown",
+        )
+        return
+
+    # Hors horaires
+    if not _is_open() and not is_owner_user:
+        await update.message.reply_text(_CLOSED_BANNER, parse_mode="Markdown")
+        return
+
+    if not WEBAPP_URL:
+        await update.message.reply_text(
+            "⚠️ Mini App non configurée (WEBAPP_URL absent).",
+        )
+        return
+
+    # Reply keyboard avec bouton WebApp
+    kb = ReplyKeyboardMarkup(
+        [[KeyboardButton(
+            "🛍️ Ouvrir le catalogue",
+            web_app=WebAppInfo(url=f"{WEBAPP_URL}/menu"),
+        )]],
+        resize_keyboard=True,
+        one_time_keyboard=False,
+    )
+    await update.message.reply_text(
+        "📲 *Nouveau catalogue interactif*\n\n"
+        "Appuyez sur le bouton ci-dessous pour ouvrir l'application "
+        "et parcourir le menu plus rapidement.",
+        reply_markup=kb,
+        parse_mode="Markdown",
+    )
+
+
+async def handle_miniapp_cart(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Handler appelé quand la Mini App envoie le panier finalisé via tg.sendData().
+
+    Charge le panier dans user_data et bascule vers ENTERING_ADDRESS pour
+    réutiliser le flow existant (paiement, adresse, selfie, confirmation).
+    """
+    user = update.effective_user
+    msg  = update.message
+    if not msg or not msg.web_app_data:
+        return ConversationHandler.END
+
+    try:
+        payload = json.loads(msg.web_app_data.data or "{}")
+    except Exception as exc:
+        logger.warning("Mini App : JSON invalide : %s", exc)
+        await msg.reply_text("⚠️ Données invalides reçues de la Mini App.")
+        return ConversationHandler.END
+
+    if payload.get("type") != "cart_submit":
+        # Données non reconnues — ignore silencieusement
+        return ConversationHandler.END
+
+    # Anti-rejeu : si bot en pause / hors horaires / blacklist, on rejette
+    if int(user.id) in _blacklist:
+        await msg.reply_text(t("blacklisted", "fr"))
+        return ConversationHandler.END
+    is_owner_user = str(user.id) == str(OWNER_USER_ID)
+    if _paused and not is_owner_user:
+        await msg.reply_text(
+            f"⏸️ Service en pause : _{_paused_reason or 'indisponible'}_",
+            parse_mode="Markdown",
+        )
+        return ConversationHandler.END
+    if not _is_open() and not is_owner_user:
+        await msg.reply_text(_CLOSED_BANNER, parse_mode="Markdown")
+        return ConversationHandler.END
+
+    # Validation des données reçues vs catalogue actuel (serveur = source de vérité)
+    lang    = payload.get("lang", "fr") if payload.get("lang") in ("fr","es","en") else "fr"
+    country = payload.get("country", "")
+    city    = payload.get("city", "")
+    cart    = payload.get("cart", {})
+
+    if country not in catalog_mod.CATALOG or city not in catalog_mod.CATALOG.get(country, {}):
+        await msg.reply_text("⚠️ Pays/ville invalide.")
+        return ConversationHandler.END
+
+    products = catalog_mod.CATALOG[country][city]
+    # Recalculer le total côté serveur (anti-tampering)
+    total = 0.0
+    safe_cart = {}
+    for prod, qty in cart.items():
+        try:
+            q = int(qty)
+        except (ValueError, TypeError):
+            continue
+        if q <= 0 or q > 99:
+            continue
+        if prod not in products:
+            continue
+        safe_cart[prod] = q
+        total += products[prod] * q
+
+    if not safe_cart:
+        await msg.reply_text("⚠️ Panier vide ou invalide.")
+        return ConversationHandler.END
+
+    # Vérif min commande
+    min_order = catalog_mod.MIN_ORDER.get(city)
+    if min_order:
+        if min_order["type"] == "amount" and total < min_order["value"]:
+            await msg.reply_text(
+                f"⚠️ Le minimum pour {city} est de {min_order['value']} €."
+            )
+            return ConversationHandler.END
+        if min_order["type"] == "qty":
+            tot_q = sum(safe_cart.values())
+            if tot_q < min_order["value"]:
+                await msg.reply_text(
+                    f"⚠️ Minimum {min_order['value']} articles pour {city}."
+                )
+                return ConversationHandler.END
+
+    # OK — peupler user_data et jumper à ENTERING_ADDRESS via le flow existant
+    ud = context.user_data
+    ud.clear()
+    ud["lang"]        = lang
+    ud["country"]     = country
+    ud["city"]        = city
+    ud["cart"]        = safe_cart
+    ud["order_total"] = total
+    ud["from_miniapp"] = True
+    _touch(ud)
+
+    # Retirer la reply keyboard de la Mini App
+    await msg.reply_text(
+        "✅ *Panier reçu !*\n\n"
+        f"🏙️ {city} — {len(safe_cart)} article(s) — *{total:,.0f} €*\n\n"
+        "Choisissez maintenant votre mode de paiement.",
+        reply_markup=ReplyKeyboardRemove(),
+        parse_mode="Markdown",
+    )
+
+    # Afficher le menu paiement (réutilise _show_payment)
+    # _show_payment attend un callback_query → on appelle un helper équivalent
+    keyboard = InlineKeyboardMarkup([
+        [
+            InlineKeyboardButton(t("pay_btn_cash",     lang), callback_data="pay_method:cash"),
+            InlineKeyboardButton(t("pay_btn_virement", lang), callback_data="pay_method:virement"),
+        ],
+        [
+            InlineKeyboardButton(t("pay_btn_link",   lang), callback_data="pay_method:link"),
+            InlineKeyboardButton(t("pay_btn_crypto", lang), callback_data="pay_method:crypto"),
+        ],
+    ])
+    await msg.reply_text(
+        t("choose_payment", lang),
+        reply_markup=keyboard,
+        parse_mode="Markdown",
+    )
+    return SELECTING_PAYMENT
+
+
 async def cmd_getid(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Owner : affiche l'ID du chat courant (utile pour configurer un groupe)."""
     if not _is_owner(update):
@@ -2658,7 +2843,13 @@ async def _stale_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
 
 def build_conv_handler() -> ConversationHandler:
     return ConversationHandler(
-        entry_points=[CommandHandler("start", start)],
+        entry_points=[
+            CommandHandler("start", start),
+            # Mini App : panier soumis via tg.sendData() ouvre une nouvelle
+            # conversation en état SELECTING_PAYMENT (jamais en plein selfie
+            # car celui-ci est intercepté par son MessageHandler en SENDING_SELFIE)
+            MessageHandler(filters.StatusUpdate.WEB_APP_DATA, handle_miniapp_cart),
+        ],
         per_message=False,
         conversation_timeout=1800,   # 30 min d'inactivité → session_timeout
         states={
@@ -2727,13 +2918,15 @@ def build_conv_handler() -> ConversationHandler:
 
 
 async def _post_init(app: Application) -> None:
-    # Menu client : uniquement /start
+    # Menu client : /start + /app (nouvelle Mini App)
     _client_cmds = [
-        BotCommand("start", "🛍️ Démarrer / accéder au catalogue"),
+        BotCommand("start", "🛍️ Démarrer (mode classique)"),
+        BotCommand("app",   "📲 Ouvrir le catalogue (Mini App)"),
     ]
     # Menu owner : toutes les commandes
     _owner_cmds = [
-        BotCommand("start",      "🛍️ Démarrer / accéder au catalogue"),
+        BotCommand("start",      "🛍️ Démarrer (mode classique)"),
+        BotCommand("app",        "📲 Catalogue Mini App"),
         BotCommand("stats",      "📊 Statistiques"),
         BotCommand("orders",     "📋 Mes commandes"),
         BotCommand("broadcast",  "📣 Diffuser un message"),
@@ -2835,6 +3028,7 @@ def main():
     app.add_handler(CallbackQueryHandler(_noop_callback,       pattern="^noop$"))
     app.add_handler(CommandHandler("help",   cmd_help))
     app.add_handler(CommandHandler("status", cmd_status))
+    app.add_handler(CommandHandler("app",    cmd_app))
     app.add_handler(CommandHandler("getid",  cmd_getid))
     app.add_handler(CommandHandler("stats",     cmd_stats))
     app.add_handler(CommandHandler("reload",    cmd_reload))

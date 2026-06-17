@@ -1,10 +1,13 @@
 """
-Serveur Flask — Mini App selfie avec détection de visage OpenCV.
+Serveur Flask — Mini App Telegram (catalogue + selfie + détection visage OpenCV).
 Tourne dans un thread en parallèle du bot Telegram.
 """
 import base64
+import importlib
 import logging
+import os
 import threading
+import time
 
 import cv2
 import numpy as np
@@ -35,6 +38,86 @@ def root():
 @app.route("/health")
 def health():
     return {"ok": True}, 200
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# MINI APP — Catalogue interactif
+# ═══════════════════════════════════════════════════════════════════════════
+
+@app.route("/menu")
+def menu_page():
+    """Point d'entrée de la Mini App."""
+    return render_template("menu.html")
+
+
+# Anti-spam très simple : mémorise les essais par IP
+_pwd_attempts: dict[str, list[float]] = {}
+_PWD_MAX_ATTEMPTS = 5
+_PWD_WINDOW      = 300  # 5 min
+_pwd_lock = threading.Lock()
+
+
+@app.route("/api/auth", methods=["POST"])
+def api_auth():
+    """Vérifie le mot de passe et retourne le catalogue.
+    Throttle 5 essais / 5 min par IP.
+    """
+    expected = os.getenv("BOT_PASSWORD", "")
+    if not expected:
+        return jsonify({"ok": False, "error": "no_password_configured"}), 500
+
+    ip = request.headers.get("X-Forwarded-For", request.remote_addr or "?").split(",")[0].strip()
+    now = time.time()
+
+    # Purge des essais expirés + check rate limit
+    with _pwd_lock:
+        recent = [t for t in _pwd_attempts.get(ip, []) if now - t < _PWD_WINDOW]
+        if len(recent) >= _PWD_MAX_ATTEMPTS:
+            _pwd_attempts[ip] = recent
+            return jsonify({"ok": False, "blocked": True, "error": "rate_limited"})
+        _pwd_attempts[ip] = recent
+
+    try:
+        data = request.get_json(force=True) or {}
+    except Exception:
+        data = {}
+    pwd = str(data.get("password", "")).strip()
+
+    if not pwd or pwd != expected:
+        with _pwd_lock:
+            _pwd_attempts.setdefault(ip, []).append(now)
+        time.sleep(0.5)  # léger throttle pour ralentir le brute force
+        return jsonify({"ok": False, "error": "wrong_password"})
+
+    # OK — recharger le catalogue (au cas où on l'aurait modifié)
+    try:
+        import catalog as catalog_mod
+        importlib.reload(catalog_mod)
+        return jsonify({
+            "ok":         True,
+            "catalog":    catalog_mod.CATALOG,
+            "min_orders": catalog_mod.MIN_ORDER,
+            "currencies": catalog_mod.CURRENCIES,
+        })
+    except Exception as exc:
+        logger.error("api_auth catalog: %s", exc)
+        return jsonify({"ok": False, "error": "catalog_load_failed"}), 500
+
+
+@app.route("/api/catalog", methods=["GET"])
+def api_catalog():
+    """Retourne le catalogue actuel (utile pour rafraîchir sans rechecker le mdp)."""
+    try:
+        import catalog as catalog_mod
+        importlib.reload(catalog_mod)
+        return jsonify({
+            "catalog":    catalog_mod.CATALOG,
+            "min_orders": catalog_mod.MIN_ORDER,
+            "currencies": catalog_mod.CURRENCIES,
+        })
+    except Exception as exc:
+        logger.error("api_catalog: %s", exc)
+        return jsonify({"error": "load_failed"}), 500
 
 _lock = threading.Lock()
 _store: dict  = {}   # {user_id: {"photo": bytes}}

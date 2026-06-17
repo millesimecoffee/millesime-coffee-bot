@@ -1,0 +1,959 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Millésime Coffee</title>
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<style>
+  :root {
+    --bg-primary:    var(--tg-theme-bg-color,            #0a0a0f);
+    --bg-secondary:  var(--tg-theme-secondary-bg-color,  #15151f);
+    --bg-card:       #1c1c28;
+    --bg-card-hover: #25252f;
+    --txt-primary:   var(--tg-theme-text-color,          #ffffff);
+    --txt-secondary: var(--tg-theme-hint-color,          #8e8e9a);
+    --accent:        #7c3aed;
+    --accent-grad:   linear-gradient(135deg, #7c3aed 0%, #ec4899 100%);
+    --success:       #10b981;
+    --danger:        #ef4444;
+    --border:        rgba(255,255,255,0.06);
+    --shadow-lg:     0 12px 40px rgba(0,0,0,0.5);
+    --shadow-md:     0 4px 12px rgba(0,0,0,0.3);
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+
+  body {
+    background: var(--bg-primary);
+    color: var(--txt-primary);
+    font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', Inter, system-ui, sans-serif;
+    min-height: 100vh;
+    overflow-x: hidden;
+    padding-bottom: 100px;
+    overscroll-behavior: none;
+  }
+
+  /* Fond animé */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: -50% -50% auto auto;
+    width: 600px; height: 600px;
+    background: radial-gradient(circle, rgba(124,58,237,0.18) 0%, transparent 70%);
+    pointer-events: none;
+    z-index: 0;
+    animation: drift 20s ease-in-out infinite alternate;
+  }
+  body::after {
+    content: '';
+    position: fixed;
+    inset: auto auto -50% -50%;
+    width: 600px; height: 600px;
+    background: radial-gradient(circle, rgba(236,72,153,0.12) 0%, transparent 70%);
+    pointer-events: none;
+    z-index: 0;
+    animation: drift 25s ease-in-out infinite alternate-reverse;
+  }
+  @keyframes drift {
+    0%   { transform: translate(0,0); }
+    100% { transform: translate(-100px, 80px); }
+  }
+
+  /* Header */
+  .header {
+    position: sticky; top: 0;
+    background: rgba(10,10,15,0.85);
+    backdrop-filter: saturate(180%) blur(20px);
+    -webkit-backdrop-filter: saturate(180%) blur(20px);
+    padding: 14px 16px;
+    z-index: 50;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  .header .back {
+    width: 36px; height: 36px;
+    background: var(--bg-card);
+    border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 18px;
+    cursor: pointer;
+    transition: transform .15s, background .15s;
+  }
+  .header .back:active { transform: scale(0.92); background: var(--bg-card-hover); }
+  .header .title { font-size: 17px; font-weight: 600; flex: 1; }
+  .header .subtitle { font-size: 12px; opacity: 0.6; }
+
+  /* Container */
+  .container { position: relative; z-index: 1; padding: 16px; }
+
+  /* Logo / Title écran d'accueil */
+  .welcome { text-align: center; padding: 30px 16px 20px; position: relative; z-index: 1; }
+  .welcome .logo {
+    font-size: 56px;
+    margin-bottom: 12px;
+    animation: float 4s ease-in-out infinite;
+  }
+  @keyframes float {
+    0%, 100% { transform: translateY(0); }
+    50%       { transform: translateY(-8px); }
+  }
+  .welcome h1 {
+    font-size: 32px;
+    font-weight: 800;
+    letter-spacing: -1px;
+    background: var(--accent-grad);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+    margin-bottom: 6px;
+  }
+  .welcome p { font-size: 14px; opacity: 0.6; line-height: 1.5; }
+
+  /* Cards (langues, pays, villes) */
+  .card-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+  }
+  .card-grid.full { grid-template-columns: 1fr; }
+
+  .card {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 18px;
+    padding: 18px 16px;
+    cursor: pointer;
+    transition: transform .15s ease, background .15s, border-color .15s;
+    position: relative;
+    overflow: hidden;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  .card:active { transform: scale(0.96); background: var(--bg-card-hover); }
+  .card .emoji { font-size: 28px; line-height: 1; }
+  .card .info { flex: 1; min-width: 0; }
+  .card .name { font-size: 15px; font-weight: 600; margin-bottom: 2px; }
+  .card .meta { font-size: 12px; opacity: 0.55; }
+  .card .arrow { font-size: 18px; opacity: 0.3; }
+
+  /* Section title */
+  .section-title {
+    font-size: 13px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 1.2px;
+    opacity: 0.4;
+    margin: 24px 4px 12px;
+  }
+
+  /* Product card */
+  .product {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 18px;
+    padding: 16px;
+    margin-bottom: 10px;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+  }
+  .product .emoji {
+    font-size: 32px;
+    width: 52px; height: 52px;
+    background: var(--bg-secondary);
+    border-radius: 14px;
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0;
+  }
+  .product .info { flex: 1; min-width: 0; }
+  .product .name { font-size: 15px; font-weight: 600; margin-bottom: 4px; }
+  .product .price {
+    font-size: 13px;
+    font-weight: 700;
+    background: var(--accent-grad);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+  .product .qty-control {
+    display: flex; align-items: center;
+    background: var(--bg-secondary);
+    border-radius: 12px;
+    padding: 4px;
+    min-width: 110px;
+  }
+  .qty-btn {
+    width: 32px; height: 32px;
+    background: var(--accent);
+    border-radius: 9px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 18px;
+    font-weight: 700;
+    cursor: pointer;
+    transition: transform .1s, opacity .15s;
+    user-select: none;
+    color: #fff;
+  }
+  .qty-btn:active { transform: scale(0.9); }
+  .qty-btn:disabled, .qty-btn.disabled { background: #333; opacity: 0.5; cursor: not-allowed; }
+  .qty-value {
+    flex: 1;
+    text-align: center;
+    font-size: 16px;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* Add to cart button (when qty = 0) */
+  .add-btn {
+    width: 40px; height: 40px;
+    background: var(--accent-grad);
+    border: none;
+    border-radius: 12px;
+    color: white;
+    font-size: 22px;
+    font-weight: 700;
+    cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    transition: transform .12s;
+    flex-shrink: 0;
+  }
+  .add-btn:active { transform: scale(0.9); }
+
+  /* Cart bar (sticky bottom) */
+  .cart-bar {
+    position: fixed;
+    bottom: 0; left: 0; right: 0;
+    background: linear-gradient(180deg, rgba(10,10,15,0.7) 0%, rgba(10,10,15,0.98) 50%);
+    backdrop-filter: saturate(180%) blur(20px);
+    -webkit-backdrop-filter: saturate(180%) blur(20px);
+    padding: 14px 16px calc(14px + env(safe-area-inset-bottom));
+    z-index: 100;
+    transform: translateY(120%);
+    transition: transform .3s cubic-bezier(0.32, 0.72, 0, 1);
+    border-top: 1px solid var(--border);
+  }
+  .cart-bar.show { transform: translateY(0); }
+  .cart-bar .row {
+    display: flex; align-items: center; gap: 12px;
+    background: var(--accent-grad);
+    border-radius: 14px;
+    padding: 14px 16px;
+    cursor: pointer;
+    transition: transform .12s;
+    box-shadow: 0 4px 20px rgba(124,58,237,0.4);
+  }
+  .cart-bar .row:active { transform: scale(0.98); }
+  .cart-bar .count {
+    background: rgba(255,255,255,0.25);
+    border-radius: 8px;
+    padding: 3px 9px;
+    font-size: 13px;
+    font-weight: 700;
+    color: white;
+  }
+  .cart-bar .label {
+    flex: 1;
+    font-size: 15px;
+    font-weight: 700;
+    color: white;
+    text-shadow: 0 1px 2px rgba(0,0,0,0.2);
+  }
+  .cart-bar .total {
+    font-size: 17px;
+    font-weight: 800;
+    color: white;
+  }
+
+  /* Cart view */
+  .cart-item {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 12px 14px;
+    margin-bottom: 8px;
+    display: flex; align-items: center; gap: 12px;
+  }
+  .cart-item .emoji { font-size: 24px; }
+  .cart-item .info { flex: 1; min-width: 0; }
+  .cart-item .name { font-size: 14px; font-weight: 600; margin-bottom: 2px; }
+  .cart-item .unit-price { font-size: 12px; opacity: 0.55; }
+  .cart-item .qty-control {
+    display: flex; align-items: center; gap: 4px;
+    background: var(--bg-secondary); border-radius: 10px; padding: 3px;
+  }
+  .cart-item .qty-btn-sm {
+    width: 26px; height: 26px;
+    background: var(--accent);
+    border-radius: 8px;
+    color: white;
+    font-size: 14px;
+    font-weight: 700;
+    display: flex; align-items: center; justify-content: center;
+    cursor: pointer;
+  }
+  .cart-item .qty-btn-sm:active { transform: scale(0.85); }
+  .cart-item .qty-val { padding: 0 8px; font-size: 14px; font-weight: 700; }
+  .cart-item .line-total { font-size: 14px; font-weight: 700; min-width: 60px; text-align: right; }
+
+  .summary {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 18px;
+    padding: 18px;
+    margin-top: 20px;
+  }
+  .summary .row {
+    display: flex; justify-content: space-between;
+    padding: 6px 0;
+    font-size: 14px;
+  }
+  .summary .row.total {
+    margin-top: 12px;
+    padding-top: 14px;
+    border-top: 1px solid var(--border);
+    font-size: 18px;
+    font-weight: 800;
+  }
+
+  /* Error / Warning banner */
+  .banner {
+    background: rgba(239,68,68,0.12);
+    border: 1px solid rgba(239,68,68,0.3);
+    color: #fca5a5;
+    border-radius: 14px;
+    padding: 12px 14px;
+    margin: 12px 0;
+    font-size: 13px;
+    line-height: 1.4;
+  }
+  .banner.info {
+    background: rgba(124,58,237,0.12);
+    border-color: rgba(124,58,237,0.3);
+    color: #c4b5fd;
+  }
+
+  /* Password input */
+  .pwd-screen {
+    padding: 30px 24px;
+    text-align: center;
+    position: relative;
+    z-index: 1;
+  }
+  .pwd-input {
+    width: 100%;
+    background: var(--bg-card);
+    border: 2px solid var(--border);
+    border-radius: 14px;
+    padding: 16px 18px;
+    font-size: 16px;
+    color: var(--txt-primary);
+    text-align: center;
+    letter-spacing: 2px;
+    margin: 22px 0 14px;
+    transition: border-color .15s;
+    -webkit-appearance: none;
+    appearance: none;
+  }
+  .pwd-input:focus { outline: none; border-color: var(--accent); }
+  .pwd-btn {
+    width: 100%;
+    background: var(--accent-grad);
+    border: none;
+    border-radius: 14px;
+    padding: 16px;
+    font-size: 16px;
+    font-weight: 700;
+    color: white;
+    cursor: pointer;
+    box-shadow: 0 4px 20px rgba(124,58,237,0.4);
+    transition: transform .12s;
+  }
+  .pwd-btn:active { transform: scale(0.97); }
+  .pwd-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+  /* Loader */
+  .loader {
+    display: inline-block;
+    width: 16px; height: 16px;
+    border: 2px solid rgba(255,255,255,0.2);
+    border-top-color: white;
+    border-radius: 50%;
+    animation: spin .8s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* Screen transitions */
+  .screen { display: none; animation: fadeIn .25s ease-out; }
+  .screen.active { display: block; }
+  @keyframes fadeIn {
+    from { opacity: 0; transform: translateY(8px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+
+  /* Empty state */
+  .empty {
+    text-align: center;
+    padding: 60px 20px;
+    opacity: 0.6;
+  }
+  .empty .emoji { font-size: 48px; margin-bottom: 12px; opacity: 0.5; }
+  .empty .text { font-size: 14px; }
+
+  /* Toast */
+  .toast {
+    position: fixed;
+    top: 80px;
+    left: 50%;
+    transform: translateX(-50%) translateY(-100px);
+    background: rgba(16,185,129,0.95);
+    color: white;
+    padding: 10px 18px;
+    border-radius: 12px;
+    font-size: 14px;
+    font-weight: 600;
+    z-index: 200;
+    box-shadow: var(--shadow-md);
+    transition: transform .3s cubic-bezier(0.32, 0.72, 0, 1);
+    pointer-events: none;
+  }
+  .toast.show { transform: translateX(-50%) translateY(0); }
+  .toast.err { background: rgba(239,68,68,0.95); }
+</style>
+</head>
+<body>
+
+<!-- TOAST -->
+<div id="toast" class="toast"></div>
+
+<!-- HEADER (caché sur screen langue) -->
+<div class="header" id="header" style="display:none;">
+  <div class="back" id="backBtn">‹</div>
+  <div style="flex:1; min-width:0;">
+    <div class="title" id="headerTitle">Millésime Coffee</div>
+    <div class="subtitle" id="headerSubtitle"></div>
+  </div>
+</div>
+
+<!-- ÉCRAN 0 : Langue -->
+<div class="screen active" id="screen-lang">
+  <div class="welcome">
+    <div class="logo">☕</div>
+    <h1>Millésime Coffee</h1>
+    <p>Sélectionnez votre langue<br>Select your language · Elige tu idioma</p>
+  </div>
+  <div class="container">
+    <div class="card-grid full">
+      <div class="card" onclick="setLang('fr')">
+        <span class="emoji">🇫🇷</span>
+        <div class="info"><div class="name">Français</div></div>
+        <span class="arrow">›</span>
+      </div>
+      <div class="card" onclick="setLang('en')">
+        <span class="emoji">🇬🇧</span>
+        <div class="info"><div class="name">English</div></div>
+        <span class="arrow">›</span>
+      </div>
+      <div class="card" onclick="setLang('es')">
+        <span class="emoji">🇪🇸</span>
+        <div class="info"><div class="name">Español</div></div>
+        <span class="arrow">›</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ÉCRAN 1 : Mot de passe -->
+<div class="screen" id="screen-pwd">
+  <div class="welcome">
+    <div class="logo">🔐</div>
+    <h1 data-i18n="pwd_title">Mot de passe</h1>
+    <p data-i18n="pwd_subtitle">Entrez le mot de passe d'accès au catalogue.</p>
+  </div>
+  <div class="pwd-screen">
+    <input type="password" id="pwdInput" class="pwd-input" autocomplete="off" inputmode="text">
+    <div id="pwdError" class="banner" style="display:none;"></div>
+    <button class="pwd-btn" id="pwdBtn" onclick="checkPassword()">
+      <span data-i18n="pwd_btn">Accéder au catalogue</span>
+    </button>
+  </div>
+</div>
+
+<!-- ÉCRAN 2 : Pays -->
+<div class="screen" id="screen-country">
+  <div class="container">
+    <div class="section-title" data-i18n="select_country">Choisissez votre pays</div>
+    <div class="card-grid full" id="countryList"></div>
+  </div>
+</div>
+
+<!-- ÉCRAN 3 : Ville -->
+<div class="screen" id="screen-city">
+  <div class="container">
+    <div class="section-title" data-i18n="select_city">Choisissez votre ville</div>
+    <div class="card-grid full" id="cityList"></div>
+  </div>
+</div>
+
+<!-- ÉCRAN 4 : Menu produits -->
+<div class="screen" id="screen-menu">
+  <div class="container">
+    <div class="section-title" data-i18n="select_products">Produits disponibles</div>
+    <div id="productList"></div>
+    <div id="minOrderBanner" class="banner info" style="display:none;"></div>
+  </div>
+</div>
+
+<!-- ÉCRAN 5 : Panier -->
+<div class="screen" id="screen-cart">
+  <div class="container">
+    <div class="section-title" data-i18n="your_cart">Votre panier</div>
+    <div id="cartItems"></div>
+    <div class="summary" id="cartSummary"></div>
+  </div>
+</div>
+
+<!-- CART BAR (sticky bottom) -->
+<div class="cart-bar" id="cartBar">
+  <div class="row" onclick="goToCart()">
+    <span class="count" id="cartCount">0</span>
+    <span class="label" data-i18n="view_cart">Voir le panier</span>
+    <span class="total" id="cartTotalBar">0 €</span>
+  </div>
+</div>
+
+<script>
+// ═══════════════════════════════════════════════════════════════════════════
+// I18N — multilingue
+// ═══════════════════════════════════════════════════════════════════════════
+const T = {
+  fr: {
+    pwd_title: "Mot de passe", pwd_subtitle: "Entrez le mot de passe d'accès au catalogue.",
+    pwd_btn: "Accéder au catalogue", pwd_wrong: "❌ Mot de passe incorrect.",
+    pwd_blocked: "🚫 Trop d'essais. Réessayez plus tard.",
+    select_country: "Choisissez votre pays", select_city: "Choisissez votre ville",
+    select_products: "Produits disponibles", your_cart: "Votre panier",
+    view_cart: "Voir le panier", confirm_cart: "Continuer", cart_empty: "Votre panier est vide",
+    min_amount: "Minimum {min} € — il manque {diff} €",
+    min_qty: "Minimum {min} articles dans le panier",
+    subtotal: "Sous-total", total: "Total", items: "article(s)",
+    err_network: "Erreur réseau, réessayez.", added: "Ajouté au panier",
+  },
+  en: {
+    pwd_title: "Password", pwd_subtitle: "Enter the catalog access password.",
+    pwd_btn: "Open catalog", pwd_wrong: "❌ Wrong password.",
+    pwd_blocked: "🚫 Too many attempts. Try again later.",
+    select_country: "Choose your country", select_city: "Choose your city",
+    select_products: "Available products", your_cart: "Your cart",
+    view_cart: "View cart", confirm_cart: "Continue", cart_empty: "Your cart is empty",
+    min_amount: "Minimum {min} € — short by {diff} €",
+    min_qty: "Minimum {min} items in cart",
+    subtotal: "Subtotal", total: "Total", items: "item(s)",
+    err_network: "Network error, retry.", added: "Added to cart",
+  },
+  es: {
+    pwd_title: "Contraseña", pwd_subtitle: "Introduce la contraseña para acceder al catálogo.",
+    pwd_btn: "Abrir catálogo", pwd_wrong: "❌ Contraseña incorrecta.",
+    pwd_blocked: "🚫 Demasiados intentos. Vuelve a intentarlo más tarde.",
+    select_country: "Elige tu país", select_city: "Elige tu ciudad",
+    select_products: "Productos disponibles", your_cart: "Tu carrito",
+    view_cart: "Ver carrito", confirm_cart: "Continuar", cart_empty: "Tu carrito está vacío",
+    min_amount: "Mínimo {min} € — faltan {diff} €",
+    min_qty: "Mínimo {min} artículos en el carrito",
+    subtotal: "Subtotal", total: "Total", items: "artículo(s)",
+    err_network: "Error de red, reintenta.", added: "Añadido al carrito",
+  },
+};
+
+// ═══════════════════════════════════════════════════════════════════════════
+// ÉTAT GLOBAL
+// ═══════════════════════════════════════════════════════════════════════════
+const tg     = window.Telegram.WebApp;
+const state = {
+  lang:    "fr",
+  pwd:     "",
+  country: null,
+  city:    null,
+  cart:    {},          // {product_name: qty}
+  catalog: null,        // chargé via /api/catalog
+  minOrders: null,
+  history: [],          // pile pour back button
+};
+
+tg.ready();
+tg.expand();
+try { tg.enableClosingConfirmation(); } catch {}
+
+// Lecture lang depuis Telegram en fallback
+if (tg.initDataUnsafe && tg.initDataUnsafe.user && tg.initDataUnsafe.user.language_code) {
+  const lc = tg.initDataUnsafe.user.language_code.slice(0,2);
+  if (T[lc]) state.lang = lc;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// HELPERS
+// ═══════════════════════════════════════════════════════════════════════════
+function t(key, vars) {
+  let s = (T[state.lang] && T[state.lang][key]) || T.fr[key] || key;
+  if (vars) for (const k in vars) s = s.replace("{"+k+"}", vars[k]);
+  return s;
+}
+function applyI18n() {
+  document.querySelectorAll("[data-i18n]").forEach(el => {
+    el.textContent = t(el.dataset.i18n);
+  });
+}
+function fmtEUR(n) { return (Math.round(n*100)/100).toLocaleString("fr-FR") + " €"; }
+
+function showToast(msg, isErr) {
+  const el = document.getElementById("toast");
+  el.textContent = msg;
+  el.className = "toast" + (isErr ? " err" : "") + " show";
+  clearTimeout(showToast._t);
+  showToast._t = setTimeout(() => el.className = "toast" + (isErr?" err":""), 1800);
+}
+
+function setScreen(name, pushHistory) {
+  if (pushHistory !== false) {
+    const cur = document.querySelector(".screen.active");
+    if (cur) state.history.push(cur.id);
+  }
+  document.querySelectorAll(".screen").forEach(s => s.classList.remove("active"));
+  const next = document.getElementById("screen-" + name);
+  if (next) next.classList.add("active");
+
+  // Header
+  const header = document.getElementById("header");
+  if (name === "lang") {
+    header.style.display = "none";
+  } else {
+    header.style.display = "flex";
+    updateHeader(name);
+  }
+
+  // Scroll top
+  window.scrollTo({ top: 0, behavior: "instant" });
+  updateCartBar();
+}
+
+function updateHeader(name) {
+  const titles = {
+    pwd:      { t: "Millésime Coffee", s: "" },
+    country:  { t: "Millésime Coffee", s: t("select_country") },
+    city:     { t: state.country?.replace(/^[^ ]+ /,"") || "", s: t("select_city") },
+    menu:     { t: state.city || "", s: t("select_products") },
+    cart:     { t: t("your_cart"), s: "" },
+  };
+  const info = titles[name] || { t: "Millésime Coffee", s: "" };
+  document.getElementById("headerTitle").textContent    = info.t;
+  document.getElementById("headerSubtitle").textContent = info.s;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// BACK
+// ═══════════════════════════════════════════════════════════════════════════
+document.getElementById("backBtn").addEventListener("click", () => {
+  const prev = state.history.pop();
+  if (!prev) return;
+  // Reset state selon la screen
+  if (prev === "screen-country") { state.country = null; state.city = null; }
+  if (prev === "screen-city")    { state.city = null; }
+  document.querySelectorAll(".screen").forEach(s => s.classList.remove("active"));
+  document.getElementById(prev).classList.add("active");
+  const name = prev.replace("screen-", "");
+  if (name === "lang") document.getElementById("header").style.display = "none";
+  else { document.getElementById("header").style.display = "flex"; updateHeader(name); }
+  updateCartBar();
+  window.scrollTo({ top: 0, behavior: "instant" });
+});
+
+// Telegram BackButton
+try {
+  tg.BackButton.onClick(() => document.getElementById("backBtn").click());
+} catch {}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// ÉCRAN LANGUE → MOT DE PASSE
+// ═══════════════════════════════════════════════════════════════════════════
+function setLang(lang) {
+  state.lang = lang;
+  applyI18n();
+  setScreen("pwd");
+  try { tg.BackButton.show(); } catch {}
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// MOT DE PASSE
+// ═══════════════════════════════════════════════════════════════════════════
+async function checkPassword() {
+  const input = document.getElementById("pwdInput");
+  const errEl = document.getElementById("pwdError");
+  const btn   = document.getElementById("pwdBtn");
+  const pwd   = input.value.trim();
+  if (!pwd) return;
+
+  errEl.style.display = "none";
+  btn.disabled = true;
+  btn.innerHTML = '<span class="loader"></span>';
+
+  try {
+    const r = await fetch("/api/auth", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ password: pwd, initData: tg.initData })
+    });
+    const data = await r.json();
+    if (data.ok) {
+      state.pwd = pwd;
+      state.catalog = data.catalog;
+      state.minOrders = data.min_orders;
+      buildCountryScreen();
+      setScreen("country");
+    } else {
+      errEl.textContent = data.blocked ? t("pwd_blocked") : t("pwd_wrong");
+      errEl.style.display = "block";
+    }
+  } catch {
+    errEl.textContent = t("err_network");
+    errEl.style.display = "block";
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = '<span data-i18n="pwd_btn">'+t("pwd_btn")+'</span>';
+  }
+}
+document.getElementById("pwdInput").addEventListener("keypress", e => {
+  if (e.key === "Enter") checkPassword();
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// ÉCRANS PAYS / VILLES / PRODUITS
+// ═══════════════════════════════════════════════════════════════════════════
+function buildCountryScreen() {
+  const list = document.getElementById("countryList");
+  list.innerHTML = "";
+  Object.keys(state.catalog).forEach(country => {
+    const cities = Object.keys(state.catalog[country]);
+    const emoji  = country.match(/^(\S+)/)?.[1] || "🌍";
+    const name   = country.replace(/^\S+\s*/, "");
+    const div = document.createElement("div");
+    div.className = "card";
+    div.innerHTML = `
+      <span class="emoji">${emoji}</span>
+      <div class="info">
+        <div class="name">${name}</div>
+        <div class="meta">${cities.length} ${cities.length > 1 ? "villes" : "ville"}</div>
+      </div>
+      <span class="arrow">›</span>
+    `;
+    div.onclick = () => { state.country = country; buildCityScreen(); setScreen("city"); };
+    list.appendChild(div);
+  });
+}
+
+function buildCityScreen() {
+  const list = document.getElementById("cityList");
+  list.innerHTML = "";
+  const cities = state.catalog[state.country] || {};
+  Object.keys(cities).forEach(city => {
+    const nProducts = Object.keys(cities[city]).length;
+    const div = document.createElement("div");
+    div.className = "card";
+    div.innerHTML = `
+      <span class="emoji">🏙️</span>
+      <div class="info">
+        <div class="name">${city}</div>
+        <div class="meta">${nProducts} produit${nProducts>1?'s':''}</div>
+      </div>
+      <span class="arrow">›</span>
+    `;
+    div.onclick = () => { state.city = city; buildMenuScreen(); setScreen("menu"); };
+    list.appendChild(div);
+  });
+}
+
+function buildMenuScreen() {
+  const list = document.getElementById("productList");
+  list.innerHTML = "";
+  state.cart = {}; // reset cart au changement de ville
+  const products = state.catalog[state.country][state.city] || {};
+  Object.entries(products).forEach(([name, price]) => {
+    const emoji = name.match(/^(\S+)/)?.[1] || "📦";
+    const pname = name.replace(/^\S+\s*/, "");
+    const div = document.createElement("div");
+    div.className = "product";
+    div.dataset.product = name;
+    div.innerHTML = `
+      <div class="emoji">${emoji}</div>
+      <div class="info">
+        <div class="name">${pname}</div>
+        <div class="price">${fmtEUR(price)}</div>
+      </div>
+      <div class="qty-control" id="qc-${btoa(name).replace(/=/g,'')}">
+        <div class="qty-btn" onclick="changeQty('${name.replace(/'/g,"\\'")}',-1)">−</div>
+        <div class="qty-value" id="qv-${btoa(name).replace(/=/g,'')}">0</div>
+        <div class="qty-btn" onclick="changeQty('${name.replace(/'/g,"\\'")}',1)">+</div>
+      </div>
+    `;
+    list.appendChild(div);
+  });
+  updateMinOrderBanner();
+}
+
+function changeQty(name, delta) {
+  const cur = state.cart[name] || 0;
+  const next = Math.max(0, Math.min(99, cur + delta));
+  if (next === 0) delete state.cart[name];
+  else state.cart[name] = next;
+  const id = btoa(name).replace(/=/g,'');
+  const el = document.getElementById("qv-" + id);
+  if (el) el.textContent = next;
+  if (delta > 0 && cur === 0) showToast("✓ " + t("added"));
+  updateCartBar();
+  updateMinOrderBanner();
+}
+
+function updateCartBar() {
+  const bar    = document.getElementById("cartBar");
+  const count  = Object.values(state.cart).reduce((a,b)=>a+b,0);
+  const totalN = computeCartTotal();
+  document.getElementById("cartCount").textContent    = count;
+  document.getElementById("cartTotalBar").textContent = fmtEUR(totalN);
+  const curScreen = document.querySelector(".screen.active")?.id;
+  const showOn = ["screen-menu","screen-cart"].includes(curScreen);
+  if (count > 0 && showOn) bar.classList.add("show");
+  else bar.classList.remove("show");
+}
+
+function computeCartTotal() {
+  if (!state.country || !state.city) return 0;
+  const products = state.catalog[state.country][state.city] || {};
+  let total = 0;
+  for (const [name, qty] of Object.entries(state.cart)) {
+    total += (products[name] || 0) * qty;
+  }
+  return total;
+}
+
+function getMinOrder() {
+  return state.minOrders[state.city] || null;
+}
+
+function updateMinOrderBanner() {
+  const banner = document.getElementById("minOrderBanner");
+  const min = getMinOrder();
+  if (!min) { banner.style.display = "none"; return; }
+  const total = computeCartTotal();
+  const count = Object.values(state.cart).reduce((a,b)=>a+b,0);
+  if (min.type === "amount" && total < min.value && total > 0) {
+    banner.textContent = t("min_amount", {min: min.value, diff: (min.value - total).toFixed(0)});
+    banner.style.display = "block";
+  } else if (min.type === "qty" && count < min.value && count > 0) {
+    banner.textContent = t("min_qty", {min: min.value});
+    banner.style.display = "block";
+  } else {
+    banner.style.display = "none";
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// PANIER & VALIDATION FINALE
+// ═══════════════════════════════════════════════════════════════════════════
+function goToCart() {
+  buildCartScreen();
+  setScreen("cart");
+}
+
+function buildCartScreen() {
+  const list = document.getElementById("cartItems");
+  list.innerHTML = "";
+  const products = state.catalog[state.country][state.city] || {};
+  if (Object.keys(state.cart).length === 0) {
+    list.innerHTML = `<div class="empty"><div class="emoji">🛒</div><div class="text">${t("cart_empty")}</div></div>`;
+  } else {
+    Object.entries(state.cart).forEach(([name, qty]) => {
+      const price = products[name] || 0;
+      const emoji = name.match(/^(\S+)/)?.[1] || "📦";
+      const pname = name.replace(/^\S+\s*/, "");
+      const div = document.createElement("div");
+      div.className = "cart-item";
+      div.innerHTML = `
+        <div class="emoji">${emoji}</div>
+        <div class="info">
+          <div class="name">${pname}</div>
+          <div class="unit-price">${fmtEUR(price)} × ${qty}</div>
+        </div>
+        <div class="qty-control">
+          <div class="qty-btn-sm" onclick="changeQty('${name.replace(/'/g,"\\'")}',-1); buildCartScreen();">−</div>
+          <div class="qty-val">${qty}</div>
+          <div class="qty-btn-sm" onclick="changeQty('${name.replace(/'/g,"\\'")}',1); buildCartScreen();">+</div>
+        </div>
+        <div class="line-total">${fmtEUR(price * qty)}</div>
+      `;
+      list.appendChild(div);
+    });
+  }
+  // Summary
+  const sum = document.getElementById("cartSummary");
+  const count = Object.values(state.cart).reduce((a,b)=>a+b,0);
+  const total = computeCartTotal();
+  const min   = getMinOrder();
+  let minWarn = "";
+  if (min && min.type === "amount" && total < min.value) {
+    minWarn = `<div class="banner" style="margin-top:14px;">${t("min_amount", {min: min.value, diff: (min.value-total).toFixed(0)})}</div>`;
+  } else if (min && min.type === "qty" && count < min.value) {
+    minWarn = `<div class="banner" style="margin-top:14px;">${t("min_qty", {min: min.value})}</div>`;
+  }
+  sum.innerHTML = `
+    <div class="row"><span>${count} ${t("items")}</span><span>${fmtEUR(total)}</span></div>
+    <div class="row total"><span>${t("total")}</span><span>${fmtEUR(total)}</span></div>
+    ${minWarn}
+  `;
+
+  // MainButton Telegram natif
+  const canSubmit = (() => {
+    if (Object.keys(state.cart).length === 0) return false;
+    if (!min) return true;
+    if (min.type === "amount" && total < min.value) return false;
+    if (min.type === "qty" && count < min.value) return false;
+    return true;
+  })();
+  try {
+    if (canSubmit) {
+      tg.MainButton.setText(`${t("confirm_cart")} · ${fmtEUR(total)}`);
+      tg.MainButton.color = "#7c3aed";
+      tg.MainButton.show();
+      tg.MainButton.onClick(submitCart);
+    } else {
+      tg.MainButton.hide();
+    }
+  } catch {}
+}
+
+function submitCart() {
+  try {
+    const payload = {
+      type:    "cart_submit",
+      lang:    state.lang,
+      country: state.country,
+      city:    state.city,
+      cart:    state.cart,
+      total:   computeCartTotal(),
+    };
+    tg.sendData(JSON.stringify(payload));
+  } catch (e) {
+    showToast(t("err_network"), true);
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// INIT
+// ═══════════════════════════════════════════════════════════════════════════
+applyI18n();
+updateCartBar();
+</script>
+</body>
+</html>
