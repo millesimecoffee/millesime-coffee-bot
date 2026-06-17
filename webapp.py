@@ -16,7 +16,7 @@ from flask import Flask, jsonify, render_template, request
 logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
-app.config["MAX_CONTENT_LENGTH"] = 3 * 1024 * 1024  # 3 MB max (selfie réaliste)
+app.config["MAX_CONTENT_LENGTH"] = 10 * 1024 * 1024  # 10 MB max (selfie + preuve virement)
 
 # Cap dimensions image pour éviter les bombes décompression (50000x50000 → 7 GB RAM)
 _MAX_IMAGE_PIXELS = 5_000_000  # 5 MP — largement suffisant pour un selfie
@@ -98,6 +98,12 @@ def api_auth():
             "catalog":    catalog_mod.CATALOG,
             "min_orders": catalog_mod.MIN_ORDER,
             "currencies": catalog_mod.CURRENCIES,
+            "payment_config": {
+                "bank_iban":    os.getenv("BANK_IBAN", ""),
+                "payment_link": os.getenv("PAYMENT_LINK", ""),
+                "crypto_eth":   os.getenv("CRYPTO_ETH", ""),
+                "crypto_usdt":  os.getenv("CRYPTO_USDT", ""),
+            },
         })
     except Exception as exc:
         logger.error("api_auth catalog: %s", exc)
@@ -295,6 +301,403 @@ def api_submit_cart():
         return jsonify({"ok": False, "error": "telegram_send_failed"}), 502
 
     return jsonify({"ok": True, "message": "Panier envoyé, choisissez votre paiement dans le chat."})
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Détection visage selfie (depuis la Mini App)
+# ═══════════════════════════════════════════════════════════════════════════
+
+def _decode_b64_image(photo_b64: str):
+    """Décode une data-URL base64 → (img_array, photo_bytes) ou (None, None) si erreur."""
+    if not photo_b64:
+        return None, None
+    if "," in photo_b64:
+        photo_b64 = photo_b64.split(",", 1)[1]
+    photo_b64 = photo_b64.strip().replace("\n", "").replace("\r", "").replace(" ", "")
+    pad = len(photo_b64) % 4
+    if pad:
+        photo_b64 += "=" * (4 - pad)
+    try:
+        photo_bytes = base64.b64decode(photo_b64)
+    except Exception:
+        return None, None
+    if len(photo_bytes) < 100:
+        return None, None
+    arr = np.frombuffer(photo_bytes, np.uint8)
+    img = cv2.imdecode(arr, cv2.IMREAD_COLOR)
+    if img is None:
+        return None, None
+    h, w = img.shape[:2]
+    if h * w > _MAX_IMAGE_PIXELS:
+        return None, None
+    return img, photo_bytes
+
+
+@app.route("/api/check_face", methods=["POST"])
+def api_check_face():
+    """Détecte un visage dans la photo Mini App. Auth via initData."""
+    try:
+        data = request.get_json(force=True) or {}
+    except Exception:
+        return jsonify({"ok": False, "error": "bad_json"}), 400
+
+    bot_token = os.getenv("BOT_TOKEN", "")
+    if not _verify_init_data(data.get("initData", ""), bot_token):
+        return jsonify({"ok": False, "error": "auth_failed"}), 401
+
+    img, _ = _decode_b64_image(data.get("photo", ""))
+    if img is None:
+        return jsonify({"ok": False, "error": "image_invalid"})
+
+    gray  = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+    faces = _face_cascade.detectMultiScale(
+        gray, scaleFactor=1.1, minNeighbors=5, minSize=(60, 60)
+    )
+    if len(faces) == 0:
+        return jsonify({"ok": False, "error": "no_face"})
+
+    return jsonify({"ok": True})
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Geocoding adresse (Nominatim) — depuis la Mini App
+# ═══════════════════════════════════════════════════════════════════════════
+
+@app.route("/api/geocode", methods=["POST"])
+def api_geocode():
+    """Geocode une adresse via OpenStreetMap Nominatim. Retourne format court + lat/lon."""
+    try:
+        data = request.get_json(force=True) or {}
+    except Exception:
+        return jsonify({"ok": False, "error": "bad_json"}), 400
+
+    address = (data.get("address") or "").strip()
+    if not address:
+        return jsonify({"ok": False, "error": "empty"}), 400
+
+    country = data.get("country", "") or ""
+    city    = data.get("city", "")    or ""
+    # Enlever le drapeau du pays
+    country_clean = country.split(" ", 1)[1].strip() if " " in country else country
+
+    def _search(query: str):
+        try:
+            import httpx as _httpx
+            r = _httpx.get(
+                "https://nominatim.openstreetmap.org/search",
+                params={"q": query, "format": "json", "limit": 1, "addressdetails": 1},
+                headers={"User-Agent": "MillesimeCoffeeBot/1.0"},
+                timeout=10.0,
+            )
+            if r.status_code != 200:
+                return None
+            results = r.json()
+            return results[0] if results else None
+        except Exception as exc:
+            logger.warning("geocode network: %s", exc)
+            return "network_error"
+
+    # 1re passe : adresse brute
+    res = _search(address)
+    # 2e passe : ajouter contexte ville/pays
+    if res is None and (city or country_clean):
+        ctx = ", ".join([p for p in [address, city, country_clean] if p])
+        res = _search(ctx)
+
+    if res == "network_error":
+        return jsonify({"ok": False, "error": "service_down"})
+
+    if not res:
+        return jsonify({
+            "ok":       True,
+            "verified": False,
+            "formatted": address,
+            "short":    address,
+        })
+
+    addr_obj = res.get("address", {}) or {}
+    number   = (addr_obj.get("house_number") or "").strip()
+    road     = (addr_obj.get("road") or addr_obj.get("pedestrian")
+                or addr_obj.get("footway") or addr_obj.get("street")
+                or addr_obj.get("place") or "").strip()
+    city_val = (addr_obj.get("city") or addr_obj.get("town")
+                or addr_obj.get("village") or addr_obj.get("municipality")
+                or addr_obj.get("district") or addr_obj.get("county") or "").strip()
+    postcode = (addr_obj.get("postcode") or "").strip()
+    line1 = f"{number} {road}".strip().upper() if road else ""
+    line2 = city_val.upper()
+    short_parts = [p for p in [line1, line2, postcode] if p]
+    short_addr  = "\n".join(short_parts) if short_parts else res.get("display_name", address)
+
+    lat = res.get("lat")
+    lon = res.get("lon")
+    maps_link = f"https://www.openstreetmap.org/?mlat={lat}&mlon={lon}&zoom=17" if lat and lon else ""
+
+    return jsonify({
+        "ok":        True,
+        "verified":  True,
+        "formatted": res.get("display_name", address),
+        "short":     short_addr,
+        "lat":       lat,
+        "lon":       lon,
+        "maps_link": maps_link,
+    })
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Finalisation de commande (depuis la Mini App)
+# ═══════════════════════════════════════════════════════════════════════════
+
+def _generate_miniapp_order_id() -> str:
+    """Format : DDMMSS (séquence journalière). Lit storage._load()."""
+    from datetime import datetime as _dt
+    from storage import _load as _load_orders
+    now = _dt.now()
+    prefix = now.strftime("%d%m")
+    today  = now.strftime("%Y-%m-%d")
+    try:
+        orders = _load_orders()
+    except Exception:
+        orders = []
+    count = 0
+    for o in orders:
+        if o.get("created_at", "").startswith(today):
+            count += 1
+        elif isinstance(o.get("order_id"), str) and o["order_id"].startswith(prefix):
+            count += 1
+    seq = count + 1
+    width = 2 if seq < 100 else 3
+    return f"{prefix}{seq:0{width}d}"
+
+
+def _html_escape(s: str) -> str:
+    """Échappe HTML pour les messages owner Telegram."""
+    if s is None:
+        return ""
+    return (str(s)
+            .replace("&", "&amp;")
+            .replace("<", "&lt;")
+            .replace(">", "&gt;"))
+
+
+@app.route("/api/finalize_order", methods=["POST"])
+def api_finalize_order():
+    """Finalise une commande : valide tout, save_order, notifie owner.
+    Retourne {ok: true, order_id: "DDMMSS"} ou {ok: false, error}.
+    """
+    try:
+        data = request.get_json(force=True) or {}
+    except Exception:
+        return jsonify({"ok": False, "error": "bad_json"}), 400
+
+    bot_token = os.getenv("BOT_TOKEN", "")
+    parsed = _verify_init_data(data.get("initData", ""), bot_token)
+    if not parsed:
+        return jsonify({"ok": False, "error": "auth_failed"}), 401
+
+    import json as _json
+    try:
+        user_obj   = _json.loads(parsed.get("user", "{}"))
+        user_id    = int(user_obj.get("id", 0))
+        user_first = (user_obj.get("first_name") or "").strip()
+        user_name  = (user_obj.get("username")    or "").strip()
+    except Exception:
+        return jsonify({"ok": False, "error": "no_user"}), 400
+    if not user_id:
+        return jsonify({"ok": False, "error": "no_user"}), 400
+
+    # Recharger catalogue
+    try:
+        import catalog as catalog_mod
+        importlib.reload(catalog_mod)
+    except Exception as exc:
+        logger.error("finalize catalog: %s", exc)
+        return jsonify({"ok": False, "error": "catalog_failed"}), 500
+
+    lang    = data.get("lang", "fr") if data.get("lang") in ("fr","es","en") else "fr"
+    country = data.get("country", "")
+    city    = data.get("city", "")
+    cart    = data.get("cart", {}) or {}
+    payment = data.get("payment", {}) or {}
+    address = data.get("address", {}) or {}
+    selfie_b64 = data.get("selfie_b64", "")
+
+    if country not in catalog_mod.CATALOG or city not in catalog_mod.CATALOG.get(country, {}):
+        return jsonify({"ok": False, "error": "bad_location"}), 400
+
+    products = catalog_mod.CATALOG[country][city]
+    total = 0.0
+    safe_cart = {}
+    for prod, qty in cart.items():
+        try:
+            q = int(qty)
+        except (ValueError, TypeError):
+            continue
+        if q <= 0 or q > 99 or prod not in products:
+            continue
+        safe_cart[prod] = q
+        total += products[prod] * q
+    if not safe_cart:
+        return jsonify({"ok": False, "error": "empty_cart"}), 400
+
+    # Min commande
+    min_order = catalog_mod.MIN_ORDER.get(city)
+    if min_order:
+        if min_order["type"] == "amount" and total < min_order["value"]:
+            return jsonify({"ok": False, "error": f"Minimum {min_order['value']} €"}), 400
+        if min_order["type"] == "qty":
+            tot_q = sum(safe_cart.values())
+            if tot_q < min_order["value"]:
+                return jsonify({"ok": False, "error": f"Minimum {min_order['value']} articles"}), 400
+
+    # Génération order_id atomique
+    with _pending_lock:  # réutilise le lock existant
+        order_id = _generate_miniapp_order_id()
+
+    # Construire l'ordre
+    pay_label = payment.get("label") or payment.get("method", "?")
+    order_dict = {
+        "order_id":  order_id,
+        "user_id":   user_id,
+        "user_name": user_first or user_name or "?",
+        "username":  user_name,
+        "lang":      lang,
+        "country":   country,
+        "city":      city,
+        "cart":      safe_cart,
+        "total":     total,
+        "payment":   pay_label,
+        "payment_method": payment.get("method", ""),
+        "payment_currency": payment.get("currency", ""),
+        "payment_crypto":   payment.get("crypto_name", ""),
+        "address":   (address.get("short") or address.get("formatted") or address.get("text") or ""),
+        "address_verified": bool(address.get("verified")),
+        "phone":     "",
+        "maps_link": address.get("maps_link", ""),
+        "status":    "pending",
+        "source":    "miniapp",
+    }
+
+    # Sauvegarder
+    try:
+        from storage import save_order
+        save_order(order_dict)
+    except Exception as exc:
+        logger.error("finalize save_order: %s", exc)
+        # Continuer quand même — l'important c'est de notifier l'owner
+
+    # Notifier owner via Bot API
+    owner_chat = os.getenv("OWNER_CHAT_ID", "")
+    if not owner_chat:
+        return jsonify({"ok": True, "order_id": order_id})  # ordre créé mais owner non notifié
+
+    import httpx
+    addr_disp = (address.get("short") or address.get("formatted") or "—").replace("\n", "<br>")
+    cart_html = "\n".join(
+        f"  • {_html_escape(prod)} × {q} = {products[prod]*q:,.0f} €"
+        for prod, q in safe_cart.items()
+    )
+    full_name = _html_escape(user_first or user_name or "?")
+    lines = [
+        f"🆕 <b>Nouvelle commande !</b> <code>{order_id}</code> 📲 <i>via Mini App</i>",
+        "",
+        f"👤 Client : {full_name} ({user_id})",
+    ]
+    if user_name:
+        lines.append(f"📱 Username : @{_html_escape(user_name)}")
+    lines += [
+        f"🌐 Langue : {lang.upper()}",
+        "",
+        f"🌍 Pays : {_html_escape(country)}",
+        f"🏙️ Ville : {_html_escape(city)}",
+        "",
+        f"🛒 <b>Panier ({sum(safe_cart.values())} articles)</b>",
+        f"<code>{_html_escape(cart_html)}</code>",
+        "",
+        f"💸 <b>Total : {total:,.0f} €</b>",
+        "",
+        f"💳 Paiement : {_html_escape(pay_label)}",
+    ]
+    if payment.get("crypto_name"):
+        lines.append(f"   ↳ Adresse : <code>{_html_escape(payment.get('crypto_addr',''))}</code>")
+    lines += [
+        "",
+        f"📍 <b>Adresse</b>",
+        f"<code>{_html_escape(addr_disp).replace('&lt;br&gt;', chr(10))}</code>",
+    ]
+    if address.get("maps_link"):
+        lines.append(f"🗺️ <a href=\"{address['maps_link']}\">Voir sur la carte</a>")
+
+    inline_kb = {
+        "inline_keyboard": [
+            [{"text": "✅ Commande confirmée",     "callback_data": f"owner:confirmed:{user_id}:{order_id}"}],
+            [{"text": "🚚 En cours de livraison", "callback_data": f"owner:delivering:{user_id}:{order_id}"}],
+            [{"text": "📦 Commande livrée",       "callback_data": f"owner:delivered:{user_id}:{order_id}"}],
+            [{"text": "❌ Annuler la commande",    "callback_data": f"owner:cancelled:{user_id}:{order_id}"}],
+        ]
+    }
+    try:
+        with httpx.Client(timeout=15.0) as c:
+            c.post(
+                f"https://api.telegram.org/bot{bot_token}/sendMessage",
+                json={
+                    "chat_id":    owner_chat,
+                    "text":       "\n".join(lines),
+                    "parse_mode": "HTML",
+                    "reply_markup": inline_kb,
+                    "disable_web_page_preview": True,
+                },
+            )
+            # Envoyer le selfie si présent
+            if selfie_b64:
+                _, sb = _decode_b64_image(selfie_b64)
+                if sb:
+                    c.post(
+                        f"https://api.telegram.org/bot{bot_token}/sendPhoto",
+                        data={
+                            "chat_id": owner_chat,
+                            "caption": f"📸 Selfie client — {order_id}",
+                        },
+                        files={"photo": ("selfie.jpg", sb, "image/jpeg")},
+                    )
+            # Envoyer preuve virement si présente
+            proof_b64 = payment.get("proof_b64", "")
+            if proof_b64:
+                _, pb = _decode_b64_image(proof_b64)
+                if pb:
+                    c.post(
+                        f"https://api.telegram.org/bot{bot_token}/sendPhoto",
+                        data={
+                            "chat_id": owner_chat,
+                            "caption": f"🏦 Preuve de virement — {order_id}",
+                        },
+                        files={"photo": ("proof.jpg", pb, "image/jpeg")},
+                    )
+    except Exception as exc:
+        logger.error("finalize notify owner: %s", exc)
+
+    # Envoyer un message de confirmation au client
+    try:
+        with httpx.Client(timeout=10.0) as c:
+            c.post(
+                f"https://api.telegram.org/bot{bot_token}/sendMessage",
+                json={
+                    "chat_id": user_id,
+                    "text": (
+                        f"🧾 *Bon de commande — N° {order_id}*\n\n"
+                        f"🏙️ {city}\n"
+                        f"🛒 {sum(safe_cart.values())} article(s) — *{total:,.0f} €*\n"
+                        f"💳 {pay_label}\n\n"
+                        f"_Nous vous contactons très bientôt pour la livraison._ 🙏"
+                    ),
+                    "parse_mode": "Markdown",
+                },
+            )
+    except Exception as exc:
+        logger.warning("finalize notify client: %s", exc)
+
+    return jsonify({"ok": True, "order_id": order_id})
+
 
 _lock = threading.Lock()
 _store: dict  = {}   # {user_id: {"photo": bytes}}

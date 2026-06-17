@@ -423,6 +423,260 @@
   }
   .toast.show { transform: translateX(-50%) translateY(0); }
   .toast.err { background: rgba(239,68,68,0.95); }
+
+  /* === ÉCRANS PAIEMENT / ADRESSE / SELFIE / CONFIRM / SUCCESS === */
+  .pay-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 18px;
+    padding: 22px 18px;
+    cursor: pointer;
+    transition: transform .15s, background .15s;
+    display: flex; align-items: center; gap: 14px;
+    margin-bottom: 12px;
+  }
+  .pay-card:active { transform: scale(0.97); background: var(--bg-card-hover); }
+  .pay-card .ic {
+    font-size: 28px;
+    width: 50px; height: 50px;
+    background: var(--accent-grad);
+    border-radius: 14px;
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0;
+  }
+  .pay-card .info { flex: 1; }
+  .pay-card .title { font-size: 16px; font-weight: 700; margin-bottom: 3px; }
+  .pay-card .desc  { font-size: 12px; opacity: 0.6; line-height: 1.4; }
+  .pay-card .arrow { font-size: 22px; opacity: 0.3; }
+
+  /* Adresse / IBAN à copier (boîte mono) */
+  .copy-box {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 14px;
+    margin: 12px 0;
+    display: flex; align-items: center; gap: 10px;
+  }
+  .copy-box .value {
+    flex: 1;
+    font-family: 'SF Mono', Menlo, Consolas, monospace;
+    font-size: 13px;
+    word-break: break-all;
+    color: var(--txt-primary);
+    line-height: 1.4;
+  }
+  .copy-box .copy-btn {
+    background: var(--accent-grad);
+    border: none;
+    color: white;
+    padding: 10px 14px;
+    border-radius: 10px;
+    font-size: 13px;
+    font-weight: 700;
+    cursor: pointer;
+    flex-shrink: 0;
+  }
+  .copy-box .copy-btn:active { transform: scale(0.94); }
+
+  /* QR code image */
+  .qr-wrap {
+    background: white;
+    border-radius: 16px;
+    padding: 14px;
+    text-align: center;
+    margin: 16px auto;
+    max-width: 280px;
+  }
+  .qr-wrap img { width: 100%; height: auto; display: block; border-radius: 6px; }
+
+  /* Upload preuve virement */
+  .upload-zone {
+    border: 2px dashed rgba(255,255,255,0.15);
+    border-radius: 14px;
+    padding: 28px 16px;
+    text-align: center;
+    margin: 14px 0;
+    cursor: pointer;
+    transition: border-color .15s, background .15s;
+    background: var(--bg-card);
+  }
+  .upload-zone.has-file {
+    border-color: var(--success);
+    background: rgba(16,185,129,0.08);
+  }
+  .upload-zone .icon { font-size: 36px; margin-bottom: 8px; opacity: 0.7; }
+  .upload-zone .label { font-size: 14px; opacity: 0.7; }
+  .upload-zone input[type=file] { display: none; }
+
+  /* Adresse text input */
+  .addr-input {
+    width: 100%;
+    background: var(--bg-card);
+    border: 2px solid var(--border);
+    border-radius: 14px;
+    padding: 14px 16px;
+    font-size: 15px;
+    color: var(--txt-primary);
+    transition: border-color .15s;
+    -webkit-appearance: none;
+    margin: 8px 0;
+  }
+  .addr-input:focus { outline: none; border-color: var(--accent); }
+  .addr-result {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 14px;
+    margin: 12px 0;
+  }
+  .addr-result .addr-line {
+    font-size: 14px;
+    line-height: 1.6;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+  .addr-result .map-link {
+    display: inline-block;
+    margin-top: 8px;
+    font-size: 13px;
+    color: #7c3aed;
+    text-decoration: none;
+  }
+
+  /* Selfie caméra */
+  .cam-wrap {
+    width: 100%;
+    max-width: 340px;
+    aspect-ratio: 3 / 4;
+    margin: 12px auto;
+    position: relative;
+    border-radius: 24px;
+    overflow: hidden;
+    background: #000;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+  }
+  .cam-wrap video {
+    width: 100%; height: 100%;
+    object-fit: cover;
+    transform: scaleX(-1);
+  }
+  .cam-wrap canvas { display: none; }
+  .cam-wrap .mask {
+    position: absolute; inset: 0;
+    background: radial-gradient(ellipse 60% 72% at 50% 45%, transparent 99%, rgba(0,0,0,0.55) 100%);
+    pointer-events: none;
+  }
+  .cam-wrap .border {
+    position: absolute;
+    top: 50%; left: 50%;
+    transform: translate(-50%, -48%);
+    width: 62%; height: 75%;
+    border: 2.5px solid rgba(255,255,255,0.75);
+    border-radius: 50%;
+    pointer-events: none;
+    animation: pulse 2s ease-in-out infinite;
+  }
+  @keyframes pulse {
+    0%, 100% { border-color: rgba(255,255,255,0.55); }
+    50%       { border-color: rgba(255,255,255,1); }
+  }
+  .selfie-preview {
+    width: 100%; max-width: 340px;
+    margin: 12px auto;
+    border-radius: 24px;
+    overflow: hidden;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+  }
+  .selfie-preview img { width: 100%; display: block; }
+
+  /* Confirmation - récap */
+  .recap {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 18px;
+    padding: 18px;
+    margin: 14px 0;
+  }
+  .recap h3 {
+    font-size: 12px;
+    text-transform: uppercase;
+    opacity: 0.5;
+    letter-spacing: 1px;
+    margin-bottom: 10px;
+  }
+  .recap .line {
+    display: flex; justify-content: space-between;
+    padding: 4px 0; font-size: 14px;
+  }
+  .recap .line .lbl { opacity: 0.7; }
+  .recap hr {
+    border: none;
+    border-top: 1px solid var(--border);
+    margin: 10px 0;
+  }
+  .recap .total-line {
+    font-size: 17px;
+    font-weight: 800;
+    margin-top: 6px;
+  }
+  .recap-img {
+    width: 100%;
+    border-radius: 12px;
+    margin-top: 10px;
+  }
+
+  /* Success */
+  .success-screen {
+    text-align: center;
+    padding: 50px 20px;
+    position: relative; z-index: 1;
+  }
+  .success-screen .check {
+    width: 90px; height: 90px;
+    background: var(--accent-grad);
+    border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 50px;
+    margin: 0 auto 20px;
+    box-shadow: 0 10px 30px rgba(124,58,237,0.5);
+    animation: pop .5s cubic-bezier(0.68,-0.55,0.27,1.55);
+  }
+  @keyframes pop {
+    0%   { transform: scale(0); }
+    70%  { transform: scale(1.1); }
+    100% { transform: scale(1); }
+  }
+  .success-screen h2 { font-size: 26px; font-weight: 800; margin-bottom: 8px; }
+  .success-screen .order-num {
+    font-size: 36px;
+    font-weight: 900;
+    background: var(--accent-grad);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+    margin: 12px 0;
+    letter-spacing: 1px;
+  }
+  .success-screen p { font-size: 14px; opacity: 0.7; line-height: 1.6; margin-bottom: 8px; }
+
+  /* Bouton "Continue" custom (utilisé en bas de page quand MainButton Telegram n'est pas dispo) */
+  .next-btn {
+    width: 100%;
+    background: var(--accent-grad);
+    border: none;
+    color: white;
+    padding: 16px;
+    border-radius: 14px;
+    font-size: 16px;
+    font-weight: 700;
+    cursor: pointer;
+    box-shadow: 0 4px 20px rgba(124,58,237,0.4);
+    transition: transform .12s, opacity .15s;
+    margin: 20px 0 8px;
+  }
+  .next-btn:active { transform: scale(0.97); }
+  .next-btn:disabled { opacity: 0.4; cursor: not-allowed; box-shadow: none; }
 </style>
 </head>
 <body>
@@ -517,6 +771,160 @@
   </div>
 </div>
 
+<!-- ÉCRAN 6 : Choix paiement -->
+<div class="screen" id="screen-payment">
+  <div class="container">
+    <div class="section-title" id="paySectionTitle">Mode de paiement</div>
+    <div class="pay-card" onclick="selectPaymentMethod('cash')">
+      <div class="ic">💵</div>
+      <div class="info"><div class="title" data-i18n="pay_cash_title">Cash</div><div class="desc" data-i18n="pay_cash_desc">Paiement à la livraison</div></div>
+      <span class="arrow">›</span>
+    </div>
+    <div class="pay-card" onclick="selectPaymentMethod('virement')">
+      <div class="ic">🏦</div>
+      <div class="info"><div class="title" data-i18n="pay_virement_title">Virement bancaire</div><div class="desc" data-i18n="pay_virement_desc">IBAN + capture de preuve</div></div>
+      <span class="arrow">›</span>
+    </div>
+    <div class="pay-card" onclick="selectPaymentMethod('link')">
+      <div class="ic">💳</div>
+      <div class="info"><div class="title" data-i18n="pay_link_title">Lien de paiement</div><div class="desc" data-i18n="pay_link_desc">Stripe / SumUp / etc.</div></div>
+      <span class="arrow">›</span>
+    </div>
+    <div class="pay-card" onclick="selectPaymentMethod('crypto')">
+      <div class="ic">₿</div>
+      <div class="info"><div class="title" data-i18n="pay_crypto_title">Crypto</div><div class="desc" data-i18n="pay_crypto_desc">ETH ou USDT (réseau ERC-20)</div></div>
+      <span class="arrow">›</span>
+    </div>
+  </div>
+</div>
+
+<!-- ÉCRAN 6a : Cash → devise -->
+<div class="screen" id="screen-pay-cash">
+  <div class="container">
+    <div class="section-title" data-i18n="pay_cash_currency">Choisissez votre devise</div>
+    <div id="cashCurrencies"></div>
+  </div>
+</div>
+
+<!-- ÉCRAN 6b : Virement → IBAN + photo -->
+<div class="screen" id="screen-pay-virement">
+  <div class="container">
+    <div class="section-title" data-i18n="pay_virement_iban">IBAN à utiliser</div>
+    <div class="copy-box">
+      <div class="value" id="ibanValue">—</div>
+      <button class="copy-btn" onclick="copyToClipboard(document.getElementById('ibanValue').textContent)" data-i18n="copy">Copier</button>
+    </div>
+    <div class="banner info" data-i18n="pay_virement_help">
+      Effectuez le virement à cette adresse, puis envoyez la capture d'écran ci-dessous.
+    </div>
+    <label class="upload-zone" id="proofZone">
+      <div class="icon">📸</div>
+      <div class="label" id="proofLabel" data-i18n="upload_proof">Cliquez pour envoyer la capture du virement</div>
+      <input type="file" accept="image/*" onchange="onProofPicked(event)">
+    </label>
+    <button class="next-btn" id="virementNextBtn" disabled onclick="afterPaymentMethodChosen()" data-i18n="continue">Continuer</button>
+  </div>
+</div>
+
+<!-- ÉCRAN 6c : Lien externe -->
+<div class="screen" id="screen-pay-link">
+  <div class="container">
+    <div class="section-title" data-i18n="pay_link_open">Lien de paiement</div>
+    <div class="banner info" id="linkBanner"></div>
+    <a id="linkAnchor" class="next-btn" style="display:block; text-decoration:none; text-align:center;" target="_blank" rel="noopener" data-i18n="pay_link_open_btn">🔗 Ouvrir le lien de paiement</a>
+    <button class="next-btn" onclick="afterPaymentMethodChosen()" data-i18n="i_paid">✅ J'ai payé</button>
+  </div>
+</div>
+
+<!-- ÉCRAN 6d : Crypto → ETH/USDT -->
+<div class="screen" id="screen-pay-crypto">
+  <div class="container">
+    <div class="section-title" data-i18n="pay_crypto_choose">Choisissez la crypto</div>
+    <div class="pay-card" onclick="selectCrypto('ETH')">
+      <div class="ic">⟠</div>
+      <div class="info"><div class="title">ETH</div><div class="desc">Ethereum (ERC-20)</div></div>
+      <span class="arrow">›</span>
+    </div>
+    <div class="pay-card" onclick="selectCrypto('USDT')">
+      <div class="ic">₮</div>
+      <div class="info"><div class="title">USDT</div><div class="desc">Tether (ERC-20)</div></div>
+      <span class="arrow">›</span>
+    </div>
+  </div>
+</div>
+
+<!-- ÉCRAN 6e : Crypto QR + copier -->
+<div class="screen" id="screen-pay-crypto-qr">
+  <div class="container">
+    <div class="section-title" id="cryptoQrTitle">Envoyez à cette adresse</div>
+    <div class="qr-wrap" id="cryptoQrWrap">
+      <img id="cryptoQrImg" alt="QR" />
+    </div>
+    <div class="copy-box">
+      <div class="value" id="cryptoAddrValue">—</div>
+      <button class="copy-btn" onclick="copyToClipboard(document.getElementById('cryptoAddrValue').textContent)" data-i18n="copy">Copier</button>
+    </div>
+    <div class="banner info" data-i18n="pay_crypto_help">Une fois le transfert envoyé, appuyez sur le bouton ci-dessous.</div>
+    <button class="next-btn" onclick="afterPaymentMethodChosen()" data-i18n="i_sent_crypto">✅ J'ai envoyé la crypto</button>
+  </div>
+</div>
+
+<!-- ÉCRAN 7 : Adresse de livraison -->
+<div class="screen" id="screen-address">
+  <div class="container">
+    <div class="section-title" data-i18n="address_title">Adresse de livraison</div>
+    <p style="font-size:13px; opacity:0.6; line-height:1.5; margin-bottom:10px;" data-i18n="address_help">
+      Entrez votre adresse complète (rue + ville, code postal) ou un point de repère (Tour Eiffel, etc.).
+    </p>
+    <input type="text" id="addrInput" class="addr-input" placeholder="Ex: 10 rue de Rivoli, 75001 Paris" autocomplete="off">
+    <button class="next-btn" onclick="verifyAddress()" id="addrVerifyBtn" data-i18n="address_verify">🔍 Vérifier l'adresse</button>
+    <div id="addrResult" style="display:none;"></div>
+  </div>
+</div>
+
+<!-- ÉCRAN 8 : Selfie -->
+<div class="screen" id="screen-selfie">
+  <div class="container">
+    <div class="section-title" data-i18n="selfie_title">Vérification selfie</div>
+    <p style="font-size:13px; opacity:0.6; line-height:1.5;" data-i18n="selfie_help">
+      Placez votre visage dans l'ovale. Bonne luminosité recommandée.
+    </p>
+    <div class="cam-wrap" id="camWrap">
+      <video id="camVideo" autoplay playsinline muted></video>
+      <canvas id="camCanvas"></canvas>
+      <div class="mask"></div>
+      <div class="border"></div>
+    </div>
+    <div id="selfieStatus" style="text-align:center; min-height:20px; font-size:14px; font-weight:500;"></div>
+    <button class="next-btn" id="selfieCaptureBtn" onclick="captureSelfie()" data-i18n="selfie_take">📷 Prendre le selfie</button>
+    <div class="selfie-preview" id="selfiePreview" style="display:none;">
+      <img id="selfiePreviewImg" />
+    </div>
+    <button class="next-btn" id="selfieRetakeBtn" style="display:none;" onclick="retakeSelfie()" data-i18n="selfie_retake">🔄 Reprendre</button>
+  </div>
+</div>
+
+<!-- ÉCRAN 9 : Confirmation finale -->
+<div class="screen" id="screen-confirm">
+  <div class="container">
+    <div class="section-title" data-i18n="confirm_title">Récapitulatif</div>
+    <div class="recap" id="recapBox"></div>
+    <button class="next-btn" id="finalizeBtn" onclick="finalizeOrder()" data-i18n="confirm_btn">✅ Confirmer la commande</button>
+  </div>
+</div>
+
+<!-- ÉCRAN 10 : Success -->
+<div class="screen" id="screen-success">
+  <div class="success-screen">
+    <div class="check">✓</div>
+    <h2 data-i18n="success_title">Commande confirmée !</h2>
+    <div class="order-num" id="successOrderNum">—</div>
+    <p data-i18n="success_msg">Nous vous contactons très bientôt pour la livraison.</p>
+    <p style="margin-top:24px;" data-i18n="success_close">Vous pouvez fermer cette fenêtre.</p>
+    <button class="next-btn" style="max-width:240px; margin: 24px auto 0;" onclick="tg.close()" data-i18n="close">Fermer</button>
+  </div>
+</div>
+
 <!-- CART BAR (sticky bottom) -->
 <div class="cart-bar" id="cartBar">
   <div class="row" onclick="goToCart()">
@@ -542,6 +950,56 @@ const T = {
     min_qty: "Minimum {min} articles dans le panier",
     subtotal: "Sous-total", total: "Total", items: "article(s)",
     err_network: "Erreur réseau, réessayez.", added: "Ajouté au panier",
+    // Paiement
+    pay_cash_title: "💵 Cash", pay_cash_desc: "Paiement à la livraison",
+    pay_virement_title: "🏦 Virement bancaire", pay_virement_desc: "IBAN + capture de preuve",
+    pay_link_title: "💳 Lien de paiement",  pay_link_desc: "Stripe / SumUp / etc.",
+    pay_crypto_title: "₿ Crypto",            pay_crypto_desc: "ETH ou USDT (ERC-20)",
+    pay_cash_currency: "Choisissez votre devise",
+    pay_virement_iban: "IBAN à utiliser",
+    pay_virement_help: "Effectuez le virement, puis envoyez la capture d'écran.",
+    pay_virement_not_configured: "⚠️ Virement bancaire non configuré.",
+    pay_link_not_configured: "⚠️ Lien de paiement non configuré.",
+    pay_link_open: "Lien de paiement", pay_link_open_btn: "🔗 Ouvrir le lien",
+    pay_crypto_choose: "Choisissez la crypto",
+    pay_crypto_help: "Une fois le transfert envoyé, appuyez sur le bouton ci-dessous.",
+    pay_crypto_not_configured: "⚠️ Adresse crypto non configurée.",
+    upload_proof: "Cliquez pour envoyer la capture du virement",
+    proof_loaded: "✓ Capture chargée",
+    copy: "Copier", copied: "✓ Copié !",
+    i_paid: "✅ J'ai payé",
+    i_sent_crypto: "✅ J'ai envoyé la crypto",
+    continue: "Continuer",
+    // Adresse
+    address_title: "Adresse de livraison",
+    address_help: "Entrez votre adresse complète (rue + ville, code postal) ou un point de repère.",
+    address_verify: "🔍 Vérifier l'adresse",
+    address_searching: "⏳ Recherche en cours...",
+    address_found: "Adresse trouvée :",
+    address_unverified: "⚠️ Adresse non vérifiée — vérifiez l'orthographe.",
+    address_service_down: "⚠️ Service de cartographie indisponible.",
+    address_confirm: "✅ Utiliser cette adresse",
+    address_change: "✏️ Modifier",
+    address_view_map: "🗺️ Voir sur la carte",
+    // Selfie
+    selfie_title: "Vérification selfie",
+    selfie_help: "Placez votre visage dans l'ovale. Bonne luminosité recommandée.",
+    selfie_take: "📷 Prendre le selfie",
+    selfie_retake: "🔄 Reprendre",
+    selfie_continue: "✅ Continuer",
+    selfie_cam_denied: "❌ Accès à la caméra refusé",
+    selfie_processing: "⏳ Analyse du visage...",
+    selfie_ok: "✅ Visage détecté !",
+    selfie_no_face: "❌ Aucun visage détecté — réessayez",
+    // Confirmation
+    confirm_title: "Récapitulatif", confirm_btn: "✅ Confirmer la commande",
+    confirm_processing: "⏳ Envoi en cours...",
+    confirm_city: "Ville", confirm_payment: "Paiement", confirm_address: "Adresse",
+    // Success
+    success_title: "Commande confirmée !",
+    success_msg: "Nous vous contactons très bientôt pour la livraison.",
+    success_close: "Vous pouvez fermer cette fenêtre.",
+    close: "Fermer",
   },
   en: {
     pwd_title: "Password", pwd_subtitle: "Enter the catalog access password.",
@@ -554,6 +1012,51 @@ const T = {
     min_qty: "Minimum {min} items in cart",
     subtotal: "Subtotal", total: "Total", items: "item(s)",
     err_network: "Network error, retry.", added: "Added to cart",
+    pay_cash_title: "💵 Cash", pay_cash_desc: "Pay on delivery",
+    pay_virement_title: "🏦 Bank transfer", pay_virement_desc: "IBAN + proof screenshot",
+    pay_link_title: "💳 Payment link", pay_link_desc: "Stripe / SumUp / etc.",
+    pay_crypto_title: "₿ Crypto", pay_crypto_desc: "ETH or USDT (ERC-20)",
+    pay_cash_currency: "Choose currency",
+    pay_virement_iban: "IBAN",
+    pay_virement_help: "Send the transfer, then upload the screenshot.",
+    pay_virement_not_configured: "⚠️ Bank transfer not configured.",
+    pay_link_not_configured: "⚠️ Payment link not configured.",
+    pay_link_open: "Payment link", pay_link_open_btn: "🔗 Open payment link",
+    pay_crypto_choose: "Choose crypto",
+    pay_crypto_help: "Once sent, press the button below.",
+    pay_crypto_not_configured: "⚠️ Crypto address not configured.",
+    upload_proof: "Tap to upload your transfer screenshot",
+    proof_loaded: "✓ Screenshot uploaded",
+    copy: "Copy", copied: "✓ Copied!",
+    i_paid: "✅ I have paid",
+    i_sent_crypto: "✅ I sent the crypto",
+    continue: "Continue",
+    address_title: "Delivery address",
+    address_help: "Enter your full address (street + city, postcode) or a landmark.",
+    address_verify: "🔍 Verify address",
+    address_searching: "⏳ Searching...",
+    address_found: "Address found:",
+    address_unverified: "⚠️ Address not verified — check spelling.",
+    address_service_down: "⚠️ Mapping service unavailable.",
+    address_confirm: "✅ Use this address",
+    address_change: "✏️ Edit",
+    address_view_map: "🗺️ View on map",
+    selfie_title: "Selfie verification",
+    selfie_help: "Place your face in the oval. Good lighting recommended.",
+    selfie_take: "📷 Take selfie",
+    selfie_retake: "🔄 Retake",
+    selfie_continue: "✅ Continue",
+    selfie_cam_denied: "❌ Camera access denied",
+    selfie_processing: "⏳ Analyzing face...",
+    selfie_ok: "✅ Face detected!",
+    selfie_no_face: "❌ No face detected — try again",
+    confirm_title: "Summary", confirm_btn: "✅ Confirm order",
+    confirm_processing: "⏳ Submitting...",
+    confirm_city: "City", confirm_payment: "Payment", confirm_address: "Address",
+    success_title: "Order confirmed!",
+    success_msg: "We'll contact you very soon for delivery.",
+    success_close: "You can close this window.",
+    close: "Close",
   },
   es: {
     pwd_title: "Contraseña", pwd_subtitle: "Introduce la contraseña para acceder al catálogo.",
@@ -566,6 +1069,51 @@ const T = {
     min_qty: "Mínimo {min} artículos en el carrito",
     subtotal: "Subtotal", total: "Total", items: "artículo(s)",
     err_network: "Error de red, reintenta.", added: "Añadido al carrito",
+    pay_cash_title: "💵 Efectivo", pay_cash_desc: "Pago contra entrega",
+    pay_virement_title: "🏦 Transferencia bancaria", pay_virement_desc: "IBAN + captura de pantalla",
+    pay_link_title: "💳 Enlace de pago", pay_link_desc: "Stripe / SumUp / etc.",
+    pay_crypto_title: "₿ Cripto", pay_crypto_desc: "ETH o USDT (ERC-20)",
+    pay_cash_currency: "Elige tu moneda",
+    pay_virement_iban: "IBAN",
+    pay_virement_help: "Envía la transferencia y luego sube la captura.",
+    pay_virement_not_configured: "⚠️ Transferencia bancaria no configurada.",
+    pay_link_not_configured: "⚠️ Enlace de pago no configurado.",
+    pay_link_open: "Enlace de pago", pay_link_open_btn: "🔗 Abrir el enlace",
+    pay_crypto_choose: "Elige la cripto",
+    pay_crypto_help: "Una vez enviado, pulsa el botón.",
+    pay_crypto_not_configured: "⚠️ Dirección cripto no configurada.",
+    upload_proof: "Pulsa para subir la captura",
+    proof_loaded: "✓ Captura cargada",
+    copy: "Copiar", copied: "✓ ¡Copiado!",
+    i_paid: "✅ He pagado",
+    i_sent_crypto: "✅ He enviado la cripto",
+    continue: "Continuar",
+    address_title: "Dirección de entrega",
+    address_help: "Introduce tu dirección completa o un punto de referencia.",
+    address_verify: "🔍 Verificar dirección",
+    address_searching: "⏳ Buscando...",
+    address_found: "Dirección encontrada:",
+    address_unverified: "⚠️ Dirección no verificada — revisa la ortografía.",
+    address_service_down: "⚠️ Servicio de mapas no disponible.",
+    address_confirm: "✅ Usar esta dirección",
+    address_change: "✏️ Modificar",
+    address_view_map: "🗺️ Ver en el mapa",
+    selfie_title: "Verificación selfie",
+    selfie_help: "Coloca tu cara en el óvalo. Se recomienda buena iluminación.",
+    selfie_take: "📷 Hacer selfie",
+    selfie_retake: "🔄 Reintentar",
+    selfie_continue: "✅ Continuar",
+    selfie_cam_denied: "❌ Acceso a la cámara denegado",
+    selfie_processing: "⏳ Analizando cara...",
+    selfie_ok: "✅ ¡Cara detectada!",
+    selfie_no_face: "❌ No se detectó cara — reinténtalo",
+    confirm_title: "Resumen", confirm_btn: "✅ Confirmar pedido",
+    confirm_processing: "⏳ Enviando...",
+    confirm_city: "Ciudad", confirm_payment: "Pago", confirm_address: "Dirección",
+    success_title: "¡Pedido confirmado!",
+    success_msg: "Te contactaremos muy pronto para la entrega.",
+    success_close: "Puedes cerrar esta ventana.",
+    close: "Cerrar",
   },
 };
 
@@ -581,6 +1129,11 @@ const state = {
   cart:    {},          // {product_name: qty}
   catalog: null,        // chargé via /api/catalog
   minOrders: null,
+  payment_config: null, // {bank_iban, payment_link, crypto_eth, crypto_usdt}
+  payment: {},          // {method, currency, crypto_name, crypto_addr, proof_b64, label}
+  address: {},          // {text, formatted, short, lat, lon, maps_link, verified}
+  selfie_b64: null,
+  productNames: [],
   history: [],          // pile pour back button
 };
 
@@ -642,11 +1195,21 @@ function setScreen(name, pushHistory) {
 
 function updateHeader(name) {
   const titles = {
-    pwd:      { t: "Millésime Coffee", s: "" },
-    country:  { t: "Millésime Coffee", s: t("select_country") },
-    city:     { t: state.country?.replace(/^[^ ]+ /,"") || "", s: t("select_city") },
-    menu:     { t: state.city || "", s: t("select_products") },
-    cart:     { t: t("your_cart"), s: "" },
+    pwd:               { t: "Millésime Coffee", s: "" },
+    country:           { t: "Millésime Coffee", s: t("select_country") },
+    city:              { t: state.country?.replace(/^[^ ]+ /,"") || "", s: t("select_city") },
+    menu:              { t: state.city || "", s: t("select_products") },
+    cart:              { t: t("your_cart"), s: "" },
+    payment:           { t: t("confirm_payment"), s: "" },
+    "pay-cash":        { t: t("pay_cash_title"), s: t("pay_cash_currency") },
+    "pay-virement":    { t: t("pay_virement_title"), s: "" },
+    "pay-link":        { t: t("pay_link_title"), s: "" },
+    "pay-crypto":      { t: t("pay_crypto_title"), s: t("pay_crypto_choose") },
+    "pay-crypto-qr":   { t: state.payment?.crypto_name ? `₿ ${state.payment.crypto_name}` : "Crypto", s: "" },
+    address:           { t: t("address_title"), s: "" },
+    selfie:            { t: t("selfie_title"), s: "" },
+    confirm:           { t: t("confirm_title"), s: "" },
+    success:           { t: t("success_title"), s: "" },
   };
   const info = titles[name] || { t: "Millésime Coffee", s: "" };
   document.getElementById("headerTitle").textContent    = info.t;
@@ -711,6 +1274,7 @@ async function checkPassword() {
       state.pwd = pwd;
       state.catalog = data.catalog;
       state.minOrders = data.min_orders;
+      state.payment_config = data.payment_config || {};
       buildCountryScreen();
       setScreen("country");
     } else {
@@ -954,36 +1518,342 @@ function buildCartScreen() {
   } catch {}
 }
 
-async function submitCart() {
-  try {
-    const payload = {
-      lang:     state.lang,
-      country:  state.country,
-      city:     state.city,
-      cart:     state.cart,
-      total:    computeCartTotal(),
-      initData: tg.initData || "",   // pour validation server-side
-    };
+// L'ancien submitCart() POSTait à /api/submit_cart et fermait la Mini App.
+// Maintenant, on continue le flow IN-APP : on va à l'écran paiement.
+function submitCart() {
+  try { tg.MainButton.hide(); } catch {}
+  setScreen("payment");
+}
 
-    // POST plutôt que sendData() — sendData ne marche que depuis Keyboard
-    // button, alors qu'on peut être lancé depuis le menu button.
-    const r = await fetch("/api/submit_cart", {
+// ═══════════════════════════════════════════════════════════════════════════
+// PAIEMENT
+// ═══════════════════════════════════════════════════════════════════════════
+function selectPaymentMethod(method) {
+  state.payment = { method: method };
+  const cfg = state.payment_config || {};
+
+  if (method === "cash") {
+    buildCashCurrencies();
+    setScreen("pay-cash");
+  } else if (method === "virement") {
+    if (!cfg.bank_iban) { showToast(t("pay_virement_not_configured"), true); return; }
+    document.getElementById("ibanValue").textContent = cfg.bank_iban;
+    state.payment.proof_b64 = null;
+    document.getElementById("proofZone").classList.remove("has-file");
+    document.getElementById("proofLabel").textContent = t("upload_proof");
+    document.getElementById("virementNextBtn").disabled = true;
+    setScreen("pay-virement");
+  } else if (method === "link") {
+    if (!cfg.payment_link) { showToast(t("pay_link_not_configured"), true); return; }
+    document.getElementById("linkBanner").textContent = cfg.payment_link;
+    document.getElementById("linkAnchor").href = cfg.payment_link;
+    setScreen("pay-link");
+  } else if (method === "crypto") {
+    if (!cfg.crypto_eth && !cfg.crypto_usdt) { showToast(t("pay_crypto_not_configured"), true); return; }
+    setScreen("pay-crypto");
+  }
+}
+
+function buildCashCurrencies() {
+  const cont = document.getElementById("cashCurrencies");
+  const list = [
+    ["EUR","🇪🇺 EUR — Euro"],
+    ["USD","🇺🇸 USD — Dollar"],
+    ["GBP","🇬🇧 GBP — Livre sterling"],
+    ["CHF","🇨🇭 CHF — Franc suisse"],
+    ["AED","🇦🇪 AED — Dirham EAU"],
+    ["MAD","🇲🇦 MAD — Dirham marocain"],
+  ];
+  cont.innerHTML = "";
+  list.forEach(([code, label]) => {
+    const d = document.createElement("div");
+    d.className = "card";
+    d.innerHTML = `
+      <span class="emoji">${label.split(' ')[0]}</span>
+      <div class="info"><div class="name">${label.replace(/^\S+\s*/,'')}</div></div>
+      <span class="arrow">›</span>
+    `;
+    d.onclick = () => {
+      state.payment.currency = code;
+      state.payment.label    = `💵 Cash — ${code}`;
+      afterPaymentMethodChosen();
+    };
+    cont.appendChild(d);
+  });
+}
+
+function onProofPicked(ev) {
+  const file = ev.target.files && ev.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = e => {
+    state.payment.proof_b64 = e.target.result;  // data:image/...;base64,...
+    document.getElementById("proofZone").classList.add("has-file");
+    document.getElementById("proofLabel").textContent = t("proof_loaded") + " — " + file.name;
+    document.getElementById("virementNextBtn").disabled = false;
+  };
+  reader.readAsDataURL(file);
+}
+
+function selectCrypto(name) {
+  const cfg = state.payment_config || {};
+  const addr = name === "ETH" ? cfg.crypto_eth : cfg.crypto_usdt;
+  if (!addr) { showToast(t("pay_crypto_not_configured"), true); return; }
+  state.payment.crypto_name = name;
+  state.payment.crypto_addr = addr;
+  state.payment.label       = `₿ Crypto — ${name}`;
+  document.getElementById("cryptoQrTitle").textContent = `${name === "ETH" ? "⟠" : "₮"} ${name}`;
+  document.getElementById("cryptoAddrValue").textContent = addr;
+  // QR via quickchart.io (fonctionne dans le browser; Telegram non requis car c'est <img>)
+  document.getElementById("cryptoQrImg").src =
+    "https://quickchart.io/qr?text=" + encodeURIComponent(addr) + "&size=400";
+  setScreen("pay-crypto-qr");
+}
+
+async function copyToClipboard(text) {
+  try {
+    await navigator.clipboard.writeText(text);
+    showToast(t("copied"));
+  } catch {
+    // Fallback : ancien navigateur
+    const el = document.createElement("textarea");
+    el.value = text;
+    document.body.appendChild(el);
+    el.select();
+    try { document.execCommand("copy"); showToast(t("copied")); } catch {}
+    document.body.removeChild(el);
+  }
+}
+
+function afterPaymentMethodChosen() {
+  if (!state.payment.label) {
+    // Cas cash : currency déjà set; Sinon construire un label par défaut
+    if (state.payment.method === "virement") state.payment.label = "🏦 Virement bancaire";
+    else if (state.payment.method === "link") state.payment.label = "💳 Lien de paiement";
+  }
+  setScreen("address");
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// ADRESSE
+// ═══════════════════════════════════════════════════════════════════════════
+async function verifyAddress() {
+  const input = document.getElementById("addrInput");
+  const text  = input.value.trim();
+  if (!text) return;
+  const btn = document.getElementById("addrVerifyBtn");
+  const res = document.getElementById("addrResult");
+
+  btn.disabled = true;
+  btn.innerHTML = '<span class="loader"></span>';
+
+  try {
+    const r = await fetch("/api/geocode", {
       method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body:    JSON.stringify({
+        address:      text,
+        country:      state.country,
+        city:         state.city,
+        lang:         state.lang,
+      })
+    });
+    const data = await r.json();
+    if (data.ok) {
+      state.address = {
+        text:      text,
+        formatted: data.formatted || text,
+        short:     data.short     || text,
+        lat:       data.lat       || null,
+        lon:       data.lon       || null,
+        maps_link: data.maps_link || "",
+        verified:  data.verified  || false,
+      };
+      res.style.display = "block";
+      res.innerHTML = `
+        <div class="addr-result">
+          <div style="font-size:12px; opacity:0.6; margin-bottom:6px;">${data.verified ? "📍 " + t("address_found") : t("address_unverified")}</div>
+          <div class="addr-line">${(state.address.short || state.address.formatted).replace(/\n/g,'<br>')}</div>
+          ${data.maps_link ? `<a class="map-link" href="${data.maps_link}" target="_blank" rel="noopener">${t("address_view_map")}</a>` : ""}
+          <button class="next-btn" onclick="goToSelfie()">${t("address_confirm")}</button>
+          <button class="next-btn" style="background:#444; box-shadow:none;" onclick="document.getElementById('addrResult').style.display='none';">${t("address_change")}</button>
+        </div>
+      `;
+    } else {
+      showToast(data.error || t("address_service_down"), true);
+    }
+  } catch {
+    showToast(t("err_network"), true);
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = t("address_verify");
+  }
+}
+
+function goToSelfie() {
+  setScreen("selfie");
+  startSelfieCam();
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// SELFIE
+// ═══════════════════════════════════════════════════════════════════════════
+let _selfieStream = null;
+
+async function startSelfieCam() {
+  const video = document.getElementById("camVideo");
+  const status = document.getElementById("selfieStatus");
+  if (_selfieStream) {
+    try { _selfieStream.getTracks().forEach(t => t.stop()); } catch {}
+    _selfieStream = null;
+  }
+  status.textContent = "";
+  document.getElementById("camWrap").style.display = "block";
+  document.getElementById("selfieCaptureBtn").style.display = "block";
+  document.getElementById("selfiePreview").style.display = "none";
+  document.getElementById("selfieRetakeBtn").style.display = "none";
+
+  try {
+    _selfieStream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: "user", width: { ideal: 640 }, height: { ideal: 480 } }
+    });
+    video.srcObject = _selfieStream;
+  } catch {
+    status.innerHTML = '<span style="color:#ef4444;">' + t("selfie_cam_denied") + '</span>';
+    document.getElementById("selfieCaptureBtn").disabled = true;
+  }
+}
+
+async function captureSelfie() {
+  const video  = document.getElementById("camVideo");
+  const canvas = document.getElementById("camCanvas");
+  const status = document.getElementById("selfieStatus");
+  const btn    = document.getElementById("selfieCaptureBtn");
+
+  if (!video.videoWidth) { showToast("Camera not ready", true); return; }
+  btn.disabled = true;
+  status.innerHTML = '<span class="loader"></span> ' + t("selfie_processing");
+
+  canvas.width  = video.videoWidth;
+  canvas.height = video.videoHeight;
+  const ctx = canvas.getContext("2d");
+  ctx.translate(canvas.width, 0);
+  ctx.scale(-1, 1);
+  ctx.drawImage(video, 0, 0);
+  const photoData = canvas.toDataURL("image/jpeg", 0.85);
+
+  // Détection visage côté serveur via /verify (existant — gère face detection OpenCV)
+  // Mais /verify exige un token. Le bot doit le générer côté start() — on n'en a pas dans le flow Mini App.
+  // Solution : nouveau endpoint /api/check_face qui n'exige pas de token (auth via initData côté serveur).
+  try {
+    const r = await fetch("/api/check_face", {
+      method:  "POST",
+      headers: { "Content-Type": "application/json" },
+      body:    JSON.stringify({ photo: photoData, initData: tg.initData || "" })
+    });
+    const data = await r.json();
+    if (data.ok) {
+      state.selfie_b64 = photoData;
+      status.innerHTML = '<span style="color:#10b981;">' + t("selfie_ok") + '</span>';
+      // Arrêter caméra + afficher preview
+      if (_selfieStream) { _selfieStream.getTracks().forEach(t => t.stop()); _selfieStream = null; }
+      document.getElementById("camWrap").style.display = "none";
+      document.getElementById("selfieCaptureBtn").style.display = "none";
+      const img = document.getElementById("selfiePreviewImg");
+      img.src = photoData;
+      document.getElementById("selfiePreview").style.display = "block";
+      document.getElementById("selfieRetakeBtn").style.display = "block";
+      // MainButton pour continuer
+      try {
+        tg.MainButton.setText(t("selfie_continue"));
+        tg.MainButton.color = "#7c3aed";
+        tg.MainButton.show();
+        tg.MainButton.onClick(goToConfirm);
+      } catch {}
+    } else {
+      status.innerHTML = '<span style="color:#ef4444;">' + (data.error || t("selfie_no_face")) + '</span>';
+      btn.disabled = false;
+    }
+  } catch {
+    status.innerHTML = '<span style="color:#ef4444;">' + t("err_network") + '</span>';
+    btn.disabled = false;
+  }
+}
+
+function retakeSelfie() {
+  try { tg.MainButton.hide(); } catch {}
+  state.selfie_b64 = null;
+  startSelfieCam();
+}
+
+function goToConfirm() {
+  try { tg.MainButton.hide(); } catch {}
+  buildRecap();
+  setScreen("confirm");
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// CONFIRMATION FINALE
+// ═══════════════════════════════════════════════════════════════════════════
+function buildRecap() {
+  const products = state.catalog[state.country][state.city] || {};
+  const lines = [];
+  lines.push('<h3>🛒 ' + t("your_cart") + '</h3>');
+  Object.entries(state.cart).forEach(([name, qty]) => {
+    const p = products[name] || 0;
+    lines.push(`<div class="line"><span class="lbl">${name} × ${qty}</span><span>${fmtEUR(p*qty)}</span></div>`);
+  });
+  lines.push('<hr><div class="line total-line"><span>' + t("total") + '</span><span>' + fmtEUR(computeCartTotal()) + '</span></div>');
+
+  const country = state.country.replace(/^\S+\s*/, "");
+  const recap2 = `
+    <h3 style="margin-top:18px;">📍 ${t("confirm_city")}</h3>
+    <div class="line"><span class="lbl">${state.city}, ${country}</span></div>
+    <h3 style="margin-top:18px;">💳 ${t("confirm_payment")}</h3>
+    <div class="line"><span class="lbl">${state.payment.label || state.payment.method}</span></div>
+    <h3 style="margin-top:18px;">📦 ${t("confirm_address")}</h3>
+    <div class="line"><span class="lbl">${(state.address.short || state.address.formatted || state.address.text).replace(/\n/g,'<br>')}</span></div>
+  `;
+  document.getElementById("recapBox").innerHTML = lines.join("") + recap2 +
+    (state.selfie_b64 ? `<img class="recap-img" src="${state.selfie_b64}">` : "");
+}
+
+async function finalizeOrder() {
+  const btn = document.getElementById("finalizeBtn");
+  btn.disabled = true;
+  btn.innerHTML = '<span class="loader"></span> ' + t("confirm_processing");
+
+  const payload = {
+    initData:    tg.initData || "",
+    lang:        state.lang,
+    country:     state.country,
+    city:        state.city,
+    cart:        state.cart,
+    total:       computeCartTotal(),
+    payment:     state.payment,
+    address:     state.address,
+    selfie_b64:  state.selfie_b64,
+  };
+
+  try {
+    const r = await fetch("/api/finalize_order", {
+      method:  "POST",
       headers: { "Content-Type": "application/json" },
       body:    JSON.stringify(payload),
     });
     const data = await r.json();
-
     if (data.ok) {
-      showToast("✓ " + (data.message || "Panier envoyé !"));
-      setTimeout(() => {
-        try { tg.close(); } catch {}
-      }, 800);
+      document.getElementById("successOrderNum").textContent = "N° " + (data.order_id || "—");
+      setScreen("success");
     } else {
       showToast(data.error || t("err_network"), true);
+      btn.disabled = false;
+      btn.innerHTML = t("confirm_btn");
     }
-  } catch (e) {
+  } catch {
     showToast(t("err_network"), true);
+    btn.disabled = false;
+    btn.innerHTML = t("confirm_btn");
   }
 }
 
