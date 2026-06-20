@@ -2299,8 +2299,9 @@ function renderOrderDetail(o) {
   const selfieImg = o.selfie_b64 ? `<img class="od-photo" src="/api/admin/photo/${o.order_id}/selfie${initDataQS}">` : "";
   const proofImg  = o.proof_b64  ? `<img class="od-photo" src="/api/admin/photo/${o.order_id}/proof${initDataQS}">`  : "";
 
-  // Téléphone deeplink — pour appeler le client
-  const userLink = o.username ? `tg://resolve?domain=${o.username}` : `tg://user?id=${o.user_id}`;
+  // Contacter le client : via tg.openTelegramLink() pour ouvrir le chat
+  // (les <a href="tg://"> ne marchent pas dans Mini App).
+  // Si pas de username, on ne peut pas générer de lien direct.
   const phoneTel = o.phone ? `tel:${o.phone.replace(/\s/g,'')}` : "";
 
   el.innerHTML = refreshHdr + `
@@ -2354,10 +2355,58 @@ function renderOrderDetail(o) {
       ${status === 'confirmed' ? `<button class="btn-act btn-delivery" onclick="setOrderStatus('${o.order_id}','delivering')">🚚 En livraison</button>` : ''}
       ${status === 'delivering' ? `<button class="btn-act btn-deliver" onclick="setOrderStatus('${o.order_id}','delivered')">📦 Livrée</button>` : ''}
       ${status !== 'delivered' && status !== 'cancelled' ? `<button class="btn-act btn-cancel" onclick="setOrderStatus('${o.order_id}','cancelled')">❌ Annuler</button>` : ''}
-      <a class="btn-act btn-contact" href="${userLink}" style="text-decoration:none; text-align:center; line-height:30px;">💬 Contacter le client</a>
-      ${o.maps_link ? `<a class="btn-act btn-mapview" href="${o.maps_link}" target="_blank" rel="noopener" style="text-decoration:none; text-align:center; line-height:30px;">🗺️ Voir l'adresse</a>` : ''}
+      <button class="btn-act btn-contact" onclick='contactClient(${JSON.stringify({user_id: o.user_id, username: o.username || "", user_name: o.user_name || ""})})'>💬 Contacter le client</button>
+      ${o.maps_link ? `<button class="btn-act btn-mapview" onclick="openExternal('${o.maps_link.replace(/'/g,"\\'")}')">🗺️ Voir l'adresse</button>` : ''}
     </div>
   `;
+}
+
+function contactClient(client) {
+  // Le client a un @username → on ouvre direct le chat via tg.openTelegramLink()
+  if (client.username) {
+    const url = "https://t.me/" + client.username;
+    try { tg.openTelegramLink(url); return; } catch {}
+    try { window.open(url, "_blank"); return; } catch {}
+  }
+  // Pas de username → impossible d'ouvrir un chat direct. Proposer un message via bot.
+  const name = client.user_name || ("id " + client.user_id);
+  if (typeof tg.showPopup === "function") {
+    tg.showPopup({
+      title:   "Pas de @username",
+      message: `${name} n'a pas de username Telegram public.\n\nVous pouvez lui envoyer un message via le bot.`,
+      buttons: [
+        { id: "send", type: "default",     text: "📨 Envoyer un message" },
+        { id: "ok",   type: "destructive", text: "Annuler" },
+      ],
+    }, async (btn) => {
+      if (btn === "send") askAndSendMessageToClient(client);
+    });
+  } else {
+    askAndSendMessageToClient(client);
+  }
+}
+
+async function askAndSendMessageToClient(client) {
+  // Prompt natif Telegram pour saisir le message
+  const text = prompt(`Message à envoyer à ${client.user_name || client.user_id} :`);
+  if (!text || !text.trim()) return;
+  try {
+    const r = await fetch("/api/admin/send_message", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ initData: tg.initData || "", user_id: client.user_id, text: text.trim() })
+    });
+    const data = await r.json();
+    if (data.ok) showToast("✅ Message envoyé");
+    else        showToast(data.error || "Erreur", true);
+  } catch {
+    showToast(t("err_network"), true);
+  }
+}
+
+function openExternal(url) {
+  try { tg.openLink(url); }
+  catch { window.open(url, "_blank"); }
 }
 
 async function setOrderStatus(orderId, newStatus) {

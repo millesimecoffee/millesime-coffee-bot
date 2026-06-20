@@ -56,6 +56,75 @@ _PWD_MAX_ATTEMPTS = 5
 _PWD_WINDOW      = 300  # 5 min
 _pwd_lock = threading.Lock()
 
+# Throttle des notifications "client entre dans le catalogue" :
+# évite de spammer l'owner si l'user ouvre/ferme plusieurs fois.
+_entry_notif_last: dict[int, float] = {}
+_ENTRY_NOTIF_COOLDOWN = 600  # 10 min entre 2 notifs pour le même user
+_entry_notif_lock = threading.Lock()
+
+
+def _notify_owner_client_entry(parsed_init: dict) -> None:
+    """Envoie au owner une notif courte 'Client X est entré dans le catalogue'.
+    Auto-throttled : pas plus d'1 notif / 10 min par user.
+    """
+    bot_token  = os.getenv("BOT_TOKEN", "")
+    owner_chat = os.getenv("OWNER_CHAT_ID", "")
+    if not (bot_token and owner_chat):
+        return
+    try:
+        import json as _json
+        user_obj = _json.loads(parsed_init.get("user", "{}"))
+        uid      = int(user_obj.get("id", 0))
+        if not uid:
+            return
+        # Owner se filtre lui-même (pas de notif quand toi-même tu ouvres)
+        owner_uid = os.getenv("OWNER_USER_ID", "")
+        if owner_uid and str(uid) == str(owner_uid):
+            return
+
+        # Throttle
+        now = time.time()
+        with _entry_notif_lock:
+            last = _entry_notif_last.get(uid, 0)
+            if now - last < _ENTRY_NOTIF_COOLDOWN:
+                return
+            _entry_notif_last[uid] = now
+
+        first_name = (user_obj.get("first_name") or "").strip()
+        username   = (user_obj.get("username")   or "").strip()
+        lang_code  = (user_obj.get("language_code") or "").upper()[:2]
+
+        # Lien deeplink chat avec le client (uniquement si username)
+        deeplink = f"tg://resolve?domain={username}" if username else ""
+
+        # Échapper pour HTML
+        def esc(s):
+            return (str(s or "")
+                    .replace("&", "&amp;")
+                    .replace("<", "&lt;")
+                    .replace(">", "&gt;"))
+
+        who = f"@{esc(username)}" if username else esc(first_name) or f"id_{uid}"
+        msg = (
+            f"👀 <b>{who}</b> vient d'entrer dans le catalogue\n"
+            f"   <i>ID:</i> <code>{uid}</code>"
+            + (f"  ·  🌐 {lang_code}" if lang_code else "")
+        )
+        import httpx as _httpx
+        with _httpx.Client(timeout=8.0) as c:
+            c.post(
+                f"https://api.telegram.org/bot{bot_token}/sendMessage",
+                json={
+                    "chat_id":    owner_chat,
+                    "text":       msg,
+                    "parse_mode": "HTML",
+                    "disable_notification": False,
+                    "disable_web_page_preview": True,
+                },
+            )
+    except Exception as exc:
+        logger.warning("notify owner entry: %s", exc)
+
 
 @app.route("/api/auth", methods=["POST"])
 def api_auth():
@@ -93,7 +162,7 @@ def api_auth():
     try:
         import catalog as catalog_mod
         importlib.reload(catalog_mod)
-        return jsonify({
+        resp = {
             "ok":         True,
             "catalog":    catalog_mod.CATALOG,
             "min_orders": catalog_mod.MIN_ORDER,
@@ -104,7 +173,17 @@ def api_auth():
                 "crypto_eth":   os.getenv("CRYPTO_ETH", ""),
                 "crypto_usdt":  os.getenv("CRYPTO_USDT", ""),
             },
-        })
+        }
+        # Notif owner : "client entré dans le catalogue" (si initData valide)
+        bot_token = os.getenv("BOT_TOKEN", "")
+        init_data = (data or {}).get("initData", "") if isinstance(data, dict) else ""
+        parsed = _verify_init_data(init_data, bot_token) if init_data else None
+        if parsed:
+            try:
+                _notify_owner_client_entry(parsed)
+            except Exception:
+                pass
+        return jsonify(resp)
     except Exception as exc:
         logger.error("api_auth catalog: %s", exc)
         return jsonify({"ok": False, "error": "catalog_load_failed"}), 500
@@ -608,8 +687,19 @@ def api_finalize_order():
         for prod, q in safe_cart.items()
     )
     full_name = _html_escape(user_first or user_name or "?")
+    # En-tête scannable : @username + ville + total
+    country_clean = country.split(" ", 1)[1].strip() if " " in country else country
+    who_short = f"@{_html_escape(user_name)}" if user_name else full_name
+    header = (
+        f"🆕 <b>NOUVELLE COMMANDE</b> · <code>{order_id}</code>\n"
+        f"━━━━━━━━━━━━━━━━━━━━\n"
+        f"👤 {who_short}\n"
+        f"📍 <b>{_html_escape(city)}</b> ({_html_escape(country_clean)})\n"
+        f"💸 <b>{total:,.0f} €</b> · {sum(safe_cart.values())} article(s)\n"
+        f"━━━━━━━━━━━━━━━━━━━━"
+    )
     lines = [
-        f"🆕 <b>Nouvelle commande !</b> <code>{order_id}</code> 📲 <i>via Mini App</i>",
+        header,
         "",
         f"👤 Client : {full_name} ({user_id})",
     ]
@@ -939,6 +1029,52 @@ def api_admin_set_status(order_id):
                 logger.warning("admin_set_status notify client: %s", exc)
 
     return jsonify({"ok": True, "status": new_status})
+
+
+@app.route("/api/admin/send_message", methods=["POST"])
+def api_admin_send_message():
+    """L'owner envoie un message libre à un client via le bot.
+    POST {initData, user_id, text}
+    """
+    if _check_owner(request) is None:
+        return jsonify({"ok": False, "error": "not_owner"}), 403
+    try:
+        data = request.get_json(force=True, silent=True) or {}
+    except Exception:
+        data = {}
+    try:
+        target_uid = int(data.get("user_id", 0))
+    except (ValueError, TypeError):
+        target_uid = 0
+    text = (data.get("text") or "").strip()
+    if not target_uid or not text:
+        return jsonify({"ok": False, "error": "missing_args"}), 400
+    if len(text) > 3500:
+        return jsonify({"ok": False, "error": "too_long"}), 400
+
+    bot_token = os.getenv("BOT_TOKEN", "")
+    if not bot_token:
+        return jsonify({"ok": False, "error": "no_token"}), 500
+
+    try:
+        import httpx
+        r = httpx.post(
+            f"https://api.telegram.org/bot{bot_token}/sendMessage",
+            json={
+                "chat_id": target_uid,
+                "text":    "📩 *Message de l'équipe Millésime :*\n\n" + text,
+                "parse_mode": "Markdown",
+            },
+            timeout=10.0,
+        )
+        if r.status_code != 200:
+            logger.warning("admin_send_message failed %s: %s", r.status_code, r.text[:200])
+            return jsonify({"ok": False, "error": "send_failed", "detail": r.text[:200]}), 502
+    except Exception as exc:
+        logger.error("admin_send_message exception: %s", exc)
+        return jsonify({"ok": False, "error": "exception"}), 500
+
+    return jsonify({"ok": True})
 
 
 @app.route("/api/admin/photo/<order_id>/<kind>", methods=["GET"])
