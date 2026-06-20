@@ -601,7 +601,8 @@ def api_finalize_order():
         return jsonify({"ok": True, "order_id": order_id})  # ordre créé mais owner non notifié
 
     import httpx
-    addr_disp = (address.get("short") or address.get("formatted") or "—").replace("\n", "<br>")
+    # On garde les \n natifs : <code>...</code> en HTML Telegram préserve les newlines
+    addr_disp = (address.get("short") or address.get("formatted") or "—")
     cart_html = "\n".join(
         f"  • {_html_escape(prod)} × {q} = {products[prod]*q:,.0f} €"
         for prod, q in safe_cart.items()
@@ -632,7 +633,7 @@ def api_finalize_order():
     lines += [
         "",
         f"📍 <b>Adresse</b>",
-        f"<code>{_html_escape(addr_disp).replace('&lt;br&gt;', chr(10))}</code>",
+        f"<code>{_html_escape(addr_disp)}</code>",
     ]
     if address.get("maps_link"):
         lines.append(f"🗺️ <a href=\"{address['maps_link']}\">Voir sur la carte</a>")
@@ -796,19 +797,34 @@ def api_admin_orders():
             "cart_count": sum((o.get("cart") or {}).values()) if isinstance(o.get("cart"), dict) else 0,
         })
 
-    # Stats utiles : counts par status
+    # Stats utiles : counts par status + stats du jour
     counts = {"pending": 0, "confirmed": 0, "delivering": 0, "delivered": 0, "cancelled": 0}
+    today_ca    = 0.0
+    today_count = 0
     try:
         from storage import _load as _load_all
+        from datetime import datetime as _dt
+        today_str  = _dt.now().strftime("%Y-%m-%d")
         all_orders = _load_all() or []
         for o in all_orders:
             s = o.get("status") or "pending"
             if s in counts:
                 counts[s] += 1
+            if (o.get("created_at") or "").startswith(today_str):
+                # Exclure les commandes annulées du CA du jour
+                if s not in ("cancelled", "cancelled_by_client"):
+                    today_ca    += float(o.get("total", 0) or 0)
+                    today_count += 1
     except Exception:
         pass
 
-    return jsonify({"ok": True, "orders": light, "counts": counts})
+    return jsonify({
+        "ok": True,
+        "orders": light,
+        "counts": counts,
+        "today_ca":    today_ca,
+        "today_count": today_count,
+    })
 
 
 @app.route("/api/admin/order/<order_id>", methods=["POST"])

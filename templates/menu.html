@@ -1021,7 +1021,7 @@
 
 <!-- ═══ ÉCRANS OWNER (admin panel) ═══ -->
 
-<!-- Accueil owner : 2 boutons (commandes + nouvelle commande perso) -->
+<!-- Accueil owner : stats + boutons -->
 <div class="screen" id="screen-owner-home">
   <div class="welcome">
     <div class="logo">👑</div>
@@ -1029,6 +1029,19 @@
     <p>Bienvenue Millésime ☕</p>
   </div>
   <div class="container">
+    <!-- Carte stats du jour -->
+    <div class="od-section" style="background: linear-gradient(135deg, rgba(124,58,237,0.18), rgba(236,72,153,0.12)); border-color: rgba(124,58,237,0.3); margin-bottom: 18px;">
+      <h4 style="opacity: 0.8;">📅 Aujourd'hui</h4>
+      <div class="od-row" style="font-size:15px;">
+        <span class="lbl">Commandes</span>
+        <span class="val" id="todayCount">—</span>
+      </div>
+      <div class="od-row" style="font-size:20px; font-weight:800; margin-top:6px; padding-top:8px; border-top:1px solid var(--border);">
+        <span class="lbl" style="opacity:1;">CA</span>
+        <span class="val" id="todayCA" style="background:var(--accent-grad); -webkit-background-clip:text; background-clip:text; color:transparent;">— €</span>
+      </div>
+    </div>
+
     <div class="card-grid full">
       <div class="card" onclick="openOwnerOrders('')">
         <span class="emoji">📋</span>
@@ -1113,7 +1126,8 @@
     <div class="order-num" id="successOrderNum">—</div>
     <p data-i18n="success_msg">Nous vous contactons très bientôt pour la livraison.</p>
     <p style="margin-top:24px;" data-i18n="success_close">Vous pouvez fermer cette fenêtre.</p>
-    <button class="next-btn" style="max-width:240px; margin: 24px auto 0;" onclick="tg.close()" data-i18n="close">Fermer</button>
+    <button class="next-btn" id="successAdminBackBtn" style="max-width:280px; margin: 24px auto 0; display:none;" onclick="backToOwnerHome()">👑 Retour au panel admin</button>
+    <button class="next-btn" style="max-width:240px; margin: 12px auto 0;" onclick="tg.close()" data-i18n="close">Fermer</button>
   </div>
 </div>
 
@@ -1412,6 +1426,10 @@ function updateHeader(name) {
 // BACK
 // ═══════════════════════════════════════════════════════════════════════════
 document.getElementById("backBtn").addEventListener("click", () => {
+  // Cleanup avant changement d'écran
+  const curId = document.querySelector(".screen.active")?.id || "";
+  if (curId === "screen-selfie") stopSelfieCam();
+
   const prev = state.history.pop();
   if (!prev) return;
   // Reset state selon la screen
@@ -1422,8 +1440,27 @@ document.getElementById("backBtn").addEventListener("click", () => {
   const name = prev.replace("screen-", "");
   if (name === "lang") document.getElementById("header").style.display = "none";
   else { document.getElementById("header").style.display = "flex"; updateHeader(name); }
+  // Stopper auto-refresh si on quitte le panel owner
+  if (!prev.startsWith("screen-owner-")) stopOwnerAutoRefresh();
   updateCartBar();
   window.scrollTo({ top: 0, behavior: "instant" });
+});
+
+function stopSelfieCam() {
+  if (_selfieStream) {
+    try { _selfieStream.getTracks().forEach(t => t.stop()); } catch {}
+    _selfieStream = null;
+  }
+}
+
+// Global error handler — évite freeze silencieux si exception
+window.addEventListener("error", (e) => {
+  console.error("Mini App error:", e.error || e.message);
+  showToast("⚠️ " + (e.message || "Erreur").slice(0, 60), true);
+});
+window.addEventListener("unhandledrejection", (e) => {
+  console.error("Mini App unhandled:", e.reason);
+  showToast("⚠️ " + ((e.reason && e.reason.message) || "Erreur réseau").slice(0, 60), true);
 });
 
 // Telegram BackButton
@@ -2051,6 +2088,9 @@ async function finalizeOrder() {
     const data = await r.json();
     if (data.ok) {
       document.getElementById("successOrderNum").textContent = "N° " + (data.order_id || "—");
+      // Si l'owner était en mode client, afficher le bouton "Retour panel admin"
+      const adminBtn = document.getElementById("successAdminBackBtn");
+      if (adminBtn) adminBtn.style.display = state.was_owner ? "block" : "none";
       setScreen("success");
     } else {
       showToast(data.error || t("err_network"), true);
@@ -2067,13 +2107,38 @@ async function finalizeOrder() {
 // ═══════════════════════════════════════════════════════════════════════════
 // PANEL OWNER
 // ═══════════════════════════════════════════════════════════════════════════
-state.ownerData = null;          // {counts: {...}, orders: [...]}
+state.ownerData = null;          // {counts: {...}, orders: [...], today_ca, today_count}
 state.currentStatusFilter = "";  // pour le filtre courant
+state._ownerRefreshTimer = null; // setInterval id pour auto-refresh
 
 function showOwnerHome() {
   loadOwnerData(false);
   setScreen("owner-home", false);  // ne pas pousser dans history (c'est la home owner)
   state.history = [];               // reset history
+  startOwnerAutoRefresh();
+}
+
+function startOwnerAutoRefresh() {
+  stopOwnerAutoRefresh();
+  // Refresh toutes les 20s tant qu'on est dans un écran owner
+  state._ownerRefreshTimer = setInterval(() => {
+    const cur = document.querySelector(".screen.active")?.id || "";
+    if (cur.startsWith("screen-owner-")) {
+      loadOwnerData(false).then(() => {
+        // Si on est sur la liste, rafraîchir aussi le rendu
+        if (cur === "screen-owner-orders") renderOwnerOrders();
+      });
+    } else {
+      stopOwnerAutoRefresh();
+    }
+  }, 20000);
+}
+
+function stopOwnerAutoRefresh() {
+  if (state._ownerRefreshTimer) {
+    clearInterval(state._ownerRefreshTimer);
+    state._ownerRefreshTimer = null;
+  }
 }
 
 async function loadOwnerData(showToastFlag) {
@@ -2085,28 +2150,34 @@ async function loadOwnerData(showToastFlag) {
     });
     if (r.status === 403) {
       state.is_owner = false;
+      stopOwnerAutoRefresh();
       buildCountryScreen();
       setScreen("country");
       return;
     }
     const data = await r.json();
     if (!data.ok) {
-      showToast(data.error || "Erreur", true);
+      if (showToastFlag) showToast(data.error || "Erreur", true);
       return;
     }
     state.ownerData = data;
-    // Mettre à jour les compteurs sur l'accueil
+    // Stats du jour
+    const tc = document.getElementById("todayCount");
+    const tCa = document.getElementById("todayCA");
+    if (tc) tc.textContent  = `${data.today_count || 0}`;
+    if (tCa) tCa.textContent = `${(data.today_ca || 0).toLocaleString('fr-FR')} €`;
+    // Compteurs par statut
     const c = data.counts || {};
     const total = (c.pending||0)+(c.confirmed||0)+(c.delivering||0)+(c.delivered||0)+(c.cancelled||0);
-    const e = document.getElementById;
-    e.call(document, "ownerAllCount").textContent        = `${total} au total`;
-    e.call(document, "ownerPendingCount").textContent    = `${c.pending||0}`;
-    e.call(document, "ownerConfirmedCount").textContent  = `${c.confirmed||0}`;
-    e.call(document, "ownerDeliveringCount").textContent = `${c.delivering||0}`;
-    e.call(document, "ownerDeliveredCount").textContent  = `${c.delivered||0}`;
+    const setC = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
+    setC("ownerAllCount",        `${total} au total`);
+    setC("ownerPendingCount",    `${c.pending||0}`);
+    setC("ownerConfirmedCount",  `${c.confirmed||0}`);
+    setC("ownerDeliveringCount", `${c.delivering||0}`);
+    setC("ownerDeliveredCount",  `${c.delivered||0}`);
     if (showToastFlag) showToast("✓ Données à jour");
   } catch (e) {
-    showToast(t("err_network"), true);
+    if (showToastFlag) showToast(t("err_network"), true);
   }
 }
 
@@ -2120,14 +2191,32 @@ function openOwnerOrders(statusFilter) {
     "delivered": "📦 Livrées",
     "cancelled": "❌ Annulées",
   };
-  document.getElementById("ownerOrdersTitle").textContent = titles[statusFilter] || "Commandes";
+  document.getElementById("ownerOrdersTitle").innerHTML = `
+    <span>${titles[statusFilter] || "Commandes"}</span>
+    <span style="float:right; cursor:pointer; font-size:18px; opacity:0.7;"
+          onclick="event.stopPropagation(); manualRefreshOrders(this);">🔄</span>
+  `;
   renderOwnerOrders();
   setScreen("owner-orders");
+  startOwnerAutoRefresh();
+}
+
+async function manualRefreshOrders(btn) {
+  const orig = btn.innerHTML;
+  btn.innerHTML = '<span class="loader"></span>';
+  await loadOwnerData(false);
+  renderOwnerOrders();
+  btn.innerHTML = orig;
+  showToast("✓ Liste à jour");
 }
 
 function renderOwnerOrders() {
   const list = document.getElementById("ownerOrdersList");
-  const all  = state.ownerData?.orders || [];
+  if (!state.ownerData) {
+    list.innerHTML = `<div class="empty"><span class="loader"></span> Chargement...</div>`;
+    return;
+  }
+  const all  = state.ownerData.orders || [];
   const sf   = state.currentStatusFilter;
   const filtered = sf ? all.filter(o => (o.status || "pending") === sf) : all;
 
@@ -2189,6 +2278,12 @@ async function openOrderDetail(orderId) {
 function renderOrderDetail(o) {
   const el = document.getElementById("ownerOrderDetail");
   const status = o.status || "pending";
+
+  // En-tête avec bouton refresh
+  const refreshHdr = `<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px;">
+    <div class="section-title" style="margin:0;">Commande</div>
+    <span style="cursor:pointer; font-size:18px; opacity:0.7;" onclick="openOrderDetail('${o.order_id}')">🔄</span>
+  </div>`;
   const statusLabels = {
     pending:"⏳ En attente", confirmed:"✅ Confirmée",
     delivering:"🚚 Livraison", delivered:"📦 Livrée",
@@ -2208,7 +2303,7 @@ function renderOrderDetail(o) {
   const userLink = o.username ? `tg://resolve?domain=${o.username}` : `tg://user?id=${o.user_id}`;
   const phoneTel = o.phone ? `tel:${o.phone.replace(/\s/g,'')}` : "";
 
-  el.innerHTML = `
+  el.innerHTML = refreshHdr + `
     <div class="od-section">
       <h4>📦 Commande</h4>
       <div class="od-row"><span class="lbl">N° de commande</span><span class="val" style="font-family:monospace;color:var(--accent);">${o.order_id}</span></div>
@@ -2266,7 +2361,35 @@ function renderOrderDetail(o) {
 }
 
 async function setOrderStatus(orderId, newStatus) {
-  if (newStatus === "cancelled" && !confirm("Annuler vraiment cette commande ?")) return;
+  // Confirmation native Telegram pour annulation
+  if (newStatus === "cancelled") {
+    const confirmed = await new Promise((resolve) => {
+      try {
+        tg.showConfirm("Annuler vraiment cette commande ?\n\nLe client sera notifié.", (ok) => resolve(!!ok));
+      } catch {
+        resolve(confirm("Annuler vraiment cette commande ?"));
+      }
+    });
+    if (!confirmed) return;
+  }
+
+  // Désactiver tous les boutons d'action + spinner sur celui cliqué (le plus récent dans le DOM)
+  const allBtns = document.querySelectorAll("#ownerOrderDetail .btn-act");
+  allBtns.forEach(b => b.disabled = true);
+  // Cherche le bouton qui matche le statut pour mettre un loader visible dessus
+  const labelMap = {
+    confirmed:  "Confirmer",
+    delivering: "En livraison",
+    delivered:  "Livrée",
+    cancelled:  "Annuler",
+  };
+  let activeBtn = null;
+  allBtns.forEach(b => {
+    if (b.textContent.includes(labelMap[newStatus] || "")) activeBtn = b;
+  });
+  const origText = activeBtn ? activeBtn.innerHTML : "";
+  if (activeBtn) activeBtn.innerHTML = '<span class="loader"></span>';
+
   try {
     const r = await fetch(`/api/admin/order/${encodeURIComponent(orderId)}/status`, {
       method: "POST",
@@ -2277,22 +2400,36 @@ async function setOrderStatus(orderId, newStatus) {
     if (data.ok) {
       const lbls = {confirmed:"✅ Confirmée", delivering:"🚚 En livraison", delivered:"📦 Livrée", cancelled:"❌ Annulée"};
       showToast(lbls[newStatus] || "✓ Mis à jour");
-      // Recharger detail + data principale
+      // Recharger detail (qui reconstruit avec les nouveaux boutons selon nouveau status)
       await openOrderDetail(orderId);
+      // Et la data principale en arrière-plan
       loadOwnerData(false);
     } else {
       showToast(data.error || "Erreur", true);
+      allBtns.forEach(b => b.disabled = false);
+      if (activeBtn) activeBtn.innerHTML = origText;
     }
   } catch (e) {
     showToast(t("err_network"), true);
+    allBtns.forEach(b => b.disabled = false);
+    if (activeBtn) activeBtn.innerHTML = origText;
   }
 }
 
 function enterClientMode() {
-  // L'owner veut passer une commande comme un client
-  state.is_owner = false;  // temporairement
+  // L'owner veut passer une commande comme un client.
+  // On garde was_owner=true pour proposer le retour au panel après finalisation.
+  state.was_owner = true;
+  state.is_owner = false;
+  stopOwnerAutoRefresh();
   buildCountryScreen();
   setScreen("country");
+}
+
+function backToOwnerHome() {
+  state.is_owner = true;
+  state.was_owner = false;
+  showOwnerHome();
 }
 
 // Override updateHeader pour gérer les nouveaux écrans owner
