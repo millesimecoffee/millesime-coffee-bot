@@ -2355,13 +2355,24 @@ function renderOrderDetail(o) {
       ${status === 'confirmed' ? `<button class="btn-act btn-delivery" onclick="setOrderStatus('${o.order_id}','delivering')">🚚 En livraison</button>` : ''}
       ${status === 'delivering' ? `<button class="btn-act btn-deliver" onclick="setOrderStatus('${o.order_id}','delivered')">📦 Livrée</button>` : ''}
       ${status !== 'delivered' && status !== 'cancelled' ? `<button class="btn-act btn-cancel" onclick="setOrderStatus('${o.order_id}','cancelled')">❌ Annuler</button>` : ''}
-      <button class="btn-act btn-contact" onclick='contactClient(${JSON.stringify({user_id: o.user_id, username: o.username || "", user_name: o.user_name || ""})})'>💬 Contacter le client</button>
+      <button class="btn-act btn-contact"
+              data-user-id="${o.user_id}"
+              data-username="${(o.username || '').replace(/"/g,'&quot;')}"
+              data-user-name="${(o.user_name || '').replace(/"/g,'&quot;')}"
+              onclick="contactClient(this)">💬 Contacter le client</button>
       ${o.maps_link ? `<button class="btn-act btn-mapview" onclick="openExternal('${o.maps_link.replace(/'/g,"\\'")}')">🗺️ Voir l'adresse</button>` : ''}
     </div>
   `;
 }
 
-function contactClient(client) {
+function contactClient(elOrObj) {
+  // elOrObj peut être un élément DOM (data-*) OU un objet {user_id, username, user_name}
+  const client = (elOrObj && elOrObj.dataset) ? {
+    user_id:   elOrObj.dataset.userId,
+    username:  elOrObj.dataset.username || "",
+    user_name: elOrObj.dataset.userName || "",
+  } : (elOrObj || {});
+
   // Le client a un @username → on ouvre direct le chat via tg.openTelegramLink()
   if (client.username) {
     const url = "https://t.me/" + client.username;
