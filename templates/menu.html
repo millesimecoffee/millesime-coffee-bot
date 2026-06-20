@@ -5,6 +5,11 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>Millésime Coffee</title>
 <script src="https://telegram.org/js/telegram-web-app.js"></script>
+<!-- Leaflet pour la carte de tracking livreur -->
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+      integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+        integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
 <style>
   :root {
     --bg-primary:    var(--tg-theme-bg-color,            #0a0a0f);
@@ -783,6 +788,171 @@
   .btn-cancel   { background: linear-gradient(135deg, #ef4444, #dc2626); }
   .btn-contact  { background: linear-gradient(135deg, #6b7280, #4b5563); grid-column: span 2; }
   .btn-mapview  { background: linear-gradient(135deg, #0ea5e9, #0284c7); grid-column: span 2; }
+
+  /* === TRACKING (Uber Eats style) === */
+  .track-status {
+    text-align: center; padding: 18px 16px 8px; position: relative; z-index: 1;
+  }
+  .track-status .big {
+    font-size: 24px; font-weight: 800;
+    background: var(--accent-grad);
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+  }
+  .track-status .sub { font-size: 14px; opacity: 0.7; margin-top: 4px; }
+
+  .track-eta {
+    text-align: center;
+    padding: 14px 16px 10px;
+    font-size: 48px;
+    font-weight: 900;
+    letter-spacing: -1px;
+    background: var(--accent-grad);
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+    font-variant-numeric: tabular-nums;
+  }
+  .track-eta-label {
+    text-align: center;
+    font-size: 12px;
+    opacity: 0.5;
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    margin-top: -8px;
+  }
+
+  /* Steps timeline */
+  .steps {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 18px 14px;
+    margin: 14px 16px;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 18px;
+    position: relative; z-index: 1;
+  }
+  .step {
+    flex: 1; text-align: center; position: relative;
+  }
+  .step .dot {
+    width: 36px; height: 36px; border-radius: 50%;
+    background: var(--bg-secondary);
+    border: 2px solid var(--border);
+    display: flex; align-items: center; justify-content: center;
+    margin: 0 auto 6px;
+    font-size: 16px;
+    transition: all .3s;
+  }
+  .step.done .dot {
+    background: var(--accent-grad);
+    border-color: transparent;
+    color: white;
+    box-shadow: 0 4px 14px rgba(124,58,237,0.4);
+  }
+  .step.active .dot {
+    background: var(--accent-grad);
+    border-color: transparent;
+    color: white;
+    animation: stepPulse 1.8s ease-in-out infinite;
+  }
+  @keyframes stepPulse {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(124,58,237,0.6); }
+    50%       { box-shadow: 0 0 0 12px rgba(124,58,237,0); }
+  }
+  .step .label {
+    font-size: 11px;
+    font-weight: 600;
+    opacity: 0.7;
+    line-height: 1.2;
+  }
+  .step.done .label, .step.active .label { opacity: 1; }
+  /* Lignes entre steps */
+  .step::after {
+    content: '';
+    position: absolute;
+    top: 18px; left: 50%; right: -50%;
+    height: 2px;
+    background: var(--border);
+    z-index: -1;
+  }
+  .step.done::after { background: var(--accent); }
+  .step:last-child::after { display: none; }
+
+  /* Map */
+  .track-map {
+    height: 280px;
+    margin: 0 16px 14px;
+    border-radius: 18px;
+    overflow: hidden;
+    border: 1px solid var(--border);
+    position: relative; z-index: 1;
+    background: var(--bg-card);
+  }
+  .track-map .empty-map {
+    height: 100%;
+    display: flex; align-items: center; justify-content: center;
+    flex-direction: column; gap: 8px;
+    opacity: 0.4; padding: 20px; text-align: center;
+  }
+
+  /* Custom Leaflet markers */
+  .leaflet-driver-icon {
+    background: transparent !important;
+    border: none !important;
+    font-size: 32px;
+    text-align: center;
+    text-shadow: 0 2px 8px rgba(0,0,0,0.4);
+    animation: bobMarker 1.2s ease-in-out infinite alternate;
+  }
+  .leaflet-dest-icon {
+    background: transparent !important;
+    border: none !important;
+    font-size: 28px;
+    text-align: center;
+    text-shadow: 0 2px 8px rgba(0,0,0,0.4);
+  }
+  @keyframes bobMarker {
+    from { transform: translateY(0); }
+    to   { transform: translateY(-3px); }
+  }
+  /* Forcer Leaflet à utiliser le dark theme */
+  .leaflet-tile-pane { filter: invert(1) hue-rotate(180deg) brightness(0.85) contrast(0.95); }
+
+  /* Driver card */
+  .driver-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 18px;
+    padding: 16px;
+    margin: 0 16px 14px;
+    display: flex; align-items: center; gap: 14px;
+    position: relative; z-index: 1;
+  }
+  .driver-card .avatar {
+    width: 54px; height: 54px;
+    background: var(--accent-grad);
+    border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 26px;
+    flex-shrink: 0;
+    box-shadow: 0 4px 14px rgba(124,58,237,0.35);
+  }
+  .driver-card .info { flex: 1; min-width: 0; }
+  .driver-card .name { font-size: 16px; font-weight: 700; margin-bottom: 2px; }
+  .driver-card .vehicle { font-size: 12px; opacity: 0.6; }
+  .driver-card .rating {
+    font-size: 13px;
+    font-weight: 700;
+    color: #fbbf24;
+  }
+  .driver-card .plate {
+    font-family: 'SF Mono', Menlo, monospace;
+    font-size: 11px;
+    background: var(--bg-secondary);
+    border-radius: 6px;
+    padding: 3px 7px;
+    opacity: 0.8;
+  }
 </style>
 </head>
 <body>
@@ -1125,9 +1295,54 @@
     <h2 data-i18n="success_title">Commande confirmée !</h2>
     <div class="order-num" id="successOrderNum">—</div>
     <p data-i18n="success_msg">Nous vous contactons très bientôt pour la livraison.</p>
-    <p style="margin-top:24px;" data-i18n="success_close">Vous pouvez fermer cette fenêtre.</p>
-    <button class="next-btn" id="successAdminBackBtn" style="max-width:280px; margin: 24px auto 0; display:none;" onclick="backToOwnerHome()">👑 Retour au panel admin</button>
-    <button class="next-btn" style="max-width:240px; margin: 12px auto 0;" onclick="tg.close()" data-i18n="close">Fermer</button>
+    <button class="next-btn" id="successTrackBtn" style="max-width:280px; margin: 24px auto 0;" onclick="openTracking(state._lastOrderId)">📦 Suivre ma commande</button>
+    <button class="next-btn" id="successAdminBackBtn" style="max-width:280px; margin: 12px auto 0; display:none;" onclick="backToOwnerHome()">👑 Retour au panel admin</button>
+    <button class="next-btn" style="max-width:240px; margin: 12px auto 0; background:#444; box-shadow:none;" onclick="tg.close()" data-i18n="close">Fermer</button>
+  </div>
+</div>
+
+<!-- ÉCRAN 11 : Tracking livreur (style Uber Eats) -->
+<div class="screen" id="screen-tracking">
+  <!-- Statut + ETA -->
+  <div class="track-status">
+    <div class="big" id="trackStatusBig">Préparation</div>
+    <div class="sub" id="trackStatusSub">Votre commande est en cours de préparation</div>
+  </div>
+  <div class="track-eta" id="trackEta" style="display:none;">15:00</div>
+  <div class="track-eta-label" id="trackEtaLabel" style="display:none;">Temps estimé</div>
+
+  <!-- Steps -->
+  <div class="steps" id="trackSteps">
+    <div class="step" data-step="received">  <div class="dot">✓</div>  <div class="label">Reçue</div></div>
+    <div class="step" data-step="preparing"> <div class="dot">☕</div> <div class="label">Préparation</div></div>
+    <div class="step" data-step="delivering"><div class="dot">🛵</div> <div class="label">En route</div></div>
+    <div class="step" data-step="delivered"> <div class="dot">📦</div> <div class="label">Livrée</div></div>
+  </div>
+
+  <!-- Carte -->
+  <div class="track-map" id="trackMapWrap">
+    <div class="empty-map" id="trackMapEmpty">
+      <div style="font-size:40px;">🗺️</div>
+      <div style="font-size:13px;">La carte s'affichera quand le livreur sera en route</div>
+    </div>
+    <div id="trackMap" style="height:100%; display:none;"></div>
+  </div>
+
+  <!-- Carte livreur -->
+  <div class="driver-card" id="driverCard" style="display:none;">
+    <div class="avatar" id="driverAvatar">🛵</div>
+    <div class="info">
+      <div class="name" id="driverName">—</div>
+      <div class="vehicle">
+        <span id="driverVehicle">—</span>
+        ·  <span class="rating">⭐ <span id="driverRating">—</span></span>
+      </div>
+    </div>
+    <div class="plate" id="driverPlate">—</div>
+  </div>
+
+  <div class="container" style="padding-top:0;">
+    <button class="next-btn" style="background:#444; box-shadow:none; margin-top:0;" onclick="closeTracking()">Fermer</button>
   </div>
 </div>
 
@@ -2088,6 +2303,9 @@ async function finalizeOrder() {
     const data = await r.json();
     if (data.ok) {
       document.getElementById("successOrderNum").textContent = "N° " + (data.order_id || "—");
+      // Mémoriser le order_id pour le tracking
+      state._lastOrderId = data.order_id;
+      try { localStorage.setItem("last_order_id", data.order_id); } catch {}
       // Si l'owner était en mode client, afficher le bouton "Retour panel admin"
       const adminBtn = document.getElementById("successAdminBackBtn");
       if (adminBtn) adminBtn.style.display = state.was_owner ? "block" : "none";
@@ -2507,6 +2725,261 @@ updateHeader = function(name) {
     _origUpdateHeader(name);
   }
 };
+
+// ═══════════════════════════════════════════════════════════════════════════
+// TRACKING LIVREUR (style Uber Eats)
+// ═══════════════════════════════════════════════════════════════════════════
+state._trackMap = null;
+state._trackDestMarker = null;
+state._trackDriverMarker = null;
+state._trackPolyline = null;
+state._trackPollTimer = null;
+state._trackEtaTimer  = null;
+state._trackLastData  = null;
+
+function openTracking(orderId) {
+  if (!orderId) {
+    try { orderId = localStorage.getItem("last_order_id"); } catch {}
+  }
+  if (!orderId) {
+    showToast("Aucune commande à suivre", true);
+    return;
+  }
+  state._trackOrderId = orderId;
+  // Reset UI
+  document.getElementById("driverCard").style.display = "none";
+  document.getElementById("trackMap").style.display = "none";
+  document.getElementById("trackMapEmpty").style.display = "flex";
+  document.getElementById("trackEta").style.display = "none";
+  document.getElementById("trackEtaLabel").style.display = "none";
+  setScreen("tracking");
+  loadTrackingOnce();
+  startTrackingPoll();
+}
+
+function closeTracking() {
+  stopTrackingPoll();
+  // Cleanup map
+  if (state._trackMap) {
+    try { state._trackMap.remove(); } catch {}
+    state._trackMap = null;
+    state._trackDestMarker = null;
+    state._trackDriverMarker = null;
+    state._trackPolyline = null;
+  }
+  // Retour à success si on vient de finaliser, sinon close
+  const prev = state.history.pop();
+  if (prev && prev !== "screen-tracking") {
+    document.querySelectorAll(".screen").forEach(s => s.classList.remove("active"));
+    document.getElementById(prev).classList.add("active");
+    const name = prev.replace("screen-", "");
+    if (name === "lang") document.getElementById("header").style.display = "none";
+    else { document.getElementById("header").style.display = "flex"; updateHeader(name); }
+  } else {
+    try { tg.close(); } catch {}
+  }
+}
+
+function startTrackingPoll() {
+  stopTrackingPoll();
+  state._trackPollTimer = setInterval(loadTrackingOnce, 8000);  // 8s
+  // Décompte ETA tous les seconds (cosmétique)
+  state._trackEtaTimer = setInterval(tickEta, 1000);
+}
+
+function stopTrackingPoll() {
+  if (state._trackPollTimer) { clearInterval(state._trackPollTimer); state._trackPollTimer = null; }
+  if (state._trackEtaTimer)  { clearInterval(state._trackEtaTimer);  state._trackEtaTimer  = null; }
+}
+
+async function loadTrackingOnce() {
+  if (!state._trackOrderId) return;
+  try {
+    const r = await fetch("/api/order/track", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ initData: tg.initData || "", order_id: state._trackOrderId }),
+    });
+    const data = await r.json();
+    if (!data.ok) {
+      if (data.error === "auth_failed" || data.error === "forbidden") {
+        showToast("Accès refusé", true);
+        stopTrackingPoll();
+      }
+      return;
+    }
+    state._trackLastData = data;
+    state._trackEtaSeconds = data.eta_seconds;
+    state._trackEtaTickAt  = Date.now();
+    renderTracking(data);
+  } catch (e) {
+    // Réseau down, silencieux (réessaie au prochain poll)
+  }
+}
+
+function tickEta() {
+  if (state._trackEtaSeconds == null) return;
+  const elapsed = Math.floor((Date.now() - (state._trackEtaTickAt || Date.now())) / 1000);
+  const remaining = Math.max(0, state._trackEtaSeconds - elapsed);
+  const mm = Math.floor(remaining / 60);
+  const ss = remaining % 60;
+  const eta = document.getElementById("trackEta");
+  if (eta) eta.textContent = `${mm}:${ss.toString().padStart(2,'0')}`;
+}
+
+function renderTracking(data) {
+  const status = data.status;
+
+  // Texte de statut
+  const titleMap = {
+    pending:    { big: "⏳ Commande reçue",         sub: "En attente de confirmation par le commerçant" },
+    confirmed:  { big: "☕ Préparation en cours",   sub: "Votre commande est en préparation" },
+    delivering: { big: "🛵 Livreur en route !",     sub: "Le livreur arrive bientôt" },
+    delivered:  { big: "✅ Livrée",                  sub: "Merci d'avoir commandé chez nous !" },
+    cancelled:  { big: "❌ Commande annulée",       sub: "Cette commande a été annulée" },
+    cancelled_by_client: { big: "❌ Annulée",        sub: "Vous avez annulé cette commande" },
+  };
+  const info = titleMap[status] || titleMap.pending;
+  document.getElementById("trackStatusBig").textContent = info.big;
+  document.getElementById("trackStatusSub").textContent = info.sub;
+
+  // Steps
+  const steps = data.steps || {};
+  ["received","preparing","delivering","delivered"].forEach(k => {
+    const el = document.querySelector(`#trackSteps .step[data-step="${k}"]`);
+    if (!el) return;
+    el.classList.remove("done", "active");
+    if (steps[k]) el.classList.add("done");
+  });
+  // Marquer la step "active" = la première non-done qui suit (sauf si cancelled)
+  if (status !== "cancelled" && status !== "cancelled_by_client" && status !== "delivered") {
+    const order = ["received","preparing","delivering","delivered"];
+    let activeStep = null;
+    for (const k of order) {
+      if (!steps[k]) { activeStep = k; break; }
+    }
+    if (activeStep) {
+      const el = document.querySelector(`#trackSteps .step[data-step="${activeStep}"]`);
+      if (el) el.classList.add("active");
+    }
+  }
+
+  // ETA visible uniquement si delivering
+  const etaEl   = document.getElementById("trackEta");
+  const etaLbl  = document.getElementById("trackEtaLabel");
+  if (status === "delivering" && data.eta_seconds != null) {
+    etaEl.style.display = "block"; etaLbl.style.display = "block";
+    etaLbl.textContent = "Temps estimé restant";
+    tickEta();
+  } else if (status === "delivered") {
+    etaEl.style.display = "block"; etaLbl.style.display = "block";
+    etaEl.textContent = "✓";
+    etaLbl.textContent = "Livré";
+  } else {
+    etaEl.style.display = "none"; etaLbl.style.display = "none";
+  }
+
+  // Driver card visible uniquement si delivering ou delivered
+  const driver = data.driver || {};
+  if (status === "delivering" || status === "delivered") {
+    document.getElementById("driverCard").style.display = "flex";
+    document.getElementById("driverAvatar").textContent  = driver.vehicle_emoji || "🛵";
+    document.getElementById("driverName").textContent    = driver.name + " " + (driver.emoji || "");
+    document.getElementById("driverVehicle").textContent = driver.vehicle || "Livreur";
+    document.getElementById("driverRating").textContent  = (driver.rating || "5.0").toString();
+    document.getElementById("driverPlate").textContent   = driver.plate || "";
+  } else {
+    document.getElementById("driverCard").style.display = "none";
+  }
+
+  // Carte
+  updateTrackingMap(data);
+}
+
+function updateTrackingMap(data) {
+  const status   = data.status;
+  const dest     = data.dest || {};
+  const driver   = data.driver_pos;
+  const wrap     = document.getElementById("trackMapWrap");
+  const empty    = document.getElementById("trackMapEmpty");
+  const mapDiv   = document.getElementById("trackMap");
+
+  // Pas de coords destination ou pas en delivering → empty
+  if (!dest.lat || !dest.lon || (status !== "delivering" && status !== "delivered")) {
+    empty.style.display = "flex";
+    mapDiv.style.display = "none";
+    if (state._trackMap) {
+      try { state._trackMap.remove(); } catch {}
+      state._trackMap = null;
+      state._trackDestMarker = null;
+      state._trackDriverMarker = null;
+      state._trackPolyline = null;
+    }
+    return;
+  }
+
+  empty.style.display = "none";
+  mapDiv.style.display = "block";
+
+  // Init carte si pas déjà fait
+  if (!state._trackMap) {
+    if (typeof L === "undefined") {
+      // Leaflet pas chargé (lib externe) — fallback texte
+      empty.style.display = "flex";
+      empty.innerHTML = `<div style="font-size:40px;">📍</div><div style="font-size:13px;">Livreur en route vers votre adresse</div>`;
+      mapDiv.style.display = "none";
+      return;
+    }
+    state._trackMap = L.map("trackMap", {
+      zoomControl: false, attributionControl: false,
+      dragging: true, scrollWheelZoom: false,
+    }).setView([dest.lat, dest.lon], 14);
+    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 19 }).addTo(state._trackMap);
+    // Marqueur destination
+    const destIcon = L.divIcon({ className: "leaflet-dest-icon", html: "🏠", iconSize: [40,40] });
+    state._trackDestMarker = L.marker([dest.lat, dest.lon], { icon: destIcon }).addTo(state._trackMap);
+  }
+
+  // Marqueur livreur
+  if (driver && driver.lat != null) {
+    const driverIcon = L.divIcon({
+      className: "leaflet-driver-icon",
+      html: data.driver.vehicle_emoji || "🛵",
+      iconSize: [40,40],
+    });
+    if (state._trackDriverMarker) {
+      state._trackDriverMarker.setLatLng([driver.lat, driver.lon]);
+    } else {
+      state._trackDriverMarker = L.marker([driver.lat, driver.lon], { icon: driverIcon }).addTo(state._trackMap);
+    }
+    // Polyline animée
+    if (state._trackPolyline) {
+      state._trackPolyline.setLatLngs([[driver.lat, driver.lon], [dest.lat, dest.lon]]);
+    } else {
+      state._trackPolyline = L.polyline(
+        [[driver.lat, driver.lon], [dest.lat, dest.lon]],
+        { color: "#7c3aed", weight: 4, opacity: 0.8, dashArray: "8,8" }
+      ).addTo(state._trackMap);
+    }
+    // Ajuster zoom pour montrer les 2 marqueurs
+    const bounds = L.latLngBounds([[driver.lat, driver.lon], [dest.lat, dest.lon]]);
+    state._trackMap.fitBounds(bounds, { padding: [40, 40], maxZoom: 15 });
+  }
+}
+
+// Étendre updateHeader pour tracking
+const _origUpdateHeader2 = updateHeader;
+updateHeader = function(name) {
+  if (name === "tracking") {
+    document.getElementById("headerTitle").textContent    = "📦 Suivi de commande";
+    document.getElementById("headerSubtitle").textContent = "N° " + (state._trackOrderId || "");
+  } else {
+    _origUpdateHeader2(name);
+  }
+};
+
+// Au back depuis tracking : cleanup
+const _origBackHandler = document.getElementById("backBtn").onclick;
 
 // ═══════════════════════════════════════════════════════════════════════════
 // INIT

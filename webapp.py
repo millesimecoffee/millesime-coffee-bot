@@ -657,6 +657,8 @@ def api_finalize_order():
         "payment_crypto":   payment.get("crypto_name", ""),
         "address":   (address.get("short") or address.get("formatted") or address.get("text") or ""),
         "address_verified": bool(address.get("verified")),
+        "address_lat": address.get("lat"),
+        "address_lon": address.get("lon"),
         "phone":     "",
         "maps_link": address.get("maps_link", ""),
         "status":    "pending",
@@ -968,9 +970,16 @@ def api_admin_set_status(order_id):
     if (order.get("status") or "pending") == new_status:
         return jsonify({"ok": True, "unchanged": True})
 
-    # Update
+    # Update + horodatage de passage en delivering (pour ETA tracking)
     try:
-        update_order(order_id, {"status": new_status})
+        upd = {"status": new_status}
+        if new_status == "delivering":
+            from datetime import datetime as _dt
+            upd["_delivery_started_at"] = _dt.now().isoformat(timespec="seconds")
+        elif new_status == "delivered":
+            from datetime import datetime as _dt
+            upd["_delivered_at"] = _dt.now().isoformat(timespec="seconds")
+        update_order(order_id, upd)
     except Exception as exc:
         logger.error("admin_set_status update: %s", exc)
         return jsonify({"ok": False, "error": "update_failed"}), 500
@@ -1029,6 +1038,198 @@ def api_admin_set_status(order_id):
                 logger.warning("admin_set_status notify client: %s", exc)
 
     return jsonify({"ok": True, "status": new_status})
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Tracking commande client (style Uber Eats)
+# ═══════════════════════════════════════════════════════════════════════════
+
+_DRIVERS = [
+    {"name": "Karim",   "emoji": "🧑🏽‍✈️"},
+    {"name": "Sofia",   "emoji": "👩🏻‍✈️"},
+    {"name": "Mehdi",   "emoji": "🧑🏽"},
+    {"name": "Lucas",   "emoji": "👨🏻"},
+    {"name": "Emma",    "emoji": "👩🏼"},
+    {"name": "Yanis",   "emoji": "🧑🏽‍🦱"},
+    {"name": "Chloé",   "emoji": "👩🏼‍🦰"},
+    {"name": "Hugo",    "emoji": "👨🏻‍🦱"},
+    {"name": "Léna",    "emoji": "👩🏻‍🦱"},
+    {"name": "Adam",    "emoji": "🧑🏽‍🦲"},
+]
+
+_VEHICLES = [
+    {"label": "Scooter", "emoji": "🛵"},
+    {"label": "Vélo",    "emoji": "🚴"},
+    {"label": "Voiture", "emoji": "🚗"},
+    {"label": "Moto",    "emoji": "🏍️"},
+]
+
+# Durée totale "delivering" simulée (en secondes) : 15 min
+_DELIVERY_DURATION = 15 * 60
+
+
+def _driver_for_order(order_id: str) -> dict:
+    """Choix déterministe d'un livreur depuis l'order_id (hashé)."""
+    import hashlib
+    h = int(hashlib.sha1(order_id.encode()).hexdigest(), 16)
+    drv = _DRIVERS[h % len(_DRIVERS)]
+    veh = _VEHICLES[(h // 7) % len(_VEHICLES)]
+    # Note livreur entre 4.6 et 5.0
+    rating = 4.6 + (h % 5) / 10.0
+    # Plaque fictive type "XX-123-XX"
+    chars = "ABCDEFGHJKLMNPQRSTVWXYZ"
+    p1 = chars[(h     ) % len(chars)] + chars[(h >>  3) % len(chars)]
+    p2 = f"{(h >> 6) % 1000:03d}"
+    p3 = chars[(h >> 10) % len(chars)] + chars[(h >> 13) % len(chars)]
+    plate = f"{p1}-{p2}-{p3}"
+    return {
+        "name":          drv["name"],
+        "emoji":         drv["emoji"],
+        "vehicle":       veh["label"],
+        "vehicle_emoji": veh["emoji"],
+        "rating":        round(rating, 1),
+        "plate":         plate,
+    }
+
+
+@app.route("/api/order/track", methods=["POST"])
+def api_order_track():
+    """Tracking d'une commande pour le client.
+    POST {initData, order_id}
+    Auth : initData doit correspondre au user_id de la commande.
+    """
+    bot_token = os.getenv("BOT_TOKEN", "")
+    try:
+        data = request.get_json(force=True, silent=True) or {}
+    except Exception:
+        data = {}
+    init_data = data.get("initData", "")
+    parsed = _verify_init_data(init_data, bot_token)
+    if not parsed:
+        return jsonify({"ok": False, "error": "auth_failed"}), 401
+
+    import json as _json
+    try:
+        user_obj = _json.loads(parsed.get("user", "{}"))
+        client_uid = int(user_obj.get("id", 0))
+    except Exception:
+        return jsonify({"ok": False, "error": "no_user"}), 400
+
+    order_id = (data.get("order_id") or "").strip()
+    if not order_id:
+        return jsonify({"ok": False, "error": "no_order_id"}), 400
+
+    # Charger la commande
+    try:
+        from storage import get_order
+        order = get_order(order_id)
+    except Exception:
+        return jsonify({"ok": False, "error": "load_failed"}), 500
+    if not order:
+        return jsonify({"ok": False, "error": "not_found"}), 404
+
+    # Vérifier que c'est bien la commande de l'user (ou owner)
+    owner_uid = os.getenv("OWNER_USER_ID", "")
+    if int(order.get("user_id", 0)) != client_uid and str(client_uid) != str(owner_uid):
+        return jsonify({"ok": False, "error": "forbidden"}), 403
+
+    status = order.get("status", "pending")
+    driver = _driver_for_order(order_id)
+
+    # Coordonnées destination
+    try:
+        dest_lat = float(order.get("address_lat") or order.get("lat") or 0)
+        dest_lon = float(order.get("address_lon") or order.get("lon") or 0)
+    except Exception:
+        dest_lat = 0.0
+        dest_lon = 0.0
+    # Fallback : parser maps_link "?mlat=X&mlon=Y"
+    if (dest_lat == 0.0 or dest_lon == 0.0) and order.get("maps_link"):
+        try:
+            import re as _re
+            m_lat = _re.search(r"mlat=([\-0-9.]+)", order["maps_link"])
+            m_lon = _re.search(r"mlon=([\-0-9.]+)", order["maps_link"])
+            if m_lat and m_lon:
+                dest_lat = float(m_lat.group(1))
+                dest_lon = float(m_lon.group(1))
+        except Exception:
+            pass
+
+    # ETA simulée
+    # Si delivering, on calcule le temps écoulé depuis le passage à "delivering"
+    # On utilise updated_at si disponible, sinon on simule depuis 0
+    eta_seconds = None
+    progress    = 0.0   # 0..1 (0 = vient de partir, 1 = arrivé)
+    if status == "delivering":
+        # On utilise un timestamp arbitraire : created_at + 5 min (préparation) comme début livraison
+        from datetime import datetime as _dt
+        try:
+            created = _dt.fromisoformat((order.get("created_at") or "").replace("Z", "+00:00"))
+            if created.tzinfo is not None:
+                created = created.astimezone().replace(tzinfo=None)
+        except Exception:
+            created = _dt.now()
+        # Prep time fictif : 5 min après création
+        start_delivery = order.get("_delivery_started_at")
+        if start_delivery:
+            try:
+                start = _dt.fromisoformat(start_delivery)
+            except Exception:
+                start = created
+        else:
+            start = created
+        elapsed = (_dt.now() - start).total_seconds()
+        progress = max(0.0, min(1.0, elapsed / _DELIVERY_DURATION))
+        eta_seconds = max(0, int(_DELIVERY_DURATION - elapsed))
+    elif status == "delivered":
+        progress = 1.0
+        eta_seconds = 0
+
+    # Position du livreur (interpolation entre point de départ fictif et destination)
+    # Point de départ fictif : 2.5 km à l'est de la destination (random selon order_id)
+    driver_lat = driver_lon = None
+    if dest_lat and dest_lon and status in ("delivering", "delivered"):
+        # Offset déterministe par order_id (pour que ça paraisse cohérent)
+        import hashlib
+        h = int(hashlib.sha1(order_id.encode()).hexdigest(), 16)
+        angle = (h % 360) * 3.14159 / 180
+        radius_km = 2.5
+        # 1 deg lat ≈ 111 km
+        start_lat = dest_lat + (radius_km / 111.0) * (1 if (h >> 4) % 2 else -1) * 0.5
+        start_lon = dest_lon + (radius_km / 111.0) * (1 if (h >> 5) % 2 else -1) * 0.5
+        # Interpolation
+        driver_lat = start_lat + (dest_lat - start_lat) * progress
+        driver_lon = start_lon + (dest_lon - start_lon) * progress
+
+    # Étapes visuelles
+    steps_status = {
+        "received":    True,                                                        # reçue : toujours OK
+        "preparing":   status in ("confirmed", "delivering", "delivered"),         # préparée
+        "delivering":  status in ("delivering", "delivered"),                       # en route
+        "delivered":   status == "delivered",                                       # livrée
+    }
+
+    return jsonify({
+        "ok":        True,
+        "order_id":  order_id,
+        "status":    status,
+        "rating":    order.get("rating"),
+        "driver":    driver,
+        "eta_seconds": eta_seconds,
+        "progress":  progress,
+        "dest": {
+            "lat": dest_lat or None,
+            "lon": dest_lon or None,
+            "address": order.get("address"),
+        },
+        "driver_pos": (
+            {"lat": driver_lat, "lon": driver_lon}
+            if driver_lat is not None else None
+        ),
+        "steps": steps_status,
+        "city":  order.get("city"),
+        "total": order.get("total"),
+    })
 
 
 @app.route("/api/admin/send_message", methods=["POST"])
