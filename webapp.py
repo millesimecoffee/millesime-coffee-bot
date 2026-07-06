@@ -1004,6 +1004,13 @@ def api_admin_set_status(order_id):
         if new_status == "delivering":
             from datetime import datetime as _dt
             upd["_delivery_started_at"] = _dt.now().isoformat(timespec="seconds")
+            # Owner peut préciser un temps de livraison en minutes
+            try:
+                eta_min = int(data.get("eta_minutes", 0))
+                if 1 <= eta_min <= 240:
+                    upd["_eta_minutes"] = eta_min
+            except (ValueError, TypeError):
+                pass
         elif new_status == "delivered":
             from datetime import datetime as _dt
             upd["_delivered_at"] = _dt.now().isoformat(timespec="seconds")
@@ -1120,6 +1127,66 @@ def _driver_for_order(order_id: str) -> dict:
     }
 
 
+@app.route("/api/client/orders", methods=["POST"])
+def api_client_orders():
+    """Retourne les commandes du client authentifié (via initData).
+    POST {initData, limit?}
+    """
+    bot_token = os.getenv("BOT_TOKEN", "")
+    try:
+        data = request.get_json(force=True, silent=True) or {}
+    except Exception:
+        data = {}
+    init_data = data.get("initData", "")
+    parsed = _verify_init_data(init_data, bot_token)
+    if not parsed:
+        return jsonify({"ok": False, "error": "auth_failed"}), 401
+
+    import json as _json
+    try:
+        user_obj = _json.loads(parsed.get("user", "{}"))
+        uid      = int(user_obj.get("id", 0))
+    except Exception:
+        return jsonify({"ok": False, "error": "no_user"}), 400
+    if not uid:
+        return jsonify({"ok": False, "error": "no_user"}), 400
+
+    limit = int(data.get("limit", 50))
+    try:
+        from storage import _load as _load_all
+        all_orders = _load_all() or []
+    except Exception as exc:
+        logger.error("client_orders load: %s", exc)
+        return jsonify({"ok": False, "error": "load_failed"}), 500
+
+    mine = [o for o in all_orders if int(o.get("user_id", 0)) == uid]
+    mine = sorted(mine, key=lambda o: o.get("created_at", ""), reverse=True)[:limit]
+
+    active_statuses = ("pending", "confirmed", "delivering")
+    active = [o for o in mine if (o.get("status") or "pending") in active_statuses]
+
+    def light(o):
+        return {
+            "order_id":   o.get("order_id"),
+            "created_at": o.get("created_at"),
+            "city":       o.get("city"),
+            "country":    o.get("country"),
+            "total":      o.get("total"),
+            "payment":    o.get("payment"),
+            "status":     o.get("status") or "pending",
+            "rating":     o.get("rating"),
+            "cart_count": sum((o.get("cart") or {}).values()) if isinstance(o.get("cart"), dict) else 0,
+            "cart":       o.get("cart") or {},
+        }
+
+    return jsonify({
+        "ok":       True,
+        "orders":   [light(o) for o in mine],
+        "active":   [light(o) for o in active],
+        "count":    len(mine),
+    })
+
+
 @app.route("/api/order/track", methods=["POST"])
 def api_order_track():
     """Tracking d'une commande pour le client.
@@ -1183,32 +1250,29 @@ def api_order_track():
         except Exception:
             pass
 
-    # ETA simulée
-    # Si delivering, on calcule le temps écoulé depuis le passage à "delivering"
-    # On utilise updated_at si disponible, sinon on simule depuis 0
+    # ETA calculée à partir de _eta_minutes défini par l'owner (défaut 15 min)
     eta_seconds = None
     progress    = 0.0   # 0..1 (0 = vient de partir, 1 = arrivé)
+    duration_seconds = _DELIVERY_DURATION
+    try:
+        if order.get("_eta_minutes"):
+            duration_seconds = int(order.get("_eta_minutes")) * 60
+    except (ValueError, TypeError):
+        pass
+
     if status == "delivering":
-        # On utilise un timestamp arbitraire : created_at + 5 min (préparation) comme début livraison
         from datetime import datetime as _dt
-        try:
-            created = _dt.fromisoformat((order.get("created_at") or "").replace("Z", "+00:00"))
-            if created.tzinfo is not None:
-                created = created.astimezone().replace(tzinfo=None)
-        except Exception:
-            created = _dt.now()
-        # Prep time fictif : 5 min après création
         start_delivery = order.get("_delivery_started_at")
         if start_delivery:
             try:
                 start = _dt.fromisoformat(start_delivery)
             except Exception:
-                start = created
+                start = _dt.now()
         else:
-            start = created
+            start = _dt.now()
         elapsed = (_dt.now() - start).total_seconds()
-        progress = max(0.0, min(1.0, elapsed / _DELIVERY_DURATION))
-        eta_seconds = max(0, int(_DELIVERY_DURATION - elapsed))
+        progress = max(0.0, min(1.0, elapsed / duration_seconds))
+        eta_seconds = max(0, int(duration_seconds - elapsed))
     elif status == "delivered":
         progress = 1.0
         eta_seconds = 0

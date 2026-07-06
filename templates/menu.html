@@ -3,6 +3,8 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="color-scheme" content="dark">
+<meta name="theme-color" content="#0a0a0f">
 <title>Millésime Coffee</title>
 <script src="https://telegram.org/js/telegram-web-app.js"></script>
 <!-- Leaflet pour la carte de tracking livreur -->
@@ -11,13 +13,15 @@
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
         integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
 <style>
+  /* Dark theme FORCÉ — on ignore les variables tg-theme-* qui suivent
+     le mode iPhone. La Mini App reste toujours en dark. */
   :root {
-    --bg-primary:    var(--tg-theme-bg-color,            #0a0a0f);
-    --bg-secondary:  var(--tg-theme-secondary-bg-color,  #15151f);
+    --bg-primary:    #0a0a0f;
+    --bg-secondary:  #15151f;
     --bg-card:       #1c1c28;
     --bg-card-hover: #25252f;
-    --txt-primary:   var(--tg-theme-text-color,          #ffffff);
-    --txt-secondary: var(--tg-theme-hint-color,          #8e8e9a);
+    --txt-primary:   #ffffff;
+    --txt-secondary: #8e8e9a;
     --accent:        #7c3aed;
     --accent-grad:   linear-gradient(135deg, #7c3aed 0%, #ec4899 100%);
     --success:       #10b981;
@@ -25,7 +29,17 @@
     --border:        rgba(255,255,255,0.06);
     --shadow-lg:     0 12px 40px rgba(0,0,0,0.5);
     --shadow-md:     0 4px 12px rgba(0,0,0,0.3);
+    color-scheme: dark;
   }
+  /* Reset des overrides Telegram sur inputs / boutons natifs */
+  input, button, textarea, select {
+    color-scheme: dark;
+    background-color: transparent;
+    color: inherit;
+  }
+  input::placeholder, textarea::placeholder { color: rgba(255,255,255,0.4); }
+  /* Force le fond du body même si Telegram inject des styles inline */
+  html, body { background: #0a0a0f !important; color: #ffffff !important; }
 
   * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
 
@@ -1136,24 +1150,54 @@
   .leaflet-driver-icon {
     background: transparent !important;
     border: none !important;
-    font-size: 32px;
     text-align: center;
-    text-shadow: 0 2px 8px rgba(0,0,0,0.4);
+    position: relative;
+  }
+  .leaflet-driver-icon .icon {
+    font-size: 30px;
+    text-shadow: 0 2px 8px rgba(0,0,0,0.6);
     animation: bobMarker 1.2s ease-in-out infinite alternate;
+    display: block;
+    position: relative;
+    z-index: 2;
+  }
+  .leaflet-driver-icon::before {
+    content: '';
+    position: absolute;
+    top: 50%; left: 50%;
+    width: 40px; height: 40px;
+    transform: translate(-50%, -50%);
+    background: radial-gradient(circle, rgba(124,58,237,0.6) 0%, rgba(124,58,237,0) 70%);
+    border-radius: 50%;
+    animation: driverPulse 2s ease-in-out infinite;
+    z-index: 1;
+  }
+  @keyframes driverPulse {
+    0%   { transform: translate(-50%, -50%) scale(0.8); opacity: 0.9; }
+    100% { transform: translate(-50%, -50%) scale(2.2); opacity: 0; }
   }
   .leaflet-dest-icon {
     background: transparent !important;
     border: none !important;
-    font-size: 28px;
+    font-size: 32px;
     text-align: center;
-    text-shadow: 0 2px 8px rgba(0,0,0,0.4);
+    text-shadow: 0 3px 10px rgba(0,0,0,0.6);
+    filter: drop-shadow(0 0 6px rgba(16,185,129,0.5));
   }
   @keyframes bobMarker {
     from { transform: translateY(0); }
-    to   { transform: translateY(-3px); }
+    to   { transform: translateY(-4px); }
   }
-  /* Forcer Leaflet à utiliser le dark theme */
-  .leaflet-tile-pane { filter: invert(1) hue-rotate(180deg) brightness(0.85) contrast(0.95); }
+  /* Polyline animée dashed */
+  .leaflet-interactive.route {
+    stroke-dasharray: 10, 12;
+    animation: dashDance 1s linear infinite;
+  }
+  @keyframes dashDance {
+    to { stroke-dashoffset: -22; }
+  }
+  /* Fond map cohérent avec l'app */
+  .leaflet-container { background: #0f1015 !important; font-family: inherit; }
 
   /* Driver card */
   .driver-card {
@@ -1196,6 +1240,44 @@
 
 <!-- TOAST -->
 <div id="toast" class="toast"></div>
+
+<!-- MODAL ETA (owner définit temps de livraison) -->
+<div id="etaModal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.75); backdrop-filter:blur(6px); z-index:300; align-items:center; justify-content:center; padding:20px;">
+  <div style="background:#1c1c28; border-radius:20px; padding:24px; max-width:340px; width:100%; box-shadow:0 20px 60px rgba(0,0,0,0.6);">
+    <div style="text-align:center; margin-bottom:16px;">
+      <div style="font-size:42px; margin-bottom:6px;">⏱️</div>
+      <div style="font-size:18px; font-weight:800;">Temps de livraison</div>
+      <div style="font-size:12px; opacity:0.6; margin-top:4px;">Un compteur démarrera pour le client</div>
+    </div>
+    <div style="display:flex; align-items:baseline; justify-content:center; gap:8px; margin:20px 0;">
+      <input type="number" id="etaInput" value="15" min="1" max="240"
+             style="background:#0a0a0f; border:2px solid #7c3aed; border-radius:14px; width:120px; padding:14px; font-size:32px; font-weight:800; text-align:center; color:#fff; -webkit-appearance:none;">
+      <div style="font-size:16px; opacity:0.6;">minutes</div>
+    </div>
+    <div style="display:grid; grid-template-columns:1fr 1fr 1fr 1fr; gap:6px; margin-bottom:16px;">
+      <button onclick="setEta(15)" class="eta-preset">15</button>
+      <button onclick="setEta(30)" class="eta-preset">30</button>
+      <button onclick="setEta(45)" class="eta-preset">45</button>
+      <button onclick="setEta(60)" class="eta-preset">60</button>
+    </div>
+    <button class="next-btn" onclick="confirmEta()">✅ Démarrer la livraison</button>
+    <button class="next-btn" style="background:#333; box-shadow:none; margin-top:8px;" onclick="closeEtaModal()">Annuler</button>
+  </div>
+</div>
+<style>
+  .eta-preset {
+    background: rgba(124,58,237,0.15);
+    border: 1px solid rgba(124,58,237,0.3);
+    color: white;
+    padding: 10px 6px;
+    border-radius: 10px;
+    font-size: 14px;
+    font-weight: 700;
+    cursor: pointer;
+    transition: transform .1s;
+  }
+  .eta-preset:active { transform: scale(0.94); background: rgba(124,58,237,0.3); }
+</style>
 
 <!-- HEADER (caché sur screen langue) -->
 <div class="header" id="header" style="display:none;">
@@ -1247,6 +1329,49 @@
     <button class="pwd-btn" id="pwdBtn" onclick="checkPassword()">
       <span data-i18n="pwd_btn">Accéder au catalogue</span>
     </button>
+  </div>
+</div>
+
+<!-- ÉCRAN CLIENT HOME : historique + commande en cours -->
+<div class="screen" id="screen-client-home">
+  <div class="welcome">
+    <div class="logo">☕</div>
+    <h1>Millésime Coffee</h1>
+    <p id="clientHomeGreeting">Content de vous revoir !</p>
+  </div>
+  <div class="container">
+    <!-- Commande en cours (si existe) -->
+    <div id="activeClientOrderSection" style="display:none;">
+      <div class="section-title">🔥 Commande en cours</div>
+      <div id="activeClientOrderCard"></div>
+    </div>
+    <!-- Actions principales -->
+    <div class="card-grid full" style="margin-top:16px;">
+      <div class="card" onclick="startClientNewOrder()">
+        <span class="emoji">🛍️</span>
+        <div class="info">
+          <div class="name">Nouvelle commande</div>
+          <div class="meta">Parcourir le catalogue</div>
+        </div>
+        <span class="arrow">›</span>
+      </div>
+      <div class="card" onclick="openClientHistory()">
+        <span class="emoji">📜</span>
+        <div class="info">
+          <div class="name">Mes commandes</div>
+          <div class="meta" id="clientHistoryCount">—</div>
+        </div>
+        <span class="arrow">›</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ÉCRAN CLIENT HISTORY : liste des commandes passées -->
+<div class="screen" id="screen-client-history">
+  <div class="container">
+    <div class="section-title">📜 Vos commandes</div>
+    <div id="clientOrdersList"></div>
   </div>
 </div>
 
@@ -1957,7 +2082,7 @@ async function checkPassword() {
       state.catalog = data.catalog;
       state.minOrders = data.min_orders;
       state.payment_config = data.payment_config || {};
-      // Détection owner via initData côté serveur ? On utilise un check ping
+      // Check owner
       try {
         const ownerCheck = await fetch("/api/admin/orders", {
           method: "POST",
@@ -1971,6 +2096,23 @@ async function checkPassword() {
       if (state.is_owner) {
         showOwnerHome();
       } else {
+        // Check si le client a des commandes passées
+        try {
+          const clientResp = await fetch("/api/client/orders", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ initData: tg.initData || "", limit: 20 })
+          });
+          if (clientResp.status === 200) {
+            const cd = await clientResp.json();
+            if (cd.ok && cd.count > 0) {
+              state.clientData = cd;
+              showClientHome();
+              return;
+            }
+          }
+        } catch {}
+        // Aucune commande → flow classique catalogue
         buildCountryScreen();
         setScreen("country");
       }
@@ -3368,7 +3510,6 @@ function updateTrackingMap(data) {
   // Init carte si pas déjà fait
   if (!state._trackMap) {
     if (typeof L === "undefined") {
-      // Leaflet pas chargé (lib externe) — fallback texte
       empty.style.display = "flex";
       empty.innerHTML = `<div style="font-size:40px;">📍</div><div style="font-size:13px;">Livreur en route vers votre adresse</div>`;
       mapDiv.style.display = "none";
@@ -3377,10 +3518,21 @@ function updateTrackingMap(data) {
     state._trackMap = L.map("trackMap", {
       zoomControl: false, attributionControl: false,
       dragging: true, scrollWheelZoom: false,
+      touchZoom: true, doubleClickZoom: false,
     }).setView([dest.lat, dest.lon], 14);
-    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 19 }).addTo(state._trackMap);
+    // Tiles dark natives (CARTO Dark Matter) — bien meilleur que le filter CSS
+    L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", {
+      maxZoom: 19,
+      subdomains: "abcd",
+      attribution: "",
+    }).addTo(state._trackMap);
     // Marqueur destination
-    const destIcon = L.divIcon({ className: "leaflet-dest-icon", html: "🏠", iconSize: [40,40] });
+    const destIcon = L.divIcon({
+      className: "leaflet-dest-icon",
+      html: "🏠",
+      iconSize: [40,40],
+      iconAnchor: [20,36],
+    });
     state._trackDestMarker = L.marker([dest.lat, dest.lon], { icon: destIcon }).addTo(state._trackMap);
   }
 
@@ -3388,35 +3540,41 @@ function updateTrackingMap(data) {
   if (driver && driver.lat != null) {
     const driverIcon = L.divIcon({
       className: "leaflet-driver-icon",
-      html: data.driver.vehicle_emoji || "🛵",
-      iconSize: [40,40],
+      html: `<span class="icon">${data.driver.vehicle_emoji || "🛵"}</span>`,
+      iconSize: [60,60],
+      iconAnchor: [30,30],
     });
     if (state._trackDriverMarker) {
       state._trackDriverMarker.setLatLng([driver.lat, driver.lon]);
     } else {
       state._trackDriverMarker = L.marker([driver.lat, driver.lon], { icon: driverIcon }).addTo(state._trackMap);
     }
-    // Polyline animée
+    // Polyline animée dashed
     if (state._trackPolyline) {
       state._trackPolyline.setLatLngs([[driver.lat, driver.lon], [dest.lat, dest.lon]]);
     } else {
       state._trackPolyline = L.polyline(
         [[driver.lat, driver.lon], [dest.lat, dest.lon]],
-        { color: "#7c3aed", weight: 4, opacity: 0.8, dashArray: "8,8" }
+        { color: "#7c3aed", weight: 4, opacity: 0.95, className: "route" }
       ).addTo(state._trackMap);
     }
     // Ajuster zoom pour montrer les 2 marqueurs
     const bounds = L.latLngBounds([[driver.lat, driver.lon], [dest.lat, dest.lon]]);
-    state._trackMap.fitBounds(bounds, { padding: [40, 40], maxZoom: 15 });
+    state._trackMap.fitBounds(bounds, { padding: [50, 50], maxZoom: 16 });
   }
 }
 
-// Étendre updateHeader pour tracking
+// Étendre updateHeader pour tracking + client screens
 const _origUpdateHeader2 = updateHeader;
 updateHeader = function(name) {
   if (name === "tracking") {
     document.getElementById("headerTitle").textContent    = "📦 Suivi de commande";
     document.getElementById("headerSubtitle").textContent = "N° " + (state._trackOrderId || "");
+  } else if (name === "client-home") {
+    document.getElementById("header").style.display = "none";
+  } else if (name === "client-history") {
+    document.getElementById("headerTitle").textContent    = "📜 Mes commandes";
+    document.getElementById("headerSubtitle").textContent = `${(state.clientData?.count || 0)} au total`;
   } else {
     _origUpdateHeader2(name);
   }
@@ -3424,6 +3582,217 @@ updateHeader = function(name) {
 
 // Au back depuis tracking : cleanup
 const _origBackHandler = document.getElementById("backBtn").onclick;
+
+// ═══════════════════════════════════════════════════════════════════════════
+// PANEL CLIENT (historique + commande en cours)
+// ═══════════════════════════════════════════════════════════════════════════
+async function reloadClientOrders() {
+  try {
+    const r = await fetch("/api/client/orders", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ initData: tg.initData || "", limit: 20 })
+    });
+    if (r.status !== 200) return;
+    const cd = await r.json();
+    if (cd.ok) state.clientData = cd;
+  } catch {}
+}
+
+function showClientHome() {
+  renderClientHome();
+  setScreen("client-home", false);
+  state.history = [];
+}
+
+function renderClientHome() {
+  const cd = state.clientData || { orders: [], active: [], count: 0 };
+  document.getElementById("clientHistoryCount").textContent = `${cd.count} commande${cd.count>1?'s':''}`;
+
+  // Section commande active
+  const sec  = document.getElementById("activeClientOrderSection");
+  const card = document.getElementById("activeClientOrderCard");
+  const active = (cd.active || [])[0];
+  if (active) {
+    const statusLabels = {
+      pending: "⏳ En attente de confirmation",
+      confirmed: "☕ Préparation en cours",
+      delivering: "🛵 Livreur en route",
+    };
+    const status = active.status || "pending";
+    const total = (active.total||0).toLocaleString('fr-FR');
+    card.innerHTML = `
+      <div class="order-card2 status-${status}" onclick="openTracking('${active.order_id}')">
+        <div class="oc-top">
+          <div class="oc-left">
+            <span class="oc-oid">${active.order_id}</span>
+            <span class="age-badge age-fresh">${statusLabels[status] || status}</span>
+          </div>
+        </div>
+        <div class="oc-info">
+          <div class="oc-line">
+            <span class="oc-client">${active.city || '?'}</span>
+            <span class="oc-total">${total} €</span>
+          </div>
+          <div class="oc-meta">
+            <span>${active.cart_count} article(s) · ${active.payment || ''}</span>
+            <span>Cliquer pour suivre en direct →</span>
+          </div>
+        </div>
+      </div>
+    `;
+    sec.style.display = "block";
+  } else {
+    sec.style.display = "none";
+  }
+}
+
+function startClientNewOrder() {
+  hapticSelect();
+  buildCountryScreen();
+  setScreen("country");
+}
+
+function openClientHistory() {
+  hapticSelect();
+  const cd = state.clientData || { orders: [] };
+  const list = document.getElementById("clientOrdersList");
+  if ((cd.orders || []).length === 0) {
+    list.innerHTML = `<div class="empty"><div class="emoji">📭</div><div class="text">Aucune commande</div></div>`;
+  } else {
+    const statusLabels = {
+      pending:"⏳ En attente", confirmed:"☕ Préparation",
+      delivering:"🛵 En route", delivered:"📦 Livrée",
+      cancelled:"❌ Annulée", cancelled_by_client:"❌ Annulée",
+    };
+    list.innerHTML = cd.orders.map(o => {
+      const date = (o.created_at || "").replace("T", " ").slice(0, 16);
+      const status = o.status || "pending";
+      const canTrack = ["pending", "confirmed", "delivering", "delivered"].includes(status);
+      const total = (o.total||0).toLocaleString('fr-FR');
+      const rating = o.rating ? '⭐'.repeat(o.rating) : '';
+      return `
+        <div class="order-card2 status-${status}" ${canTrack ? `onclick="openTracking('${o.order_id}')"` : ''}>
+          <div class="oc-top">
+            <div class="oc-left">
+              <span class="oc-oid">${o.order_id}</span>
+              <span class="age-badge age-fresh">${statusLabels[status] || status}</span>
+            </div>
+            <span style="font-size:11px; opacity:0.5;">${date}</span>
+          </div>
+          <div class="oc-info">
+            <div class="oc-line">
+              <span class="oc-client">${o.city || '?'}</span>
+              <span class="oc-total">${total} €</span>
+            </div>
+            <div class="oc-meta">
+              <span>${o.cart_count} article(s) · ${o.payment || ''}</span>
+              ${rating ? `<span>${rating}</span>` : ''}
+            </div>
+          </div>
+        </div>
+      `;
+    }).join("");
+  }
+  setScreen("client-history");
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// MODAL ETA (owner définit temps de livraison)
+// ═══════════════════════════════════════════════════════════════════════════
+state._etaPendingOrderId = null;
+state._etaPendingBtn     = null;
+
+function showEtaModal(orderId, btn) {
+  state._etaPendingOrderId = orderId;
+  state._etaPendingBtn     = btn;
+  document.getElementById("etaInput").value = "15";
+  document.getElementById("etaModal").style.display = "flex";
+  hapticSelect();
+  setTimeout(() => document.getElementById("etaInput").focus(), 100);
+}
+
+function closeEtaModal() {
+  document.getElementById("etaModal").style.display = "none";
+  state._etaPendingOrderId = null;
+  state._etaPendingBtn     = null;
+}
+
+function setEta(minutes) {
+  document.getElementById("etaInput").value = minutes;
+  hapticSelect();
+}
+
+async function confirmEta() {
+  const inp     = document.getElementById("etaInput");
+  const minutes = parseInt(inp.value || "0", 10);
+  if (!(minutes >= 1 && minutes <= 240)) {
+    showToast("Entre 1 et 240 min", true);
+    return;
+  }
+  const orderId = state._etaPendingOrderId;
+  const btn     = state._etaPendingBtn;
+  closeEtaModal();
+  if (!orderId) return;
+
+  hapticMedium();
+  if (btn) {
+    btn.disabled = true;
+    btn._orig = btn.innerHTML;
+    btn.innerHTML = '<span class="loader"></span>';
+  }
+  try {
+    const r = await fetch(`/api/admin/order/${encodeURIComponent(orderId)}/status`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        initData: tg.initData || "",
+        status: "delivering",
+        eta_minutes: minutes,
+      })
+    });
+    const data = await r.json();
+    if (data.ok) {
+      showToast(`🚚 Livraison démarrée (${minutes} min)`);
+      hapticSuccess();
+      await loadOwnerData(false);
+      renderOwnerOrders();
+      // Refresh detail si ouvert
+      const curScreen = document.querySelector(".screen.active")?.id;
+      if (curScreen === "screen-owner-detail") {
+        openOrderDetail(orderId);
+      }
+    } else {
+      showToast(data.error || "Erreur", true);
+      if (btn) { btn.disabled = false; btn.innerHTML = btn._orig; }
+      hapticError();
+    }
+  } catch {
+    showToast(t("err_network"), true);
+    if (btn) { btn.disabled = false; btn.innerHTML = btn._orig; }
+    hapticError();
+  }
+}
+
+// Intercepter quickAction pour "delivering" → afficher le modal ETA
+const _origQuickAction = quickAction;
+quickAction = async function(orderId, newStatus, btn) {
+  if (newStatus === "delivering") {
+    showEtaModal(orderId, btn);
+    return;
+  }
+  return _origQuickAction(orderId, newStatus, btn);
+};
+
+// Same override sur setOrderStatus dans le detail
+const _origSetOrderStatus = setOrderStatus;
+setOrderStatus = async function(orderId, newStatus) {
+  if (newStatus === "delivering") {
+    showEtaModal(orderId, null);
+    return;
+  }
+  return _origSetOrderStatus(orderId, newStatus);
+};
 
 // Search input listener (debounced 150ms pour éviter le re-render à chaque frappe)
 (function initOrdersSearch() {
