@@ -789,6 +789,243 @@
   .btn-contact  { background: linear-gradient(135deg, #6b7280, #4b5563); grid-column: span 2; }
   .btn-mapview  { background: linear-gradient(135deg, #0ea5e9, #0284c7); grid-column: span 2; }
 
+  /* === ADMIN PANEL v2 — cards + quick actions + age badges === */
+  .search-bar {
+    display: flex; align-items: center;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 4px 4px 4px 14px;
+    margin-bottom: 12px;
+    transition: border-color .15s;
+  }
+  .search-bar:focus-within { border-color: var(--accent); }
+  .search-bar input {
+    flex: 1;
+    background: transparent;
+    border: none;
+    color: var(--txt-primary);
+    padding: 10px 4px;
+    font-size: 14px;
+    outline: none;
+    -webkit-appearance: none;
+  }
+  .search-bar .search-icon { opacity: 0.5; font-size: 15px; }
+  .search-bar .clear-btn {
+    background: rgba(255,255,255,0.08);
+    border: none;
+    color: var(--txt-secondary);
+    width: 28px; height: 28px;
+    border-radius: 50%;
+    cursor: pointer;
+    display: none;
+  }
+  .search-bar.has-text .clear-btn { display: block; }
+
+  /* Filter tabs */
+  .filter-tabs {
+    display: flex; gap: 6px; overflow-x: auto;
+    padding-bottom: 4px;
+    margin-bottom: 12px;
+    scrollbar-width: none;
+  }
+  .filter-tabs::-webkit-scrollbar { display: none; }
+  .filter-tab {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    color: var(--txt-secondary);
+    padding: 7px 14px;
+    border-radius: 12px;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: all .12s;
+    flex-shrink: 0;
+  }
+  .filter-tab.active {
+    background: var(--accent-grad);
+    border-color: transparent;
+    color: white;
+    box-shadow: 0 3px 10px rgba(124,58,237,0.35);
+  }
+  .filter-tab .num {
+    display: inline-block;
+    background: rgba(0,0,0,0.25);
+    padding: 1px 6px;
+    border-radius: 5px;
+    font-size: 11px;
+    margin-left: 4px;
+  }
+  .filter-tab.active .num { background: rgba(255,255,255,0.25); }
+
+  /* Age badge */
+  .age-badge {
+    display: inline-flex; align-items: center; gap: 3px;
+    padding: 2px 7px;
+    border-radius: 6px;
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+  }
+  .age-fresh  { background: rgba(16,185,129,0.15);  color: #34d399; }
+  .age-normal { background: rgba(245,158,11,0.15);  color: #fbbf24; }
+  .age-old    { background: rgba(239,68,68,0.15);   color: #f87171; animation: agePulse 1.6s ease-in-out infinite; }
+  @keyframes agePulse {
+    0%,100% { box-shadow: 0 0 0 0 rgba(239,68,68,0.4); }
+    50%      { box-shadow: 0 0 0 6px rgba(239,68,68,0); }
+  }
+
+  /* Enhanced order card with quick actions */
+  .order-card2 {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 12px 14px;
+    margin-bottom: 10px;
+    transition: transform .12s, box-shadow .15s;
+  }
+  .order-card2.status-pending    { border-left: 4px solid #fbbf24; }
+  .order-card2.status-confirmed  { border-left: 4px solid #60a5fa; }
+  .order-card2.status-delivering { border-left: 4px solid #c084fc; }
+  .order-card2.status-delivered  { border-left: 4px solid #34d399; opacity: 0.75; }
+  .order-card2.status-cancelled  { border-left: 4px solid #f87171; opacity: 0.65; }
+  .order-card2.status-cancelled_by_client { border-left: 4px solid #f87171; opacity: 0.65; }
+  .order-card2 .oc-top {
+    display: flex; justify-content: space-between; align-items: center;
+    margin-bottom: 6px;
+  }
+  .order-card2 .oc-left { display: flex; align-items: center; gap: 8px; }
+  .order-card2 .oc-oid {
+    font-family: 'SF Mono', Menlo, monospace;
+    font-weight: 700; font-size: 14px;
+    color: var(--accent);
+  }
+  .order-card2 .oc-info {
+    cursor: pointer;
+    padding-bottom: 4px;
+  }
+  .order-card2 .oc-line {
+    display: flex; justify-content: space-between; align-items: center;
+    font-size: 13px;
+    margin: 2px 0;
+  }
+  .order-card2 .oc-client { font-weight: 600; }
+  .order-card2 .oc-total {
+    font-weight: 800;
+    background: var(--accent-grad);
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+    font-size: 15px;
+  }
+  .order-card2 .oc-meta {
+    font-size: 11px; opacity: 0.6;
+    display: flex; justify-content: space-between; align-items: center;
+    margin-top: 4px;
+  }
+  .order-card2 .oc-actions {
+    display: flex; gap: 6px;
+    margin-top: 10px; padding-top: 10px;
+    border-top: 1px solid var(--border);
+  }
+  .order-card2 .oc-actions .qa {
+    flex: 1;
+    background: var(--accent-grad);
+    border: none;
+    color: white;
+    padding: 8px 6px;
+    border-radius: 9px;
+    font-size: 12px;
+    font-weight: 700;
+    cursor: pointer;
+    transition: transform .1s, opacity .15s;
+  }
+  .order-card2 .oc-actions .qa:active { transform: scale(0.94); }
+  .order-card2 .oc-actions .qa.confirm  { background: linear-gradient(135deg,#3b82f6,#2563eb); }
+  .order-card2 .oc-actions .qa.delivery { background: linear-gradient(135deg,#a855f7,#9333ea); }
+  .order-card2 .oc-actions .qa.deliver  { background: linear-gradient(135deg,#10b981,#059669); }
+  .order-card2 .oc-actions .qa.cancel   { background: linear-gradient(135deg,#ef4444,#dc2626); flex: 0 0 auto; padding: 8px 12px; }
+  .order-card2 .oc-actions .qa.details  { background: rgba(255,255,255,0.08); color: var(--txt-primary); flex: 0 0 auto; padding: 8px 12px; }
+
+  /* Dashboard section — Active orders */
+  .active-section {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 18px;
+    padding: 14px;
+    margin-bottom: 14px;
+  }
+  .active-section h3 {
+    display: flex; justify-content: space-between; align-items: center;
+    font-size: 13px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    opacity: 0.7;
+    margin-bottom: 12px;
+    font-weight: 700;
+  }
+  .active-section h3 .count-badge {
+    background: var(--accent-grad);
+    color: white;
+    padding: 2px 8px;
+    border-radius: 8px;
+    font-size: 11px;
+    letter-spacing: 0.5px;
+  }
+
+  /* Mini CA chart */
+  .ca-chart {
+    display: flex; align-items: flex-end;
+    justify-content: space-between;
+    height: 40px;
+    padding: 6px 0;
+    gap: 5px;
+  }
+  .ca-chart .bar {
+    flex: 1;
+    background: linear-gradient(180deg, rgba(124,58,237,0.5), rgba(236,72,153,0.3));
+    border-radius: 3px 3px 0 0;
+    min-height: 3px;
+    transition: height .5s;
+    position: relative;
+  }
+  .ca-chart .bar.today {
+    background: var(--accent-grad);
+    box-shadow: 0 0 8px rgba(124,58,237,0.5);
+  }
+  .ca-chart-labels {
+    display: flex; justify-content: space-between;
+    font-size: 9px; opacity: 0.4;
+    margin-top: 2px;
+  }
+  .ca-chart-labels span { flex: 1; text-align: center; }
+
+  /* Stats card grid */
+  .stat-mini {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 12px;
+  }
+  .stat-mini .lbl {
+    font-size: 10px; text-transform: uppercase;
+    opacity: 0.5; letter-spacing: 1px;
+    margin-bottom: 5px;
+  }
+  .stat-mini .val { font-size: 20px; font-weight: 800; }
+  .stat-mini .val.grad {
+    background: var(--accent-grad);
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+  }
+
+  /* Empty active section */
+  .empty-active {
+    text-align: center;
+    padding: 30px 15px;
+    color: var(--txt-secondary);
+  }
+  .empty-active .emoji { font-size: 40px; margin-bottom: 8px; opacity: 0.6; }
+
   /* === TRACKING (Uber Eats style) === */
   .track-status {
     text-align: center; padding: 18px 16px 8px; position: relative; z-index: 1;
@@ -1191,92 +1428,93 @@
 
 <!-- ═══ ÉCRANS OWNER (admin panel) ═══ -->
 
-<!-- Accueil owner : stats + boutons -->
+<!-- Accueil owner v2 — Dashboard -->
 <div class="screen" id="screen-owner-home">
-  <div class="welcome">
-    <div class="logo">👑</div>
-    <h1>Espace Admin</h1>
-    <p>Bienvenue Millésime ☕</p>
-  </div>
-  <div class="container">
-    <!-- Carte stats du jour -->
-    <div class="od-section" style="background: linear-gradient(135deg, rgba(124,58,237,0.18), rgba(236,72,153,0.12)); border-color: rgba(124,58,237,0.3); margin-bottom: 18px;">
-      <h4 style="opacity: 0.8;">📅 Aujourd'hui</h4>
-      <div class="od-row" style="font-size:15px;">
-        <span class="lbl">Commandes</span>
-        <span class="val" id="todayCount">—</span>
+  <div class="container" style="padding-top: 16px;">
+
+    <!-- Header greeting compact -->
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px;">
+      <div>
+        <div style="font-size:22px; font-weight:800;">👑 Dashboard</div>
+        <div style="font-size:12px; opacity:0.55;" id="dashDate">—</div>
       </div>
-      <div class="od-row" style="font-size:20px; font-weight:800; margin-top:6px; padding-top:8px; border-top:1px solid var(--border);">
-        <span class="lbl" style="opacity:1;">CA</span>
-        <span class="val" id="todayCA" style="background:var(--accent-grad); -webkit-background-clip:text; background-clip:text; color:transparent;">— €</span>
+      <div style="cursor:pointer; font-size:20px; opacity:0.7;" onclick="loadOwnerData(true)">🔄</div>
+    </div>
+
+    <!-- CA du jour + graph 7 jours -->
+    <div class="od-section" style="background: linear-gradient(135deg, rgba(124,58,237,0.18), rgba(236,72,153,0.10)); border-color: rgba(124,58,237,0.3); margin-bottom: 12px;">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+        <div style="font-size:11px; text-transform:uppercase; letter-spacing:1px; opacity:0.7; font-weight:700;">💰 CA d'aujourd'hui</div>
+        <div style="font-size:11px; opacity:0.55;" id="todayCount">—</div>
+      </div>
+      <div style="font-size:34px; font-weight:900; background:var(--accent-grad); -webkit-background-clip:text; background-clip:text; color:transparent; line-height:1;" id="todayCA">— €</div>
+      <div class="ca-chart" id="caChart"></div>
+      <div class="ca-chart-labels" id="caChartLabels"></div>
+    </div>
+
+    <!-- Mini stats : panier moyen + top produit -->
+    <div class="card-grid" style="grid-template-columns:1fr 1fr; margin-bottom: 14px;">
+      <div class="stat-mini">
+        <div class="lbl">Panier moyen</div>
+        <div class="val grad" id="avgBasketVal">— €</div>
+      </div>
+      <div class="stat-mini">
+        <div class="lbl">Top produit</div>
+        <div class="val" id="topProductVal" style="font-size:15px;">—</div>
       </div>
     </div>
 
-    <div class="card-grid full">
-      <div class="card" onclick="openOwnerOrders('')">
-        <span class="emoji">📋</span>
-        <div class="info">
-          <div class="name">Toutes les commandes</div>
-          <div class="meta" id="ownerAllCount">—</div>
-        </div>
-        <span class="arrow">›</span>
+    <!-- Section À TRAITER MAINTENANT -->
+    <div class="active-section">
+      <h3>
+        <span>🔥 À traiter maintenant</span>
+        <span class="count-badge" id="activeCountBadge">0</span>
+      </h3>
+      <div id="activeOrdersContainer"></div>
+    </div>
+
+    <!-- Filtres rapides -->
+    <div style="font-size:11px; text-transform:uppercase; letter-spacing:1px; opacity:0.5; font-weight:700; margin: 18px 0 10px;">Historique</div>
+    <div class="filter-tabs" style="margin-bottom: 10px;">
+      <div class="filter-tab" onclick="openOwnerOrders('')">Toutes <span class="num" id="tabAllCount">0</span></div>
+      <div class="filter-tab" onclick="openOwnerOrders('pending')">⏳ En attente <span class="num" id="tabPendingCount">0</span></div>
+      <div class="filter-tab" onclick="openOwnerOrders('confirmed')">✅ Confirmées <span class="num" id="tabConfirmedCount">0</span></div>
+      <div class="filter-tab" onclick="openOwnerOrders('delivering')">🚚 Livraison <span class="num" id="tabDeliveringCount">0</span></div>
+      <div class="filter-tab" onclick="openOwnerOrders('delivered')">📦 Livrées <span class="num" id="tabDeliveredCount">0</span></div>
+      <div class="filter-tab" onclick="openOwnerOrders('cancelled')">❌ Annulées <span class="num" id="tabCancelledCount">0</span></div>
+    </div>
+
+    <!-- Autres actions -->
+    <div class="card" onclick="enterClientMode()" style="margin-top:6px;">
+      <span class="emoji">🛍️</span>
+      <div class="info">
+        <div class="name">Passer une commande</div>
+        <div class="meta">Mode client</div>
       </div>
-      <div class="card" onclick="openOwnerOrders('pending')">
-        <span class="emoji">⏳</span>
-        <div class="info">
-          <div class="name">En attente</div>
-          <div class="meta" id="ownerPendingCount">—</div>
-        </div>
-        <span class="arrow">›</span>
-      </div>
-      <div class="card" onclick="openOwnerOrders('confirmed')">
-        <span class="emoji">✅</span>
-        <div class="info">
-          <div class="name">Confirmées</div>
-          <div class="meta" id="ownerConfirmedCount">—</div>
-        </div>
-        <span class="arrow">›</span>
-      </div>
-      <div class="card" onclick="openOwnerOrders('delivering')">
-        <span class="emoji">🚚</span>
-        <div class="info">
-          <div class="name">En livraison</div>
-          <div class="meta" id="ownerDeliveringCount">—</div>
-        </div>
-        <span class="arrow">›</span>
-      </div>
-      <div class="card" onclick="openOwnerOrders('delivered')">
-        <span class="emoji">📦</span>
-        <div class="info">
-          <div class="name">Livrées</div>
-          <div class="meta" id="ownerDeliveredCount">—</div>
-        </div>
-        <span class="arrow">›</span>
-      </div>
-      <div class="card" onclick="enterClientMode()">
-        <span class="emoji">🛍️</span>
-        <div class="info">
-          <div class="name">Passer une commande</div>
-          <div class="meta">Mode client</div>
-        </div>
-        <span class="arrow">›</span>
-      </div>
-      <div class="card" onclick="loadOwnerData(true)">
-        <span class="emoji">🔄</span>
-        <div class="info">
-          <div class="name">Rafraîchir</div>
-          <div class="meta">Recharger les compteurs</div>
-        </div>
-        <span class="arrow">›</span>
-      </div>
+      <span class="arrow">›</span>
     </div>
   </div>
 </div>
 
-<!-- Liste de commandes owner -->
+<!-- Liste de commandes owner v2 -->
 <div class="screen" id="screen-owner-orders">
   <div class="container">
     <div class="section-title" id="ownerOrdersTitle">Commandes</div>
+    <!-- Barre de recherche -->
+    <div class="search-bar" id="ordersSearchBar">
+      <span class="search-icon">🔍</span>
+      <input type="text" id="ordersSearchInput" placeholder="Rechercher: N°, client, ville…" autocomplete="off">
+      <button class="clear-btn" onclick="clearOrdersSearch()">✕</button>
+    </div>
+    <!-- Filter tabs -->
+    <div class="filter-tabs" id="ordersFilterTabs">
+      <div class="filter-tab" data-filter=""            onclick="setOrdersFilter('')">Toutes <span class="num" id="ftAll">0</span></div>
+      <div class="filter-tab" data-filter="pending"     onclick="setOrdersFilter('pending')">⏳ <span class="num" id="ftPending">0</span></div>
+      <div class="filter-tab" data-filter="confirmed"   onclick="setOrdersFilter('confirmed')">✅ <span class="num" id="ftConfirmed">0</span></div>
+      <div class="filter-tab" data-filter="delivering"  onclick="setOrdersFilter('delivering')">🚚 <span class="num" id="ftDelivering">0</span></div>
+      <div class="filter-tab" data-filter="delivered"   onclick="setOrdersFilter('delivered')">📦 <span class="num" id="ftDelivered">0</span></div>
+      <div class="filter-tab" data-filter="cancelled"   onclick="setOrdersFilter('cancelled')">❌ <span class="num" id="ftCancelled">0</span></div>
+    </div>
     <div id="ownerOrdersList"></div>
   </div>
 </div>
@@ -2379,28 +2617,86 @@ async function loadOwnerData(showToastFlag) {
       return;
     }
     state.ownerData = data;
-    // Stats du jour
-    const tc = document.getElementById("todayCount");
-    const tCa = document.getElementById("todayCA");
-    if (tc) tc.textContent  = `${data.today_count || 0}`;
-    if (tCa) tCa.textContent = `${(data.today_ca || 0).toLocaleString('fr-FR')} €`;
-    // Compteurs par statut
+
+    // Compteurs
     const c = data.counts || {};
     const total = (c.pending||0)+(c.confirmed||0)+(c.delivering||0)+(c.delivered||0)+(c.cancelled||0);
     const setC = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
-    setC("ownerAllCount",        `${total} au total`);
-    setC("ownerPendingCount",    `${c.pending||0}`);
-    setC("ownerConfirmedCount",  `${c.confirmed||0}`);
-    setC("ownerDeliveringCount", `${c.delivering||0}`);
-    setC("ownerDeliveredCount",  `${c.delivered||0}`);
+
+    // Dashboard header
+    const now = new Date();
+    const days = ["dimanche","lundi","mardi","mercredi","jeudi","vendredi","samedi"];
+    const months = ["jan","fév","mar","avr","mai","juin","juil","août","sep","oct","nov","déc"];
+    setC("dashDate", `${days[now.getDay()]} ${now.getDate()} ${months[now.getMonth()]}`);
+
+    // Stats du jour
+    setC("todayCA",     `${(data.today_ca || 0).toLocaleString('fr-FR')} €`);
+    setC("todayCount",  `${data.today_count || 0} cmd`);
+    setC("avgBasketVal", `${Math.round(data.avg_basket_today || 0)} €`);
+    // Top produit : garder juste le nom (sans emoji) OU tout
+    const tp = data.top_product || "";
+    setC("topProductVal", tp ? `${tp} · ${data.top_product_qty}×` : "—");
+
+    // Compteurs pour tabs / cards
+    setC("activeCountBadge", (c.pending||0) + (c.confirmed||0) + (c.delivering||0));
+    ["All", "Pending", "Confirmed", "Delivering", "Delivered", "Cancelled"].forEach(name => {
+      const key = name.toLowerCase();
+      const val = name === "All" ? total : (c[key] || 0);
+      setC(`tab${name}Count`, `${val}`);
+      setC(`ft${name}`,       `${val}`);
+    });
+
+    // Mini graph CA sur 7 jours
+    renderCAChart(data.ca_history || []);
+
+    // Section "À traiter maintenant" (pending + confirmed + delivering)
+    renderActiveOrders(data.orders || []);
+
     if (showToastFlag) showToast("✓ Données à jour");
   } catch (e) {
     if (showToastFlag) showToast(t("err_network"), true);
   }
 }
 
+function renderCAChart(history) {
+  const wrap    = document.getElementById("caChart");
+  const labels  = document.getElementById("caChartLabels");
+  if (!wrap || !labels) return;
+  const max = Math.max(1, ...history.map(h => h.ca));
+  const todayStr = new Date().toISOString().slice(0,10);
+  wrap.innerHTML   = history.map(h => {
+    const pct = Math.max(4, (h.ca / max) * 100);
+    const isToday = h.day === todayStr;
+    return `<div class="bar${isToday?' today':''}" style="height:${pct}%" title="${h.day}: ${Math.round(h.ca)} €"></div>`;
+  }).join("");
+  const dayNames = ["D","L","M","M","J","V","S"];
+  labels.innerHTML = history.map(h => {
+    const dt = new Date(h.day);
+    return `<span>${dayNames[dt.getDay()]}</span>`;
+  }).join("");
+}
+
+function renderActiveOrders(orders) {
+  const wrap = document.getElementById("activeOrdersContainer");
+  if (!wrap) return;
+  const active = orders.filter(o => {
+    const s = o.status || "pending";
+    return s === "pending" || s === "confirmed" || s === "delivering";
+  }).slice(0, 8); // max 8 pour ne pas encombrer
+
+  if (active.length === 0) {
+    wrap.innerHTML = `<div class="empty-active">
+      <div class="emoji">😌</div>
+      <div>Tout est à jour — aucune action requise</div>
+    </div>`;
+    return;
+  }
+  wrap.innerHTML = active.map(renderOrderCard2).join("");
+}
+
 function openOwnerOrders(statusFilter) {
   state.currentStatusFilter = statusFilter;
+  state.currentSearchQuery = "";
   const titles = {
     "": "Toutes les commandes",
     "pending": "⏳ En attente",
@@ -2414,9 +2710,42 @@ function openOwnerOrders(statusFilter) {
     <span style="float:right; cursor:pointer; font-size:18px; opacity:0.7;"
           onclick="event.stopPropagation(); manualRefreshOrders(this);">🔄</span>
   `;
+  // Reset search input + active tab
+  const searchInput = document.getElementById("ordersSearchInput");
+  if (searchInput) { searchInput.value = ""; document.getElementById("ordersSearchBar").classList.remove("has-text"); }
+  document.querySelectorAll(".filter-tab[data-filter]").forEach(el => {
+    el.classList.toggle("active", el.dataset.filter === statusFilter);
+  });
   renderOwnerOrders();
   setScreen("owner-orders");
   startOwnerAutoRefresh();
+}
+
+function setOrdersFilter(filter) {
+  state.currentStatusFilter = filter;
+  document.querySelectorAll(".filter-tab[data-filter]").forEach(el => {
+    el.classList.toggle("active", el.dataset.filter === filter);
+  });
+  const titles = {
+    "": "Toutes les commandes", "pending": "⏳ En attente",
+    "confirmed": "✅ Confirmées", "delivering": "🚚 En livraison",
+    "delivered": "📦 Livrées", "cancelled": "❌ Annulées",
+  };
+  document.getElementById("ownerOrdersTitle").innerHTML = `
+    <span>${titles[filter] || "Commandes"}</span>
+    <span style="float:right; cursor:pointer; font-size:18px; opacity:0.7;"
+          onclick="event.stopPropagation(); manualRefreshOrders(this);">🔄</span>
+  `;
+  renderOwnerOrders();
+  hapticSelect();
+}
+
+function clearOrdersSearch() {
+  const inp = document.getElementById("ordersSearchInput");
+  if (inp) inp.value = "";
+  document.getElementById("ordersSearchBar").classList.remove("has-text");
+  state.currentSearchQuery = "";
+  renderOwnerOrders();
 }
 
 async function manualRefreshOrders(btn) {
@@ -2426,6 +2755,7 @@ async function manualRefreshOrders(btn) {
   renderOwnerOrders();
   btn.innerHTML = orig;
   showToast("✓ Liste à jour");
+  hapticSuccess();
 }
 
 function renderOwnerOrders() {
@@ -2435,42 +2765,156 @@ function renderOwnerOrders() {
     return;
   }
   const all  = state.ownerData.orders || [];
-  const sf   = state.currentStatusFilter;
-  const filtered = sf ? all.filter(o => (o.status || "pending") === sf) : all;
+  const sf   = state.currentStatusFilter || "";
+  let filtered = sf ? all.filter(o => (o.status || "pending") === sf) : all;
+
+  // Filtre recherche
+  const q = (state.currentSearchQuery || "").toLowerCase().trim();
+  if (q) {
+    filtered = filtered.filter(o => {
+      const hay = `${o.order_id} ${o.user_name||''} ${o.username||''} ${o.city||''} ${o.country||''}`.toLowerCase();
+      return hay.includes(q);
+    });
+  }
 
   if (filtered.length === 0) {
-    list.innerHTML = `<div class="empty"><div class="emoji">📭</div><div class="text">Aucune commande</div></div>`;
+    list.innerHTML = `<div class="empty"><div class="emoji">📭</div><div class="text">${q ? 'Aucun résultat' : 'Aucune commande'}</div></div>`;
     return;
   }
 
-  list.innerHTML = filtered.map(o => {
-    const date = (o.created_at || "").replace("T", " ").slice(0, 16);
-    const status = o.status || "pending";
-    const statusLabels = {
-      pending:"⏳ En attente", confirmed:"✅ Confirmée",
-      delivering:"🚚 Livraison", delivered:"📦 Livrée",
-      cancelled:"❌ Annulée", cancelled_by_client:"❌ Annulé client",
-    };
-    const photoIcons = (o.has_selfie ? "📸" : "") + (o.has_proof ? "🏦" : "");
-    const src = o.source === "miniapp" ? "📲" : "💬";
-    return `
-      <div class="order-card" onclick="openOrderDetail('${o.order_id}')">
-        <div class="top">
-          <span class="oid">${o.order_id}</span>
-          <span class="date">${date}</span>
-        </div>
-        <div class="mid">
-          <span class="name">${(o.user_name || '?').replace(/[<>]/g,'')}${o.username ? ' (@'+o.username+')' : ''}</span>
-          <span class="total">${(o.total||0).toLocaleString('fr-FR')} €</span>
-        </div>
-        <div class="bottom">
-          <span class="city">${src} ${o.city || '?'} · ${o.cart_count} art. ${photoIcons}</span>
-          <span class="status-badge status-${status}">${statusLabels[status] || status}</span>
+  list.innerHTML = filtered.map(renderOrderCard2).join("");
+}
+
+// Carte commande v2 réutilisable (dashboard + liste)
+function renderOrderCard2(o) {
+  const status = o.status || "pending";
+  const timeAgo = _timeAgo(o.created_at);
+  const ageCls  = _ageColorClass(o.created_at, status);
+  const client  = (o.user_name || '?').replace(/[<>]/g,'');
+  const uName   = o.username ? ` @${o.username}` : '';
+  const src     = o.source === "miniapp" ? "📲" : "💬";
+  const photos  = (o.has_selfie ? "📸" : "") + (o.has_proof ? " 🏦" : "");
+  const total   = (o.total||0).toLocaleString('fr-FR');
+
+  // Quick actions selon status
+  let actions = "";
+  if (status === "pending") {
+    actions = `
+      <button class="qa confirm" onclick="event.stopPropagation(); quickAction('${o.order_id}','confirmed', this)">✅ Confirmer</button>
+      <button class="qa cancel"  onclick="event.stopPropagation(); quickAction('${o.order_id}','cancelled', this)">❌</button>
+      <button class="qa details" onclick="event.stopPropagation(); openOrderDetail('${o.order_id}')">›</button>
+    `;
+  } else if (status === "confirmed") {
+    actions = `
+      <button class="qa delivery" onclick="event.stopPropagation(); quickAction('${o.order_id}','delivering', this)">🚚 En livraison</button>
+      <button class="qa cancel"  onclick="event.stopPropagation(); quickAction('${o.order_id}','cancelled', this)">❌</button>
+      <button class="qa details" onclick="event.stopPropagation(); openOrderDetail('${o.order_id}')">›</button>
+    `;
+  } else if (status === "delivering") {
+    actions = `
+      <button class="qa deliver" onclick="event.stopPropagation(); quickAction('${o.order_id}','delivered', this)">📦 Livrée</button>
+      <button class="qa cancel"  onclick="event.stopPropagation(); quickAction('${o.order_id}','cancelled', this)">❌</button>
+      <button class="qa details" onclick="event.stopPropagation(); openOrderDetail('${o.order_id}')">›</button>
+    `;
+  } else {
+    actions = `<button class="qa details" onclick="event.stopPropagation(); openOrderDetail('${o.order_id}')" style="flex:1;">Voir le détail ›</button>`;
+  }
+
+  return `
+    <div class="order-card2 status-${status}">
+      <div class="oc-top">
+        <div class="oc-left">
+          <span class="oc-oid">${o.order_id}</span>
+          <span class="age-badge ${ageCls}">${timeAgo}</span>
         </div>
       </div>
-    `;
-  }).join("");
+      <div class="oc-info" onclick="openOrderDetail('${o.order_id}')">
+        <div class="oc-line">
+          <span class="oc-client">${client}${uName}</span>
+          <span class="oc-total">${total} €</span>
+        </div>
+        <div class="oc-meta">
+          <span>${src} ${o.city || '?'} · ${o.cart_count} art. ${photos}</span>
+          <span>${o.country ? (o.country.match(/^\S+/) ? o.country.match(/^\S+/)[0] : '') : ''}</span>
+        </div>
+      </div>
+      <div class="oc-actions">
+        ${actions}
+      </div>
+    </div>
+  `;
 }
+
+// Actions rapides depuis la liste (sans ouvrir le détail)
+async function quickAction(orderId, newStatus, btn) {
+  if (newStatus === "cancelled") {
+    const confirmed = await new Promise((resolve) => {
+      try {
+        tg.showConfirm(`Annuler la commande ${orderId} ?\nLe client sera notifié.`, ok => resolve(!!ok));
+      } catch { resolve(confirm("Annuler ?")); }
+    });
+    if (!confirmed) return;
+  }
+  hapticMedium();
+  const orig = btn.innerHTML;
+  btn.disabled = true;
+  btn.innerHTML = '<span class="loader"></span>';
+  try {
+    const r = await fetch(`/api/admin/order/${encodeURIComponent(orderId)}/status`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ initData: tg.initData || "", status: newStatus })
+    });
+    const data = await r.json();
+    if (data.ok) {
+      const lbls = {confirmed:"✅ Confirmée", delivering:"🚚 En livraison", delivered:"📦 Livrée", cancelled:"❌ Annulée"};
+      showToast(lbls[newStatus] || "✓");
+      hapticSuccess();
+      // Reload data + re-render en place
+      await loadOwnerData(false);
+      renderOwnerOrders();
+    } else {
+      showToast(data.error || "Erreur", true);
+      btn.disabled = false; btn.innerHTML = orig;
+      hapticError();
+    }
+  } catch {
+    showToast(t("err_network"), true);
+    btn.disabled = false; btn.innerHTML = orig;
+    hapticError();
+  }
+}
+
+// Helpers age
+function _timeAgo(iso) {
+  if (!iso) return "—";
+  try {
+    const dt = new Date(iso.replace(" ", "T"));
+    const diff = (Date.now() - dt.getTime()) / 1000;
+    if (diff < 60) return "à l'instant";
+    if (diff < 3600) return `il y a ${Math.floor(diff/60)} min`;
+    if (diff < 86400) return `il y a ${Math.floor(diff/3600)} h`;
+    return `il y a ${Math.floor(diff/86400)} j`;
+  } catch { return "—"; }
+}
+function _ageColorClass(iso, status) {
+  if (!iso) return "age-normal";
+  // Delivered/cancelled = pas de urgence
+  if (status === "delivered" || status === "cancelled" || status === "cancelled_by_client") return "age-fresh";
+  try {
+    const dt = new Date(iso.replace(" ", "T"));
+    const diffMin = (Date.now() - dt.getTime()) / 60000;
+    if (diffMin < 15) return "age-fresh";
+    if (diffMin < 30) return "age-normal";
+    return "age-old";  // > 30 min = urgent (pulse rouge)
+  } catch { return "age-normal"; }
+}
+
+// Haptic feedback (Telegram native)
+function hapticMedium()  { try { tg.HapticFeedback.impactOccurred("medium");  } catch {} }
+function hapticSuccess() { try { tg.HapticFeedback.notificationOccurred("success"); } catch {} }
+function hapticError()   { try { tg.HapticFeedback.notificationOccurred("error");   } catch {} }
+function hapticSelect()  { try { tg.HapticFeedback.selectionChanged();               } catch {} }
 
 async function openOrderDetail(orderId) {
   setScreen("owner-detail");
@@ -2980,6 +3424,23 @@ updateHeader = function(name) {
 
 // Au back depuis tracking : cleanup
 const _origBackHandler = document.getElementById("backBtn").onclick;
+
+// Search input listener (debounced 150ms pour éviter le re-render à chaque frappe)
+(function initOrdersSearch() {
+  const inp = document.getElementById("ordersSearchInput");
+  if (!inp) return;
+  let debounceTimer = null;
+  inp.addEventListener("input", () => {
+    const bar = document.getElementById("ordersSearchBar");
+    if (inp.value) bar.classList.add("has-text");
+    else           bar.classList.remove("has-text");
+    clearTimeout(debounceTimer);
+    debounceTimer = setTimeout(() => {
+      state.currentSearchQuery = inp.value;
+      renderOwnerOrders();
+    }, 150);
+  });
+})();
 
 // ═══════════════════════════════════════════════════════════════════════════
 // INIT

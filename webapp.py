@@ -889,33 +889,61 @@ def api_admin_orders():
             "cart_count": sum((o.get("cart") or {}).values()) if isinstance(o.get("cart"), dict) else 0,
         })
 
-    # Stats utiles : counts par status + stats du jour
+    # Stats utiles : counts par status + stats du jour + top produit + panier moyen
     counts = {"pending": 0, "confirmed": 0, "delivering": 0, "delivered": 0, "cancelled": 0}
     today_ca    = 0.0
     today_count = 0
+    today_items: dict[str, int] = {}
+    # Petit historique CA sur 7 jours pour mini-graph
+    from datetime import datetime as _dt, timedelta as _td
+    ca_by_day: dict[str, float] = {}
+    for i in range(7):
+        ca_by_day[(_dt.now() - _td(days=i)).strftime("%Y-%m-%d")] = 0.0
+
     try:
         from storage import _load as _load_all
-        from datetime import datetime as _dt
         today_str  = _dt.now().strftime("%Y-%m-%d")
         all_orders = _load_all() or []
         for o in all_orders:
             s = o.get("status") or "pending"
             if s in counts:
                 counts[s] += 1
-            if (o.get("created_at") or "").startswith(today_str):
-                # Exclure les commandes annulées du CA du jour
-                if s not in ("cancelled", "cancelled_by_client"):
-                    today_ca    += float(o.get("total", 0) or 0)
-                    today_count += 1
+            day_key = (o.get("created_at") or "")[:10]
+            excluded = s in ("cancelled", "cancelled_by_client")
+            if day_key in ca_by_day and not excluded:
+                ca_by_day[day_key] += float(o.get("total", 0) or 0)
+            if day_key == today_str and not excluded:
+                today_ca    += float(o.get("total", 0) or 0)
+                today_count += 1
+                for prod, qty in (o.get("cart") or {}).items():
+                    try:
+                        q = int(qty)
+                    except Exception:
+                        q = 0
+                    if q > 0:
+                        today_items[prod] = today_items.get(prod, 0) + q
     except Exception:
         pass
+
+    avg_basket_today = (today_ca / today_count) if today_count else 0.0
+    top_product = ""
+    top_product_qty = 0
+    if today_items:
+        top_product, top_product_qty = max(today_items.items(), key=lambda x: x[1])
+
+    # Convertir ca_by_day en liste triée du plus ancien → plus récent
+    ca_history = [{"day": d, "ca": ca_by_day[d]} for d in sorted(ca_by_day.keys())]
 
     return jsonify({
         "ok": True,
         "orders": light,
         "counts": counts,
-        "today_ca":    today_ca,
-        "today_count": today_count,
+        "today_ca":         today_ca,
+        "today_count":      today_count,
+        "avg_basket_today": avg_basket_today,
+        "top_product":      top_product,
+        "top_product_qty":  top_product_qty,
+        "ca_history":       ca_history,
     })
 
 
