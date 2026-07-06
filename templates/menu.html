@@ -1610,7 +1610,25 @@
     </div>
 
     <!-- Autres actions -->
-    <div class="card" onclick="enterClientMode()" style="margin-top:6px;">
+    <div class="card-grid" style="grid-template-columns:1fr 1fr; margin-top:6px;">
+      <div class="card" onclick="openClientDirectory()">
+        <span class="emoji">👥</span>
+        <div class="info">
+          <div class="name">Répertoire</div>
+          <div class="meta" id="directoryCount">— clients</div>
+        </div>
+        <span class="arrow">›</span>
+      </div>
+      <div class="card" onclick="openBroadcastModal()">
+        <span class="emoji">📣</span>
+        <div class="info">
+          <div class="name">Broadcast</div>
+          <div class="meta">Envoyer à tous</div>
+        </div>
+        <span class="arrow">›</span>
+      </div>
+    </div>
+    <div class="card" onclick="enterClientMode()" style="margin-top:8px;">
       <span class="emoji">🛍️</span>
       <div class="info">
         <div class="name">Passer une commande</div>
@@ -1618,6 +1636,59 @@
       </div>
       <span class="arrow">›</span>
     </div>
+  </div>
+</div>
+
+<!-- ÉCRAN RÉPERTOIRE CLIENTS -->
+<div class="screen" id="screen-client-directory">
+  <div class="container">
+    <div class="section-title" id="directoryTitle">👥 Répertoire clients</div>
+    <div class="search-bar" id="directorySearchBar">
+      <span class="search-icon">🔍</span>
+      <input type="text" id="directorySearchInput" placeholder="Rechercher: nom, @username, ville…" autocomplete="off">
+      <button class="clear-btn" onclick="clearDirectorySearch()">✕</button>
+    </div>
+    <div class="filter-tabs" id="directoryFilterTabs">
+      <div class="filter-tab active" data-seg="all"     onclick="setDirectorySegment('all')">Tous <span class="num" id="dtAll">0</span></div>
+      <div class="filter-tab"        data-seg="vip"     onclick="setDirectorySegment('vip')">⭐ VIP <span class="num" id="dtVip">0</span></div>
+      <div class="filter-tab"        data-seg="active"  onclick="setDirectorySegment('active')">🟢 Actifs <span class="num" id="dtActive">0</span></div>
+      <div class="filter-tab"        data-seg="dormant" onclick="setDirectorySegment('dormant')">😴 Dormants <span class="num" id="dtDormant">0</span></div>
+    </div>
+    <button class="next-btn" style="margin: 0 0 14px 0;" onclick="openBroadcastModalFromDirectory()">📣 Envoyer un message à ce segment</button>
+    <div id="clientDirectoryList"></div>
+  </div>
+</div>
+
+<!-- MODAL BROADCAST -->
+<div id="broadcastModal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.8); backdrop-filter:blur(6px); z-index:300; align-items:center; justify-content:center; padding:20px;">
+  <div style="background:#1c1c28; border-radius:20px; padding:22px; max-width:400px; width:100%; box-shadow:0 20px 60px rgba(0,0,0,0.6); max-height:90vh; display:flex; flex-direction:column;">
+    <div style="text-align:center; margin-bottom:14px;">
+      <div style="font-size:36px; margin-bottom:4px;">📣</div>
+      <div style="font-size:18px; font-weight:800;">Broadcast</div>
+      <div style="font-size:12px; opacity:0.6; margin-top:2px;">Envoyer un message à un segment</div>
+    </div>
+
+    <!-- Sélection segment -->
+    <div style="font-size:11px; text-transform:uppercase; letter-spacing:1px; opacity:0.5; font-weight:700; margin-bottom:6px;">Destinataires</div>
+    <div class="filter-tabs" style="margin-bottom:12px;">
+      <div class="filter-tab active" data-bseg="all"     onclick="setBroadcastSegment('all')">Tous <span class="num" id="bcAll">0</span></div>
+      <div class="filter-tab"        data-bseg="vip"     onclick="setBroadcastSegment('vip')">⭐ VIP <span class="num" id="bcVip">0</span></div>
+      <div class="filter-tab"        data-bseg="active"  onclick="setBroadcastSegment('active')">🟢 Actifs <span class="num" id="bcActive">0</span></div>
+      <div class="filter-tab"        data-bseg="dormant" onclick="setBroadcastSegment('dormant')">😴 Dormants <span class="num" id="bcDormant">0</span></div>
+    </div>
+
+    <!-- Textarea message -->
+    <div style="font-size:11px; text-transform:uppercase; letter-spacing:1px; opacity:0.5; font-weight:700; margin-bottom:6px;">Message</div>
+    <textarea id="broadcastText" placeholder="Ex : ☕ Nouveauté ! Ajout d'un nouveau produit dans le catalogue. Passez commande dès maintenant..."
+              style="background:#0a0a0f; border:2px solid #333; border-radius:12px; padding:12px; font-size:14px; color:#fff; width:100%; min-height:120px; resize:vertical; font-family:inherit; -webkit-appearance:none;"
+              maxlength="3500"></textarea>
+    <div style="text-align:right; font-size:11px; opacity:0.5; margin-top:4px;">
+      <span id="broadcastCharCount">0</span> / 3500
+    </div>
+
+    <!-- Actions -->
+    <button class="next-btn" onclick="sendBroadcast()" id="broadcastSendBtn" style="margin-top:14px;">📣 Envoyer à <span id="broadcastTargetCount">0</span> client(s)</button>
+    <button class="next-btn" style="background:#333; box-shadow:none; margin-top:8px;" onclick="closeBroadcastModal()">Annuler</button>
   </div>
 </div>
 
@@ -3792,6 +3863,256 @@ setOrderStatus = async function(orderId, newStatus) {
     return;
   }
   return _origSetOrderStatus(orderId, newStatus);
+};
+
+// ═══════════════════════════════════════════════════════════════════════════
+// RÉPERTOIRE CLIENTS + BROADCAST (owner)
+// ═══════════════════════════════════════════════════════════════════════════
+state.directoryData = null;         // {clients: [...], counts: {...}}
+state.directorySegment = "all";
+state.directorySearch = "";
+state.broadcastSegment = "all";
+
+async function loadClientDirectory(silent) {
+  try {
+    const r = await fetch("/api/admin/clients", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ initData: tg.initData || "", segment: "all" })
+    });
+    if (r.status !== 200) return null;
+    const d = await r.json();
+    if (!d.ok) { if (!silent) showToast(d.error || "Erreur", true); return null; }
+    state.directoryData = d;
+    // Update counts partout
+    const setC = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
+    setC("directoryCount", `${d.counts.all} client${d.counts.all>1?'s':''}`);
+    setC("dtAll",     d.counts.all);
+    setC("dtVip",     d.counts.vip);
+    setC("dtActive",  d.counts.active);
+    setC("dtDormant", d.counts.dormant);
+    setC("bcAll",     d.counts.all);
+    setC("bcVip",     d.counts.vip);
+    setC("bcActive",  d.counts.active);
+    setC("bcDormant", d.counts.dormant);
+    return d;
+  } catch { return null; }
+}
+
+async function openClientDirectory() {
+  hapticSelect();
+  setScreen("client-directory");
+  const list = document.getElementById("clientDirectoryList");
+  list.innerHTML = `<div class="empty"><span class="loader"></span> Chargement...</div>`;
+  await loadClientDirectory(false);
+  renderClientDirectory();
+}
+
+function renderClientDirectory() {
+  const list = document.getElementById("clientDirectoryList");
+  if (!state.directoryData) {
+    list.innerHTML = `<div class="empty"><span class="loader"></span></div>`;
+    return;
+  }
+  const seg = state.directorySegment;
+  const q   = (state.directorySearch || "").toLowerCase().trim();
+  let clients = state.directoryData.clients || [];
+  if (seg !== "all") clients = clients.filter(c => c.segment === seg);
+  if (q) {
+    clients = clients.filter(c => {
+      const hay = `${c.user_name||''} ${c.username||''} ${c.city||''} ${c.country||''} ${c.user_id}`.toLowerCase();
+      return hay.includes(q);
+    });
+  }
+
+  if (clients.length === 0) {
+    list.innerHTML = `<div class="empty"><div class="emoji">📭</div><div class="text">${q ? 'Aucun résultat' : 'Aucun client dans ce segment'}</div></div>`;
+    return;
+  }
+
+  const segEmoji = { vip: "⭐", active: "🟢", dormant: "😴" };
+  list.innerHTML = clients.map(c => {
+    const lastDate = (c.last_order || "").replace("T", " ").slice(0, 10);
+    const uName    = c.username ? ` @${c.username}` : '';
+    const name     = (c.user_name || `id_${c.user_id}`).replace(/[<>]/g, '');
+    const total    = (c.total_spent || 0).toLocaleString('fr-FR');
+    const emoji    = segEmoji[c.segment] || "👤";
+    return `
+      <div class="order-card2" style="cursor:pointer;" onclick="contactClient(this)"
+           data-user-id="${c.user_id}"
+           data-username="${(c.username||'').replace(/"/g,'&quot;')}"
+           data-user-name="${(c.user_name||'').replace(/"/g,'&quot;')}">
+        <div class="oc-top">
+          <div class="oc-left">
+            <span style="font-size:18px;">${emoji}</span>
+            <span class="oc-oid" style="color:var(--txt-primary);">${name}${uName}</span>
+          </div>
+          <span class="age-badge age-fresh">${c.segment.toUpperCase()}</span>
+        </div>
+        <div class="oc-info">
+          <div class="oc-line">
+            <span class="oc-client" style="font-size:12px; opacity:0.7;">${c.city || '?'} · ${c.orders} commande${c.orders>1?'s':''}</span>
+            <span class="oc-total">${total} €</span>
+          </div>
+          <div class="oc-meta">
+            <span>Dernière : ${lastDate || '—'}</span>
+            <span>${c.lang?.toUpperCase() || 'FR'}</span>
+          </div>
+        </div>
+      </div>
+    `;
+  }).join("");
+}
+
+function setDirectorySegment(seg) {
+  state.directorySegment = seg;
+  document.querySelectorAll("#directoryFilterTabs .filter-tab").forEach(el => {
+    el.classList.toggle("active", el.dataset.seg === seg);
+  });
+  const titles = { all: "👥 Tous les clients", vip: "⭐ Clients VIP", active: "🟢 Clients actifs", dormant: "😴 Clients dormants" };
+  document.getElementById("directoryTitle").textContent = titles[seg];
+  renderClientDirectory();
+  hapticSelect();
+}
+
+function clearDirectorySearch() {
+  const inp = document.getElementById("directorySearchInput");
+  if (inp) inp.value = "";
+  document.getElementById("directorySearchBar").classList.remove("has-text");
+  state.directorySearch = "";
+  renderClientDirectory();
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// BROADCAST MODAL
+// ═══════════════════════════════════════════════════════════════════════════
+async function openBroadcastModal() {
+  hapticSelect();
+  // Charger counts si pas déjà fait
+  if (!state.directoryData) await loadClientDirectory(true);
+  state.broadcastSegment = "all";
+  document.querySelectorAll("#broadcastModal .filter-tab").forEach(el => {
+    el.classList.toggle("active", el.dataset.bseg === "all");
+  });
+  updateBroadcastTargetCount();
+  document.getElementById("broadcastText").value = "";
+  document.getElementById("broadcastCharCount").textContent = "0";
+  document.getElementById("broadcastModal").style.display = "flex";
+  setTimeout(() => document.getElementById("broadcastText").focus(), 100);
+}
+
+function openBroadcastModalFromDirectory() {
+  openBroadcastModal();
+  // Prendre le segment courant du répertoire
+  setBroadcastSegment(state.directorySegment);
+}
+
+function closeBroadcastModal() {
+  document.getElementById("broadcastModal").style.display = "none";
+}
+
+function setBroadcastSegment(seg) {
+  state.broadcastSegment = seg;
+  document.querySelectorAll("#broadcastModal .filter-tab").forEach(el => {
+    el.classList.toggle("active", el.dataset.bseg === seg);
+  });
+  updateBroadcastTargetCount();
+  hapticSelect();
+}
+
+function updateBroadcastTargetCount() {
+  const counts = state.directoryData?.counts || { all:0, vip:0, active:0, dormant:0 };
+  document.getElementById("broadcastTargetCount").textContent = counts[state.broadcastSegment] || 0;
+}
+
+// Compteur caractères en live
+document.getElementById("broadcastText")?.addEventListener("input", (e) => {
+  document.getElementById("broadcastCharCount").textContent = e.target.value.length;
+});
+
+async function sendBroadcast() {
+  const text = document.getElementById("broadcastText").value.trim();
+  if (!text) { showToast("Message vide", true); return; }
+  const counts = state.directoryData?.counts || {};
+  const target = counts[state.broadcastSegment] || 0;
+  if (target === 0) { showToast("Aucun destinataire", true); return; }
+
+  const confirmed = await new Promise((resolve) => {
+    try {
+      tg.showConfirm(`Envoyer ce message à ${target} client(s) ?`, ok => resolve(!!ok));
+    } catch { resolve(confirm(`Envoyer à ${target} clients ?`)); }
+  });
+  if (!confirmed) return;
+
+  const btn = document.getElementById("broadcastSendBtn");
+  const orig = btn.innerHTML;
+  btn.disabled = true;
+  btn.innerHTML = `<span class="loader"></span> Envoi en cours à ${target} client(s)...`;
+  hapticMedium();
+
+  try {
+    const r = await fetch("/api/admin/broadcast", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        initData: tg.initData || "",
+        text: text,
+        segment: state.broadcastSegment,
+      })
+    });
+    const data = await r.json();
+    if (data.ok) {
+      showToast(`✓ Envoyé à ${data.sent} client(s)${data.failed ? ` (${data.failed} échecs)` : ''}`);
+      hapticSuccess();
+      closeBroadcastModal();
+    } else {
+      showToast(data.error || "Erreur", true);
+      hapticError();
+      btn.disabled = false;
+      btn.innerHTML = orig;
+    }
+  } catch {
+    showToast(t("err_network"), true);
+    hapticError();
+    btn.disabled = false;
+    btn.innerHTML = orig;
+  }
+}
+
+// Directory search listener
+(function initDirectorySearch() {
+  const inp = document.getElementById("directorySearchInput");
+  if (!inp) return;
+  let t = null;
+  inp.addEventListener("input", () => {
+    const bar = document.getElementById("directorySearchBar");
+    if (inp.value) bar.classList.add("has-text");
+    else           bar.classList.remove("has-text");
+    clearTimeout(t);
+    t = setTimeout(() => {
+      state.directorySearch = inp.value;
+      renderClientDirectory();
+    }, 150);
+  });
+})();
+
+// Étendre updateHeader
+const _origUpdateHeader3 = updateHeader;
+updateHeader = function(name) {
+  if (name === "client-directory") {
+    document.getElementById("headerTitle").textContent    = "👥 Répertoire";
+    document.getElementById("headerSubtitle").textContent = `${state.directoryData?.counts?.all || 0} clients`;
+  } else {
+    _origUpdateHeader3(name);
+  }
+};
+
+// Charger les counts du répertoire au chargement de la home owner (pour afficher le badge)
+const _origLoadOwnerData = loadOwnerData;
+loadOwnerData = async function(showToastFlag) {
+  await _origLoadOwnerData(showToastFlag);
+  // En parallèle, charger silencieusement le répertoire pour les badges
+  loadClientDirectory(true).catch(() => {});
 };
 
 // Search input listener (debounced 150ms pour éviter le re-render à chaque frappe)

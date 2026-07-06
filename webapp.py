@@ -1324,6 +1324,224 @@ def api_order_track():
     })
 
 
+@app.route("/api/admin/clients", methods=["POST"])
+def api_admin_clients():
+    """Répertoire des clients uniques agrégé depuis toutes les commandes.
+    POST {initData, segment?}
+    segment : "all" (default), "active", "dormant", "vip"
+    """
+    if _check_owner(request) is None:
+        return jsonify({"ok": False, "error": "not_owner"}), 403
+
+    try:
+        data = request.get_json(force=True, silent=True) or {}
+    except Exception:
+        data = {}
+    segment = (data.get("segment") or "all").strip()
+
+    try:
+        from storage import _load as _load_all
+        from datetime import datetime as _dt, timedelta as _td
+        all_orders = _load_all() or []
+    except Exception as exc:
+        logger.error("clients load: %s", exc)
+        return jsonify({"ok": False, "error": "load_failed"}), 500
+
+    # Agrégation par user_id
+    clients: dict[int, dict] = {}
+    now = _dt.now()
+    cutoff_dormant = now - _td(days=30)
+
+    for o in all_orders:
+        uid = int(o.get("user_id") or 0)
+        if not uid:
+            continue
+        c = clients.get(uid)
+        if c is None:
+            c = {
+                "user_id":     uid,
+                "user_name":   o.get("user_name") or "",
+                "username":    o.get("username") or "",
+                "lang":        o.get("lang") or "fr",
+                "orders":      0,
+                "total_spent": 0.0,
+                "last_order":  "",
+                "first_order": "",
+                "city":        o.get("city"),
+                "country":     o.get("country"),
+            }
+            clients[uid] = c
+        s = o.get("status") or "pending"
+        # Le total dépensé exclut les annulées
+        if s not in ("cancelled", "cancelled_by_client"):
+            c["total_spent"] += float(o.get("total", 0) or 0)
+        c["orders"] += 1
+        created = o.get("created_at") or ""
+        if created > c["last_order"]:
+            c["last_order"] = created
+            # Prendre les infos les plus récentes
+            if o.get("user_name"):    c["user_name"]    = o.get("user_name")
+            if o.get("username"):     c["username"]     = o.get("username")
+            if o.get("lang"):         c["lang"]         = o.get("lang")
+            if o.get("city"):         c["city"]         = o.get("city")
+            if o.get("country"):      c["country"]      = o.get("country")
+        if not c["first_order"] or created < c["first_order"]:
+            c["first_order"] = created
+
+    # Segmentation
+    def _seg(c):
+        try:
+            last = _dt.fromisoformat(c["last_order"])
+            if last.tzinfo is not None:
+                last = last.astimezone().replace(tzinfo=None)
+        except Exception:
+            last = _dt.min
+        if c["orders"] >= 3 or c["total_spent"] >= 500:
+            base = "vip"
+        elif last >= cutoff_dormant:
+            base = "active"
+        else:
+            base = "dormant"
+        return base
+
+    for c in clients.values():
+        c["segment"] = _seg(c)
+
+    # Filtrer par segment demandé
+    result = list(clients.values())
+    if segment == "active":
+        result = [c for c in result if c["segment"] == "active"]
+    elif segment == "dormant":
+        result = [c for c in result if c["segment"] == "dormant"]
+    elif segment == "vip":
+        result = [c for c in result if c["segment"] == "vip"]
+    # all → pas de filtre
+
+    # Tri par dernière commande (récent → ancien)
+    result.sort(key=lambda c: c.get("last_order", ""), reverse=True)
+
+    # Counts globaux (peu importe le filtre)
+    counts = {"all": len(clients), "active": 0, "dormant": 0, "vip": 0}
+    for c in clients.values():
+        counts[c["segment"]] += 1
+
+    return jsonify({
+        "ok":      True,
+        "clients": result,
+        "counts":  counts,
+    })
+
+
+# Throttle broadcast : 25 msg/s max
+_BROADCAST_DELAY = 0.05
+
+@app.route("/api/admin/broadcast", methods=["POST"])
+def api_admin_broadcast():
+    """Envoie un message à tous les clients d'un segment.
+    POST {initData, text, segment?}
+    Envoi synchrone throttlé (25 msg/s).
+    Retourne le nb envoyés + échecs.
+    """
+    if _check_owner(request) is None:
+        return jsonify({"ok": False, "error": "not_owner"}), 403
+
+    try:
+        data = request.get_json(force=True, silent=True) or {}
+    except Exception:
+        data = {}
+    text    = (data.get("text") or "").strip()
+    segment = (data.get("segment") or "all").strip()
+
+    if not text:
+        return jsonify({"ok": False, "error": "empty_text"}), 400
+    if len(text) > 3500:
+        return jsonify({"ok": False, "error": "too_long"}), 400
+
+    bot_token = os.getenv("BOT_TOKEN", "")
+    if not bot_token:
+        return jsonify({"ok": False, "error": "no_token"}), 500
+
+    # Récupérer la liste des clients du segment
+    try:
+        from storage import _load as _load_all
+        from datetime import datetime as _dt, timedelta as _td
+        all_orders = _load_all() or []
+    except Exception:
+        return jsonify({"ok": False, "error": "load_failed"}), 500
+
+    now = _dt.now()
+    cutoff_dormant = now - _td(days=30)
+    clients: dict[int, dict] = {}
+    for o in all_orders:
+        uid = int(o.get("user_id") or 0)
+        if not uid:
+            continue
+        c = clients.get(uid)
+        if c is None:
+            c = {"user_id": uid, "orders": 0, "total_spent": 0.0, "last_order": ""}
+            clients[uid] = c
+        s = o.get("status") or "pending"
+        if s not in ("cancelled", "cancelled_by_client"):
+            c["total_spent"] += float(o.get("total", 0) or 0)
+        c["orders"] += 1
+        created = o.get("created_at") or ""
+        if created > c["last_order"]:
+            c["last_order"] = created
+
+    def _seg(c):
+        try:
+            last = _dt.fromisoformat(c["last_order"])
+            if last.tzinfo is not None:
+                last = last.astimezone().replace(tzinfo=None)
+        except Exception:
+            last = _dt.min
+        if c["orders"] >= 3 or c["total_spent"] >= 500:
+            return "vip"
+        elif last >= cutoff_dormant:
+            return "active"
+        else:
+            return "dormant"
+
+    targets: list[int] = []
+    for uid, c in clients.items():
+        seg = _seg(c)
+        if segment == "all" or seg == segment:
+            targets.append(uid)
+
+    if not targets:
+        return jsonify({"ok": True, "sent": 0, "failed": 0, "total": 0})
+
+    # Envoi throttlé
+    import httpx
+    sent   = 0
+    failed = 0
+    with httpx.Client(timeout=10.0) as c:
+        for uid in targets:
+            try:
+                r = c.post(
+                    f"https://api.telegram.org/bot{bot_token}/sendMessage",
+                    json={
+                        "chat_id":    uid,
+                        "text":       text,
+                        "parse_mode": "Markdown",
+                    },
+                )
+                if r.status_code == 200:
+                    sent += 1
+                else:
+                    failed += 1
+            except Exception:
+                failed += 1
+            time.sleep(_BROADCAST_DELAY)
+
+    return jsonify({
+        "ok":     True,
+        "sent":   sent,
+        "failed": failed,
+        "total":  len(targets),
+    })
+
+
 @app.route("/api/admin/send_message", methods=["POST"])
 def api_admin_send_message():
     """L'owner envoie un message libre à un client via le bot.
