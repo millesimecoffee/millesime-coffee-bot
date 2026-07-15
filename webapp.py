@@ -633,12 +633,45 @@ def api_finalize_order():
     with _pending_lock:  # réutilise le lock existant
         order_id = _generate_miniapp_order_id()
 
-    # Construire l'ordre. On stocke les photos base64 (sans le préfixe data:)
-    # pour que le panel admin puisse les afficher plus tard.
+    # Construire l'ordre. On stocke les photos COMPRESSÉES en base64 (sans le
+    # préfixe data:) pour que le panel admin puisse les afficher plus tard,
+    # sans exploser la taille de orders.json.
     def _strip_data_url(b: str) -> str:
         if not b:
             return ""
         return b.split(",", 1)[1] if "," in b else b
+
+    def _compress_photo_b64(b: str, max_dim: int = 720, quality: int = 65) -> str:
+        """Réduit une photo base64 → JPEG max 720px, qualité 65%.
+        Retourne base64 (sans préfixe data:) ou "" si erreur.
+        Taille cible : ~40-80 KB au lieu de 500 KB+.
+        """
+        if not b:
+            return ""
+        try:
+            raw_b64 = _strip_data_url(b).strip().replace("\n","").replace("\r","").replace(" ","")
+            pad = len(raw_b64) % 4
+            if pad:
+                raw_b64 += "=" * (4 - pad)
+            raw = base64.b64decode(raw_b64)
+            arr = np.frombuffer(raw, np.uint8)
+            img = cv2.imdecode(arr, cv2.IMREAD_COLOR)
+            if img is None:
+                return raw_b64  # fallback : garder l'original si décodage KO
+            h, w = img.shape[:2]
+            # Downscale si nécessaire
+            if max(h, w) > max_dim:
+                scale = max_dim / max(h, w)
+                new_size = (int(w * scale), int(h * scale))
+                img = cv2.resize(img, new_size, interpolation=cv2.INTER_AREA)
+            # Réencodage JPEG avec quality
+            ok, buf = cv2.imencode(".jpg", img, [cv2.IMWRITE_JPEG_QUALITY, quality])
+            if not ok:
+                return raw_b64
+            return base64.b64encode(buf.tobytes()).decode("ascii")
+        except Exception as exc:
+            logger.warning("compress photo: %s", exc)
+            return _strip_data_url(b)
 
     pay_label = payment.get("label") or payment.get("method", "?")
     order_dict = {
@@ -663,9 +696,9 @@ def api_finalize_order():
         "maps_link": address.get("maps_link", ""),
         "status":    "pending",
         "source":    "miniapp",
-        # Photos en base64 pour le panel admin (sans préfixe data:)
-        "selfie_b64": _strip_data_url(selfie_b64),
-        "proof_b64":  _strip_data_url(payment.get("proof_b64", "")),
+        # Photos COMPRESSÉES en base64 pour le panel admin (~50 KB au lieu de 500+)
+        "selfie_b64": _compress_photo_b64(selfie_b64, max_dim=720, quality=65),
+        "proof_b64":  _compress_photo_b64(payment.get("proof_b64", ""), max_dim=900, quality=70),
     }
 
     # Sauvegarder
@@ -965,6 +998,14 @@ def api_admin_order_detail(order_id):
     if not order:
         return jsonify({"ok": False, "error": "not_found"}), 404
 
+    # Attacher la note privée owner s'il y en a une
+    try:
+        notes = _load_notes()
+        uid = str(order.get("user_id", ""))
+        if uid and uid in notes:
+            order = {**order, "_client_note": notes[uid]}
+    except Exception:
+        pass
     return jsonify({"ok": True, "order": order})
 
 
@@ -1187,6 +1228,77 @@ def api_client_orders():
     })
 
 
+@app.route("/api/client/reorder", methods=["POST"])
+def api_client_reorder():
+    """Retourne les données d'une ancienne commande pour re-remplir le panier.
+    POST {initData, order_id}
+    Retourne : {country, city, cart} (ou error si produit plus dispo)
+    """
+    bot_token = os.getenv("BOT_TOKEN", "")
+    try:
+        data = request.get_json(force=True, silent=True) or {}
+    except Exception:
+        data = {}
+    parsed = _verify_init_data(data.get("initData", ""), bot_token)
+    if not parsed:
+        return jsonify({"ok": False, "error": "auth_failed"}), 401
+    import json as _json
+    try:
+        user_obj = _json.loads(parsed.get("user", "{}"))
+        uid = int(user_obj.get("id", 0))
+    except Exception:
+        return jsonify({"ok": False, "error": "no_user"}), 400
+
+    order_id = (data.get("order_id") or "").strip()
+    if not order_id:
+        return jsonify({"ok": False, "error": "no_order_id"}), 400
+    try:
+        from storage import get_order
+        order = get_order(order_id)
+    except Exception:
+        return jsonify({"ok": False, "error": "load_failed"}), 500
+    if not order:
+        return jsonify({"ok": False, "error": "not_found"}), 404
+    if int(order.get("user_id", 0)) != uid:
+        return jsonify({"ok": False, "error": "forbidden"}), 403
+
+    # Vérifier que la ville existe toujours + filtrer produits encore dispo
+    try:
+        import catalog as catalog_mod
+        importlib.reload(catalog_mod)
+    except Exception:
+        return jsonify({"ok": False, "error": "catalog_failed"}), 500
+
+    country = order.get("country", "")
+    city    = order.get("city", "")
+    if country not in catalog_mod.CATALOG or city not in catalog_mod.CATALOG.get(country, {}):
+        return jsonify({"ok": False, "error": "location_removed"}), 400
+
+    products    = catalog_mod.CATALOG[country][city]
+    old_cart    = order.get("cart") or {}
+    valid_cart  = {}
+    removed     = []
+    for prod, qty in old_cart.items():
+        if prod in products:
+            try:
+                valid_cart[prod] = int(qty)
+            except (ValueError, TypeError):
+                pass
+        else:
+            removed.append(prod)
+
+    if not valid_cart:
+        return jsonify({"ok": False, "error": "no_products_available"}), 400
+
+    return jsonify({
+        "ok":      True,
+        "country": country,
+        "city":    city,
+        "cart":    valid_cart,
+        "removed": removed,
+    })
+
+
 @app.route("/api/order/track", methods=["POST"])
 def api_order_track():
     """Tracking d'une commande pour le client.
@@ -1324,6 +1436,96 @@ def api_order_track():
     })
 
 
+# ═══════════════════════════════════════════════════════════════════════════
+# Notes privées sur les clients (visible seulement par l'owner)
+# ═══════════════════════════════════════════════════════════════════════════
+_CLIENT_NOTES_FILE = None   # calculé au démarrage
+_client_notes_cache: dict[str, str] = {}   # {user_id_str: note}
+_client_notes_lock = threading.Lock()
+_client_notes_loaded = False
+
+
+def _notes_file_path():
+    global _CLIENT_NOTES_FILE
+    if _CLIENT_NOTES_FILE is None:
+        from pathlib import Path
+        data_dir = os.getenv("DATA_DIR", str(Path(__file__).parent))
+        _CLIENT_NOTES_FILE = os.path.join(data_dir, "client_notes.json")
+    return _CLIENT_NOTES_FILE
+
+
+def _load_notes():
+    global _client_notes_loaded
+    with _client_notes_lock:
+        if _client_notes_loaded:
+            return _client_notes_cache
+        try:
+            import json as _json
+            p = _notes_file_path()
+            if os.path.exists(p):
+                with open(p, "r", encoding="utf-8") as f:
+                    data = _json.load(f)
+                    if isinstance(data, dict):
+                        _client_notes_cache.update({str(k): str(v) for k, v in data.items()})
+        except Exception as exc:
+            logger.warning("load notes: %s", exc)
+        _client_notes_loaded = True
+        return _client_notes_cache
+
+
+def _save_notes():
+    with _client_notes_lock:
+        try:
+            import json as _json
+            p = _notes_file_path()
+            with open(p, "w", encoding="utf-8") as f:
+                _json.dump(_client_notes_cache, f, ensure_ascii=False, indent=2)
+        except Exception as exc:
+            logger.error("save notes: %s", exc)
+
+
+@app.route("/api/admin/client_note", methods=["POST"])
+def api_admin_client_note():
+    """GET la note ou POST/PUT/DELETE.
+    POST {initData, user_id, action: 'get'|'set'|'delete', note?}
+    """
+    if _check_owner(request) is None:
+        return jsonify({"ok": False, "error": "not_owner"}), 403
+    try:
+        data = request.get_json(force=True, silent=True) or {}
+    except Exception:
+        data = {}
+    try:
+        uid = str(int(data.get("user_id", 0)))
+    except (ValueError, TypeError):
+        return jsonify({"ok": False, "error": "bad_uid"}), 400
+    if uid == "0":
+        return jsonify({"ok": False, "error": "bad_uid"}), 400
+
+    action = (data.get("action") or "get").strip()
+    notes = _load_notes()
+
+    if action == "get":
+        return jsonify({"ok": True, "note": notes.get(uid, "")})
+    if action == "set":
+        note = (data.get("note") or "").strip()
+        if len(note) > 2000:
+            return jsonify({"ok": False, "error": "too_long"}), 400
+        with _client_notes_lock:
+            if note:
+                notes[uid] = note
+            else:
+                notes.pop(uid, None)
+        _save_notes()
+        return jsonify({"ok": True, "note": note})
+    if action == "delete":
+        with _client_notes_lock:
+            notes.pop(uid, None)
+        _save_notes()
+        return jsonify({"ok": True})
+    return jsonify({"ok": False, "error": "bad_action"}), 400
+
+
 @app.route("/api/admin/clients", methods=["POST"])
 def api_admin_clients():
     """Répertoire des clients uniques agrégé depuis toutes les commandes.
@@ -1434,13 +1636,89 @@ def api_admin_clients():
 
 # Throttle broadcast : 25 msg/s max
 _BROADCAST_DELAY = 0.05
+# Jobs de broadcast en cours (state en mémoire, key = job_id)
+_broadcast_jobs: dict[str, dict] = {}
+_broadcast_lock = threading.Lock()
+
+
+def _compute_client_segments():
+    """Retourne (clients_dict, segments_dict) agrégés depuis orders.json."""
+    from storage import _load as _load_all
+    from datetime import datetime as _dt, timedelta as _td
+    all_orders = _load_all() or []
+    now = _dt.now()
+    cutoff_dormant = now - _td(days=30)
+    clients: dict[int, dict] = {}
+    for o in all_orders:
+        uid = int(o.get("user_id") or 0)
+        if not uid:
+            continue
+        c = clients.get(uid)
+        if c is None:
+            c = {"user_id": uid, "orders": 0, "total_spent": 0.0, "last_order": ""}
+            clients[uid] = c
+        s = o.get("status") or "pending"
+        if s not in ("cancelled", "cancelled_by_client"):
+            c["total_spent"] += float(o.get("total", 0) or 0)
+        c["orders"] += 1
+        created = o.get("created_at") or ""
+        if created > c["last_order"]:
+            c["last_order"] = created
+
+    for c in clients.values():
+        try:
+            last = _dt.fromisoformat(c["last_order"])
+            if last.tzinfo is not None:
+                last = last.astimezone().replace(tzinfo=None)
+        except Exception:
+            last = _dt.min
+        if c["orders"] >= 3 or c["total_spent"] >= 500:
+            c["segment"] = "vip"
+        elif last >= cutoff_dormant:
+            c["segment"] = "active"
+        else:
+            c["segment"] = "dormant"
+    return clients
+
+
+def _run_broadcast_job(job_id: str, targets: list[int], text: str, bot_token: str):
+    """Thread worker qui envoie les messages sans bloquer le worker Flask."""
+    import httpx as _httpx
+    sent = failed = 0
+    with _httpx.Client(timeout=10.0) as c:
+        for i, uid in enumerate(targets):
+            try:
+                r = c.post(
+                    f"https://api.telegram.org/bot{bot_token}/sendMessage",
+                    json={"chat_id": uid, "text": text, "parse_mode": "Markdown"},
+                )
+                if r.status_code == 200:
+                    sent += 1
+                else:
+                    failed += 1
+            except Exception:
+                failed += 1
+            # Update job state
+            with _broadcast_lock:
+                if job_id in _broadcast_jobs:
+                    _broadcast_jobs[job_id]["sent"]     = sent
+                    _broadcast_jobs[job_id]["failed"]   = failed
+                    _broadcast_jobs[job_id]["progress"] = i + 1
+                    if _broadcast_jobs[job_id].get("cancelled"):
+                        _broadcast_jobs[job_id]["status"] = "cancelled"
+                        return
+            time.sleep(_BROADCAST_DELAY)
+    with _broadcast_lock:
+        if job_id in _broadcast_jobs:
+            _broadcast_jobs[job_id]["status"] = "done"
+            _broadcast_jobs[job_id]["ended_at"] = time.time()
+
 
 @app.route("/api/admin/broadcast", methods=["POST"])
 def api_admin_broadcast():
-    """Envoie un message à tous les clients d'un segment.
+    """Démarre un envoi broadcast en background thread.
     POST {initData, text, segment?}
-    Envoi synchrone throttlé (25 msg/s).
-    Retourne le nb envoyés + échecs.
+    Retourne {ok, job_id, total} — utiliser /api/admin/broadcast/status/<job_id> pour poll.
     """
     if _check_owner(request) is None:
         return jsonify({"ok": False, "error": "not_owner"}), 403
@@ -1461,85 +1739,70 @@ def api_admin_broadcast():
     if not bot_token:
         return jsonify({"ok": False, "error": "no_token"}), 500
 
-    # Récupérer la liste des clients du segment
     try:
-        from storage import _load as _load_all
-        from datetime import datetime as _dt, timedelta as _td
-        all_orders = _load_all() or []
+        clients = _compute_client_segments()
     except Exception:
         return jsonify({"ok": False, "error": "load_failed"}), 500
 
-    now = _dt.now()
-    cutoff_dormant = now - _td(days=30)
-    clients: dict[int, dict] = {}
-    for o in all_orders:
-        uid = int(o.get("user_id") or 0)
-        if not uid:
-            continue
-        c = clients.get(uid)
-        if c is None:
-            c = {"user_id": uid, "orders": 0, "total_spent": 0.0, "last_order": ""}
-            clients[uid] = c
-        s = o.get("status") or "pending"
-        if s not in ("cancelled", "cancelled_by_client"):
-            c["total_spent"] += float(o.get("total", 0) or 0)
-        c["orders"] += 1
-        created = o.get("created_at") or ""
-        if created > c["last_order"]:
-            c["last_order"] = created
-
-    def _seg(c):
-        try:
-            last = _dt.fromisoformat(c["last_order"])
-            if last.tzinfo is not None:
-                last = last.astimezone().replace(tzinfo=None)
-        except Exception:
-            last = _dt.min
-        if c["orders"] >= 3 or c["total_spent"] >= 500:
-            return "vip"
-        elif last >= cutoff_dormant:
-            return "active"
-        else:
-            return "dormant"
-
-    targets: list[int] = []
-    for uid, c in clients.items():
-        seg = _seg(c)
-        if segment == "all" or seg == segment:
-            targets.append(uid)
+    targets = [uid for uid, c in clients.items() if segment == "all" or c["segment"] == segment]
 
     if not targets:
-        return jsonify({"ok": True, "sent": 0, "failed": 0, "total": 0})
+        return jsonify({"ok": True, "job_id": None, "total": 0})
 
-    # Envoi throttlé
-    import httpx
-    sent   = 0
-    failed = 0
-    with httpx.Client(timeout=10.0) as c:
-        for uid in targets:
-            try:
-                r = c.post(
-                    f"https://api.telegram.org/bot{bot_token}/sendMessage",
-                    json={
-                        "chat_id":    uid,
-                        "text":       text,
-                        "parse_mode": "Markdown",
-                    },
-                )
-                if r.status_code == 200:
-                    sent += 1
-                else:
-                    failed += 1
-            except Exception:
-                failed += 1
-            time.sleep(_BROADCAST_DELAY)
+    # Créer le job + démarrer thread
+    import uuid
+    job_id = uuid.uuid4().hex[:12]
+    with _broadcast_lock:
+        _broadcast_jobs[job_id] = {
+            "status":    "running",
+            "total":     len(targets),
+            "sent":      0,
+            "failed":    0,
+            "progress":  0,
+            "segment":   segment,
+            "started_at": time.time(),
+        }
+        # Nettoyer les vieux jobs (> 1h)
+        for jid in list(_broadcast_jobs.keys()):
+            if time.time() - _broadcast_jobs[jid].get("started_at", 0) > 3600:
+                del _broadcast_jobs[jid]
+
+    threading.Thread(
+        target=_run_broadcast_job,
+        args=(job_id, targets, text, bot_token),
+        daemon=True,
+    ).start()
 
     return jsonify({
         "ok":     True,
-        "sent":   sent,
-        "failed": failed,
+        "job_id": job_id,
         "total":  len(targets),
     })
+
+
+@app.route("/api/admin/broadcast/status/<job_id>", methods=["POST"])
+def api_admin_broadcast_status(job_id):
+    """Retourne le statut d'un broadcast en cours."""
+    if _check_owner(request) is None:
+        return jsonify({"ok": False, "error": "not_owner"}), 403
+    with _broadcast_lock:
+        job = _broadcast_jobs.get(job_id)
+        if not job:
+            return jsonify({"ok": False, "error": "not_found"}), 404
+        return jsonify({"ok": True, **job})
+
+
+@app.route("/api/admin/broadcast/cancel/<job_id>", methods=["POST"])
+def api_admin_broadcast_cancel(job_id):
+    """Annule un broadcast en cours."""
+    if _check_owner(request) is None:
+        return jsonify({"ok": False, "error": "not_owner"}), 403
+    with _broadcast_lock:
+        job = _broadcast_jobs.get(job_id)
+        if not job:
+            return jsonify({"ok": False, "error": "not_found"}), 404
+        job["cancelled"] = True
+    return jsonify({"ok": True})
 
 
 @app.route("/api/admin/send_message", methods=["POST"])
