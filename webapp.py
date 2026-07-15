@@ -642,9 +642,13 @@ def api_finalize_order():
         return b.split(",", 1)[1] if "," in b else b
 
     def _compress_photo_b64(b: str, max_dim: int = 720, quality: int = 65) -> str:
-        """Réduit une photo base64 → JPEG max 720px, qualité 65%.
-        Retourne base64 (sans préfixe data:) ou "" si erreur.
+        """Réduit une photo base64 → JPEG max_dim px, qualité `quality`.
+        Retourne base64 (sans préfixe data:) ou "" si photo invalide.
         Taille cible : ~40-80 KB au lieu de 500 KB+.
+
+        Si la compression échoue : on garde l'original SEULEMENT si sa taille
+        décodée est raisonnable (< 400 KB), sinon on drop pour ne pas gonfler
+        orders.json avec un blob corrompu ou géant.
         """
         if not b:
             return ""
@@ -654,10 +658,12 @@ def api_finalize_order():
             if pad:
                 raw_b64 += "=" * (4 - pad)
             raw = base64.b64decode(raw_b64)
+            orig_size = len(raw)
             arr = np.frombuffer(raw, np.uint8)
             img = cv2.imdecode(arr, cv2.IMREAD_COLOR)
             if img is None:
-                return raw_b64  # fallback : garder l'original si décodage KO
+                logger.warning("compress photo: cv2.imdecode returned None (size=%d)", orig_size)
+                return raw_b64 if orig_size < 400_000 else ""
             h, w = img.shape[:2]
             # Downscale si nécessaire
             if max(h, w) > max_dim:
@@ -667,11 +673,12 @@ def api_finalize_order():
             # Réencodage JPEG avec quality
             ok, buf = cv2.imencode(".jpg", img, [cv2.IMWRITE_JPEG_QUALITY, quality])
             if not ok:
-                return raw_b64
+                logger.warning("compress photo: cv2.imencode failed")
+                return raw_b64 if orig_size < 400_000 else ""
             return base64.b64encode(buf.tobytes()).decode("ascii")
         except Exception as exc:
             logger.warning("compress photo: %s", exc)
-            return _strip_data_url(b)
+            return ""
 
     pay_label = payment.get("label") or payment.get("method", "?")
     order_dict = {
@@ -1474,12 +1481,22 @@ def _load_notes():
 
 
 def _save_notes():
+    """Écriture atomique : write .tmp puis os.replace (rename atomique POSIX/NT).
+    Évite la corruption du fichier si le worker crashe mid-write.
+    """
     with _client_notes_lock:
         try:
             import json as _json
             p = _notes_file_path()
-            with open(p, "w", encoding="utf-8") as f:
+            tmp = p + ".tmp"
+            with open(tmp, "w", encoding="utf-8") as f:
                 _json.dump(_client_notes_cache, f, ensure_ascii=False, indent=2)
+                f.flush()
+                try:
+                    os.fsync(f.fileno())
+                except OSError:
+                    pass
+            os.replace(tmp, p)
         except Exception as exc:
             logger.error("save notes: %s", exc)
 
@@ -1682,36 +1699,73 @@ def _compute_client_segments():
 
 
 def _run_broadcast_job(job_id: str, targets: list[int], text: str, bot_token: str):
-    """Thread worker qui envoie les messages sans bloquer le worker Flask."""
+    """Thread worker qui envoie les messages sans bloquer le worker Flask.
+    Robustesse :
+      - Détecte Markdown mal formé (400) sur le 1er envoi → fallback plain text pour tout le batch
+      - Respecte le retry_after de Telegram sur 429
+      - Comptabilise séparément les users qui ont bloqué le bot (403)
+    """
     import httpx as _httpx
-    sent = failed = 0
+    sent = failed = blocked = 0
+    use_markdown = True
+
+    def _send(client, uid, use_md):
+        body = {"chat_id": uid, "text": text}
+        if use_md:
+            body["parse_mode"] = "Markdown"
+        return client.post(
+            f"https://api.telegram.org/bot{bot_token}/sendMessage",
+            json=body,
+        )
+
     with _httpx.Client(timeout=10.0) as c:
         for i, uid in enumerate(targets):
-            try:
-                r = c.post(
-                    f"https://api.telegram.org/bot{bot_token}/sendMessage",
-                    json={"chat_id": uid, "text": text, "parse_mode": "Markdown"},
-                )
-                if r.status_code == 200:
-                    sent += 1
-                else:
+            attempt = 0
+            while True:
+                attempt += 1
+                try:
+                    r = _send(c, uid, use_markdown)
+                    if r.status_code == 200:
+                        sent += 1
+                        break
+                    # Rate limit → attendre retry_after et réessayer (1x)
+                    if r.status_code == 429 and attempt <= 2:
+                        try:
+                            retry_after = int(r.json().get("parameters", {}).get("retry_after", 3))
+                        except Exception:
+                            retry_after = 3
+                        time.sleep(min(retry_after, 30))
+                        continue
+                    # User a bloqué le bot / chat introuvable
+                    if r.status_code == 403:
+                        blocked += 1
+                        break
+                    # Parse Markdown mal formé sur le 1er user → disable Markdown pour tout le reste
+                    if r.status_code == 400 and use_markdown and i == 0 and attempt == 1:
+                        use_markdown = False
+                        continue
                     failed += 1
-            except Exception:
-                failed += 1
+                    break
+                except Exception:
+                    failed += 1
+                    break
             # Update job state
             with _broadcast_lock:
                 if job_id in _broadcast_jobs:
                     _broadcast_jobs[job_id]["sent"]     = sent
                     _broadcast_jobs[job_id]["failed"]   = failed
+                    _broadcast_jobs[job_id]["blocked"]  = blocked
                     _broadcast_jobs[job_id]["progress"] = i + 1
                     if _broadcast_jobs[job_id].get("cancelled"):
                         _broadcast_jobs[job_id]["status"] = "cancelled"
+                        _broadcast_jobs[job_id]["ended_at"] = time.time()
                         return
             time.sleep(_BROADCAST_DELAY)
     with _broadcast_lock:
         if job_id in _broadcast_jobs:
             _broadcast_jobs[job_id]["status"] = "done"
             _broadcast_jobs[job_id]["ended_at"] = time.time()
+            _broadcast_jobs[job_id]["markdown_used"] = use_markdown
 
 
 @app.route("/api/admin/broadcast", methods=["POST"])
@@ -1758,6 +1812,7 @@ def api_admin_broadcast():
             "total":     len(targets),
             "sent":      0,
             "failed":    0,
+            "blocked":   0,
             "progress":  0,
             "segment":   segment,
             "started_at": time.time(),

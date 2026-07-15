@@ -3312,11 +3312,13 @@ function renderOrderDetail(o) {
     </div>`;
   }).join("")}</div>` : "";
 
-  // Note privée owner
+  // Note privée owner (v4 : escape HTML complet — pas juste < >)
   const note = o._client_note || "";
+  const noteEscaped = escHtml(note).replace(/\n/g, "<br>");
+  const uidSafe = Number(o.user_id) || 0;
   const noteHtml = note
-    ? `<div class="client-note-box"><div style="flex:1;">${note.replace(/[<>]/g,'').replace(/\n/g,'<br>')}<br><a onclick="editClientNote(${o.user_id})" style="font-size:11px; opacity:0.7; cursor:pointer; color:#7c3aed;">Modifier</a></div></div>`
-    : `<div class="client-note-empty" onclick="editClientNote(${o.user_id})">➕ Ajouter une note privée sur ce client</div>`;
+    ? `<div class="client-note-box"><div style="flex:1;">${noteEscaped}<br><a onclick="editClientNote(${uidSafe})" style="font-size:11px; opacity:0.7; cursor:pointer; color:#7c3aed;">Modifier</a></div></div>`
+    : `<div class="client-note-empty" onclick="editClientNote(${uidSafe})">➕ Ajouter une note privée sur ce client</div>`;
 
   el.innerHTML = refreshHdr + noteHtml + `
     <div class="od-section">
@@ -4256,8 +4258,66 @@ loadOwnerData = async function(showToastFlag) {
 };
 
 // ═══════════════════════════════════════════════════════════════════════════
-// AMÉLIORATIONS v3 — timeline, notes, reorder, dashboard search, sound
+// AMÉLIORATIONS v3/v4 — timeline, notes, reorder, dashboard search, sound
 // ═══════════════════════════════════════════════════════════════════════════
+
+// v4 helper : fetch avec timeout (AbortController) + Content-Type auto pour JSON.
+// Évite qu'un fetch reste pendu à l'infini si le réseau meurt.
+async function apiFetch(url, opts = {}) {
+  const timeout = opts.timeout || 15000;
+  const ctrl    = new AbortController();
+  const tid     = setTimeout(() => ctrl.abort(), timeout);
+  const headers = Object.assign(
+    { "Content-Type": "application/json" },
+    opts.headers || {}
+  );
+  try {
+    return await fetch(url, Object.assign({}, opts, { headers, signal: ctrl.signal }));
+  } finally {
+    clearTimeout(tid);
+  }
+}
+
+// v4 helper : escape HTML complet (pas juste < >). Pour tout affichage user-content.
+function escHtml(s) {
+  if (s == null) return "";
+  return String(s)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+// v4 helper : modal input custom (remplace prompt() qui ne marche pas fiable iOS).
+// Retourne la string saisie, ou null si annulé.
+function showTextModal(title, initial = "", placeholder = "", multiline = true) {
+  return new Promise((resolve) => {
+    const backdrop = document.createElement("div");
+    backdrop.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:99999;display:flex;align-items:center;justify-content:center;padding:20px;";
+    backdrop.innerHTML = `
+      <div style="background:#1a1a24;border-radius:16px;padding:20px;max-width:420px;width:100%;color:#fff;box-shadow:0 20px 60px rgba(0,0,0,0.5);">
+        <div style="font-size:16px;font-weight:700;margin-bottom:12px;">${escHtml(title)}</div>
+        ${multiline
+          ? `<textarea id="_tmodal_input" rows="4" placeholder="${escHtml(placeholder)}" style="width:100%;box-sizing:border-box;padding:12px;border-radius:10px;background:#0a0a0f;color:#fff;border:1px solid rgba(255,255,255,0.15);font-family:inherit;font-size:14px;resize:vertical;"></textarea>`
+          : `<input id="_tmodal_input" type="text" placeholder="${escHtml(placeholder)}" style="width:100%;box-sizing:border-box;padding:12px;border-radius:10px;background:#0a0a0f;color:#fff;border:1px solid rgba(255,255,255,0.15);font-size:14px;">`
+        }
+        <div style="display:flex;gap:8px;margin-top:14px;">
+          <button id="_tmodal_cancel" style="flex:1;padding:12px;border-radius:10px;background:rgba(255,255,255,0.08);color:#fff;border:none;font-weight:600;font-size:14px;">Annuler</button>
+          <button id="_tmodal_ok" style="flex:2;padding:12px;border-radius:10px;background:#7c3aed;color:#fff;border:none;font-weight:700;font-size:14px;">Enregistrer</button>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(backdrop);
+    const input = backdrop.querySelector("#_tmodal_input");
+    input.value = initial || "";
+    setTimeout(() => input.focus(), 50);
+    const cleanup = (v) => { backdrop.remove(); resolve(v); };
+    backdrop.querySelector("#_tmodal_cancel").onclick = () => cleanup(null);
+    backdrop.querySelector("#_tmodal_ok").onclick     = () => cleanup(input.value);
+    backdrop.addEventListener("click", (e) => { if (e.target === backdrop) cleanup(null); });
+  });
+}
 
 // Helper : diff humain lisible entre 2 timestamps
 function _diffHuman(t1, t2) {
@@ -4271,26 +4331,29 @@ function _diffHuman(t1, t2) {
   } catch { return ""; }
 }
 
-// ─── Notes privées owner ───────────────────────────────────────────────
+// ─── Notes privées owner (v4 : modal custom au lieu de prompt() iOS-broken) ───
 async function editClientNote(userId) {
   hapticSelect();
   // Charger la note existante
   let currentNote = "";
   try {
-    const r = await fetch("/api/admin/client_note", {
+    const r = await apiFetch("/api/admin/client_note", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ initData: tg.initData || "", user_id: userId, action: "get" })
     });
     const d = await r.json();
     if (d.ok) currentNote = d.note || "";
   } catch {}
-  const newNote = prompt("Note privée sur ce client (visible seulement par vous) :", currentNote);
+  const newNote = await showTextModal(
+    "Note privée sur ce client",
+    currentNote,
+    "Ex : client régulier, préfère livraison discrète, à recontacter…",
+    true
+  );
   if (newNote === null) return;  // annulé
   try {
-    const r = await fetch("/api/admin/client_note", {
+    const r = await apiFetch("/api/admin/client_note", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         initData: tg.initData || "",
         user_id: userId,
@@ -4418,7 +4481,7 @@ function renderDashSearchResults(query) {
   }).slice(0, 6);
   if (results.length === 0) {
     wrap.style.display = "block";
-    wrap.innerHTML = `<div class="empty" style="padding:14px;"><span style="opacity:0.5;">Aucun résultat pour "${query.replace(/[<>]/g,'')}"</span></div>`;
+    wrap.innerHTML = `<div class="empty" style="padding:14px;"><span style="opacity:0.5;">Aucun résultat pour "${escHtml(query)}"</span></div>`;
     return;
   }
   wrap.style.display = "block";
@@ -4474,7 +4537,7 @@ loadOwnerData = async function(showToastFlag) {
   state._lastPendingCount = now;
 };
 
-// ─── Broadcast async v2 avec polling ───────────────────────────────────
+// ─── Broadcast async v2 avec polling (v4 : timeout max + finally guard) ───
 const _origSendBroadcast = sendBroadcast;
 sendBroadcast = async function() {
   const text = document.getElementById("broadcastText").value.trim();
@@ -4492,58 +4555,93 @@ sendBroadcast = async function() {
   const btn = document.getElementById("broadcastSendBtn");
   const orig = btn.innerHTML;
   btn.disabled = true;
+  let progBar = null;
+  // Timeout maximum : 5 min de polling puis on abandonne
+  const MAX_POLL_ITERATIONS = 300;   // × 1000 ms = 5 min
+  const STALLED_LIMIT       = 20;    // 20s sans progrès → abandon
 
   try {
-    const r = await fetch("/api/admin/broadcast", {
+    const r = await apiFetch("/api/admin/broadcast", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ initData: tg.initData || "", text, segment: state.broadcastSegment })
     });
     const data = await r.json();
     if (!data.ok || !data.job_id) {
       showToast(data.error || "Erreur", true);
-      btn.disabled = false; btn.innerHTML = orig;
       return;
     }
     hapticMedium();
-    // Poller le status
     const total = data.total;
     btn.innerHTML = `<span class="loader"></span> 0 / ${total}`;
-    const progBar = document.createElement("div");
+    progBar = document.createElement("div");
     progBar.className = "bc-progress";
     progBar.innerHTML = '<div class="fill"></div>';
     btn.parentNode.insertBefore(progBar, btn);
 
     const jobId = data.job_id;
+    let iterations = 0;
+    let stalledCount = 0;
+    let lastProgress = 0;
+    let consecErrors = 0;
     let done = false;
-    while (!done) {
+    while (!done && iterations < MAX_POLL_ITERATIONS) {
+      iterations += 1;
       await new Promise(res => setTimeout(res, 1000));
       try {
-        const sr = await fetch(`/api/admin/broadcast/status/${jobId}`, {
+        const sr = await apiFetch(`/api/admin/broadcast/status/${jobId}`, {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ initData: tg.initData || "" })
         });
         const st = await sr.json();
-        if (!st.ok) break;
+        if (!st.ok) {
+          // job perdu → sortir
+          showToast("Job introuvable", true);
+          break;
+        }
+        consecErrors = 0;
         const progress = st.progress || 0;
-        const pct = Math.round((progress / total) * 100);
+        const pct = total > 0 ? Math.round((progress / total) * 100) : 0;
         btn.innerHTML = `<span class="loader"></span> ${progress} / ${total}`;
         progBar.querySelector(".fill").style.width = pct + "%";
+
+        if (progress === lastProgress) {
+          stalledCount += 1;
+          if (stalledCount >= STALLED_LIMIT) {
+            showToast("Broadcast bloqué — vérifier le serveur", true);
+            break;
+          }
+        } else {
+          stalledCount = 0;
+          lastProgress = progress;
+        }
+
         if (st.status === "done" || st.status === "cancelled") {
           done = true;
-          progBar.remove();
-          showToast(`✓ Envoyé à ${st.sent} client(s)${st.failed ? ` (${st.failed} échecs)` : ''}`);
+          const parts = [`✓ Envoyé à ${st.sent} client(s)`];
+          if (st.blocked) parts.push(`${st.blocked} bloqué(s)`);
+          if (st.failed)  parts.push(`${st.failed} échec(s)`);
+          showToast(parts.join(" · "));
           hapticSuccess();
           closeBroadcastModal();
-          btn.disabled = false; btn.innerHTML = orig;
         }
-      } catch { /* réessayer */ }
+      } catch {
+        consecErrors += 1;
+        if (consecErrors >= 5) {
+          showToast(t("err_network"), true);
+          break;
+        }
+      }
+    }
+    if (!done && iterations >= MAX_POLL_ITERATIONS) {
+      showToast("Polling timeout — vérifier le serveur", true);
     }
   } catch {
     showToast(t("err_network"), true);
-    btn.disabled = false; btn.innerHTML = orig;
     hapticError();
+  } finally {
+    if (progBar) progBar.remove();
+    btn.disabled = false;
+    btn.innerHTML = orig;
   }
 };
 
