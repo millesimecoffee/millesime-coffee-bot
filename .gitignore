@@ -21,10 +21,88 @@ bot_stderr*.txt
 bot_out*.txt
 bot_err*.txt
 bot_run*.log
+bot2_*.txt
+bot_live*.txt
+casino_out.txt
+casino_err.txt
+clean_out.txt
+clean_err.txt
+debug_out.txt
+debug_err.txt
+final*.txt
+go_out.txt
+go_err.txt
+live.txt
+live_err.txt
+min_out.txt
+min_err.txt
+srv_out.txt
+srv_err.txt
+web_out.txt
+web_err.txt
+x_out.txt
+x_err.txt
 startup_*.txt
 login_*.txt
 watchdog.log
 envois_log.csv
+
+# Docs de travail (générés par les audits, gardés en local)
+AUDIT_*.md
+CHANGES_*.md
+CHEATSHEET_*.md
+CHIPS_*.md
+CORRECTIONS_*.md
+DEPLOYMENT_*.md
+DESIGN_*.md
+EXECUTIVE_*.md
+FINAL_*.md
+GUIDE_*.md
+IMPLEMENTATION_*.md
+PLAN_*.md
+QUICK_START_*.md
+README_FIXES.md
+ROULETTE_*.md
+VERIFICATION_CHECKLIST.txt
+
+# Scripts .bat locaux (non versionnés)
+Coffee Spam.bat
+LANCER_*.bat
+start_*.bat
+install_autostart.ps1
+uninstall_autostart.ps1
+
+# Casino (projet séparé, ne doit pas polluer bot)
+casino.db
+casino.env.example
+casino_bot.py
+casino_config.py
+casino_crypto.py
+casino_db.py
+casino_games.py
+casino_server.py
+casino_webapp/
+START_CASINO_FIX.py
+
+# Fichiers de test one-shot
+bot_test_minimal.py
+test_bot.py
+test_final.py
+diag.py
+fix_token.py
+regen_session.py
+setup_session.py
+update_millesime.mjs
+whatsapp_bot.py
+white-page/
+
+# Backups
+backups_avant_reset/
+.vite/
+
+# Images de dev
+WhatsApp Image *.jpeg
+WhatsApp Image *.jpg
 
 # Rapports générés
 rapport_*.html
