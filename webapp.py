@@ -167,6 +167,7 @@ def api_auth():
             "catalog":    catalog_mod.CATALOG,
             "min_orders": catalog_mod.MIN_ORDER,
             "currencies": catalog_mod.CURRENCIES,
+            "country_currencies": {c: catalog_mod.get_currencies(c) for c in catalog_mod.CATALOG},
             "payment_config": {
                 "bank_iban":    os.getenv("BANK_IBAN", ""),
                 "payment_link": os.getenv("PAYMENT_LINK", ""),
@@ -199,6 +200,7 @@ def api_catalog():
             "catalog":    catalog_mod.CATALOG,
             "min_orders": catalog_mod.MIN_ORDER,
             "currencies": catalog_mod.CURRENCIES,
+            "country_currencies": {c: catalog_mod.get_currencies(c) for c in catalog_mod.CATALOG},
         })
     except Exception as exc:
         logger.error("api_catalog: %s", exc)
@@ -604,6 +606,13 @@ def api_finalize_order():
     if country not in catalog_mod.CATALOG or city not in catalog_mod.CATALOG.get(country, {}):
         return jsonify({"ok": False, "error": "bad_location"}), 400
 
+    # Devise d'affichage choisie par le client — validée contre les devises
+    # autorisées pour ce pays (sinon on prend la devise par défaut du pays).
+    allowed_currencies = catalog_mod.get_currencies(country)
+    disp_cur = str(data.get("display_currency", "")).strip()
+    if disp_cur not in allowed_currencies:
+        disp_cur = allowed_currencies[0] if allowed_currencies else "€"
+
     products = catalog_mod.CATALOG[country][city]
     total = 0.0
     safe_cart = {}
@@ -695,6 +704,7 @@ def api_finalize_order():
         "payment_method": payment.get("method", ""),
         "payment_currency": payment.get("currency", ""),
         "payment_crypto":   payment.get("crypto_name", ""),
+        "display_currency": disp_cur,   # devise d'affichage choisie (symbole)
         "address":   (address.get("short") or address.get("formatted") or address.get("text") or ""),
         "address_verified": bool(address.get("verified")),
         "address_lat": address.get("lat"),
@@ -725,7 +735,7 @@ def api_finalize_order():
     # On garde les \n natifs : <code>...</code> en HTML Telegram préserve les newlines
     addr_disp = (address.get("short") or address.get("formatted") or "—")
     cart_html = "\n".join(
-        f"  • {_html_escape(prod)} × {q} = {products[prod]*q:,.0f} €"
+        f"  • {_html_escape(prod)} × {q} = {products[prod]*q:,.0f} {disp_cur}"
         for prod, q in safe_cart.items()
     )
     full_name = _html_escape(user_first or user_name or "?")
@@ -737,7 +747,7 @@ def api_finalize_order():
         f"━━━━━━━━━━━━━━━━━━━━\n"
         f"👤 {who_short}\n"
         f"📍 <b>{_html_escape(city)}</b> ({_html_escape(country_clean)})\n"
-        f"💸 <b>{total:,.0f} €</b> · {sum(safe_cart.values())} article(s)\n"
+        f"💸 <b>{total:,.0f} {disp_cur}</b> · {sum(safe_cart.values())} article(s)\n"
         f"━━━━━━━━━━━━━━━━━━━━"
     )
     lines = [
@@ -756,7 +766,7 @@ def api_finalize_order():
         f"🛒 <b>Panier ({sum(safe_cart.values())} articles)</b>",
         f"<code>{_html_escape(cart_html)}</code>",
         "",
-        f"💸 <b>Total : {total:,.0f} €</b>",
+        f"💸 <b>Total : {total:,.0f} {disp_cur}</b>",
         "",
         f"💳 Paiement : {_html_escape(pay_label)}",
     ]
@@ -924,6 +934,7 @@ def api_admin_orders():
             "status":     o.get("status") or "pending",
             "source":     o.get("source"),
             "rating":     o.get("rating"),
+            "display_currency": o.get("display_currency") or "€",
             "has_selfie": bool(o.get("selfie_b64")),
             "has_proof":  bool(o.get("proof_b64")),
             "cart_count": sum((o.get("cart") or {}).values()) if isinstance(o.get("cart"), dict) else 0,
@@ -1223,6 +1234,7 @@ def api_client_orders():
             "payment":    o.get("payment"),
             "status":     o.get("status") or "pending",
             "rating":     o.get("rating"),
+            "display_currency": o.get("display_currency") or "€",
             "cart_count": sum((o.get("cart") or {}).values()) if isinstance(o.get("cart"), dict) else 0,
             "cart":       o.get("cart") or {},
         }
@@ -1440,6 +1452,7 @@ def api_order_track():
         "steps": steps_status,
         "city":  order.get("city"),
         "total": order.get("total"),
+        "display_currency": order.get("display_currency") or "€",
     })
 
 

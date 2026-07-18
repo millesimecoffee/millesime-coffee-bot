@@ -1804,6 +1804,47 @@
     letter-spacing: -0.8px;
     font-size: 26px !important;
   }
+
+  /* Sélecteur de devise (écran menu produits) */
+  .cur-selector {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    background: linear-gradient(180deg, rgba(255,255,255,0.02), transparent 40%), var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--r-md);
+    padding: 8px 8px 8px 14px;
+    margin-bottom: 12px;
+    box-shadow: var(--shadow-sm), inset 0 1px 0 rgba(255,255,255,0.03);
+  }
+  .cur-selector .cur-label {
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 1.2px;
+    text-transform: uppercase;
+    opacity: 0.5;
+  }
+  .cur-pills { display: flex; gap: 4px; }
+  .cur-pill {
+    min-width: 42px;
+    padding: 7px 12px;
+    border-radius: 9px;
+    border: 1px solid var(--border);
+    background: rgba(255,255,255,0.04);
+    color: var(--txt-secondary);
+    font-size: 14px;
+    font-weight: 700;
+    cursor: pointer;
+    transition: background 0.2s, color 0.2s, transform 0.12s var(--ease-out);
+  }
+  .cur-pill:active { transform: scale(0.94); }
+  .cur-pill.active {
+    background: var(--accent-grad);
+    color: #fff;
+    border-color: transparent;
+    box-shadow: 0 4px 14px rgba(139,92,246,0.35), inset 0 1px 0 rgba(255,255,255,0.2);
+  }
 </style>
 </head>
 <body>
@@ -2381,7 +2422,7 @@ const T = {
     select_country: "Choisissez votre pays", select_city: "Choisissez votre ville",
     select_products: "Produits disponibles", your_cart: "Votre panier",
     view_cart: "Voir le panier", confirm_cart: "Continuer", cart_empty: "Votre panier est vide",
-    min_amount: "Minimum {min} € — il manque {diff} €",
+    min_amount: "Minimum {min} {cur} — il manque {diff} {cur}",
     min_qty: "Minimum {min} articles dans le panier",
     subtotal: "Sous-total", total: "Total", items: "article(s)",
     err_network: "Erreur réseau, réessayez.", added: "Ajouté au panier",
@@ -2443,7 +2484,7 @@ const T = {
     select_country: "Choose your country", select_city: "Choose your city",
     select_products: "Available products", your_cart: "Your cart",
     view_cart: "View cart", confirm_cart: "Continue", cart_empty: "Your cart is empty",
-    min_amount: "Minimum {min} € — short by {diff} €",
+    min_amount: "Minimum {min} {cur} — short by {diff} {cur}",
     min_qty: "Minimum {min} items in cart",
     subtotal: "Subtotal", total: "Total", items: "item(s)",
     err_network: "Network error, retry.", added: "Added to cart",
@@ -2500,7 +2541,7 @@ const T = {
     select_country: "Elige tu país", select_city: "Elige tu ciudad",
     select_products: "Productos disponibles", your_cart: "Tu carrito",
     view_cart: "Ver carrito", confirm_cart: "Continuar", cart_empty: "Tu carrito está vacío",
-    min_amount: "Mínimo {min} € — faltan {diff} €",
+    min_amount: "Mínimo {min} {cur} — faltan {diff} {cur}",
     min_qty: "Mínimo {min} artículos en el carrito",
     subtotal: "Subtotal", total: "Total", items: "artículo(s)",
     err_network: "Error de red, reintenta.", added: "Añadido al carrito",
@@ -2564,6 +2605,9 @@ const state = {
   cart:    {},          // {product_name: qty}
   catalog: null,        // chargé via /api/catalog
   minOrders: null,
+  countryCurrencies: {},// {pays: [devises autorisées]} — affichage
+  allowedCurrencies: ["€"], // devises proposées pour le pays courant
+  currency: "€",        // devise d'affichage active (symbole)
   payment_config: null, // {bank_iban, payment_link, crypto_eth, crypto_usdt}
   payment: {},          // {method, currency, crypto_name, crypto_addr, proof_b64, label}
   address: {},          // {text, formatted, short, lat, lon, maps_link, verified}
@@ -2595,7 +2639,14 @@ function applyI18n() {
     el.textContent = t(el.dataset.i18n);
   });
 }
-function fmtEUR(n) { return (Math.round(n*100)/100).toLocaleString("fr-FR") + " €"; }
+// Formate un montant avec la devise d'affichage active (modèle "relabel" :
+// le chiffre ne change pas, seul le symbole change).
+function fmtCur(n, sym) {
+  const s = sym || state.currency || "€";
+  return (Math.round(n*100)/100).toLocaleString("fr-FR") + " " + s;
+}
+// Alias historique — tout le code client-facing passe par ici.
+function fmtEUR(n) { return fmtCur(n); }
 
 function showToast(msg, isErr) {
   const el = document.getElementById("toast");
@@ -2732,6 +2783,7 @@ async function checkPassword() {
       state.pwd = pwd;
       state.catalog = data.catalog;
       state.minOrders = data.min_orders;
+      state.countryCurrencies = data.country_currencies || {};
       state.payment_config = data.payment_config || {};
       // Check owner
       try {
@@ -2800,7 +2852,7 @@ function buildCountryScreen() {
       </div>
       <span class="arrow">›</span>
     `;
-    div.onclick = () => { state.country = country; buildCityScreen(); setScreen("city"); };
+    div.onclick = () => { state.country = country; setCountryCurrency(country); buildCityScreen(); setScreen("city"); };
     list.appendChild(div);
   });
   // Raccourcis "commande en cours" + "mes commandes" en haut de l'accueil
@@ -2833,6 +2885,7 @@ function renderClientHomeShortcuts() {
     };
     const status = active.status || "pending";
     const total  = (active.total || 0).toLocaleString('fr-FR');
+    const cur    = active.display_currency || "€";
     html += `
       <div class="section-title" style="margin-top:4px;">🔥 Commande en cours</div>
       <div class="order-card2 status-${status}" style="margin-bottom:8px;" onclick="openTracking('${active.order_id}')">
@@ -2845,7 +2898,7 @@ function renderClientHomeShortcuts() {
         <div class="oc-info">
           <div class="oc-line">
             <span class="oc-client">${escHtml(active.city || '?')}</span>
-            <span class="oc-total">${total} €</span>
+            <span class="oc-total">${total} ${escHtml(cur)}</span>
           </div>
           <div class="oc-meta">
             <span>${active.cart_count || 0} article(s) · ${escHtml(active.payment || '')}</span>
@@ -2894,11 +2947,51 @@ function buildCityScreen() {
 // Map nom de produit → index numérique (les emojis cassent btoa, on utilise un index)
 state.productNames = [];
 
+// Fixe les devises proposées pour un pays + la devise active par défaut.
+function setCountryCurrency(country) {
+  const list = (state.countryCurrencies && state.countryCurrencies[country]) || ["€", "$", "£"];
+  state.allowedCurrencies = Array.isArray(list) && list.length ? list : ["€"];
+  state.currency = state.allowedCurrencies[0];
+}
+
+// Sélecteur de devise (pills) — affiché seulement si plusieurs devises possibles.
+function renderCurrencySelector() {
+  const allowed = state.allowedCurrencies || ["€"];
+  if (allowed.length <= 1) return "";   // devise imposée → pas de sélecteur
+  const pills = allowed.map(sym =>
+    `<button class="cur-pill${sym === state.currency ? ' active' : ''}" onclick="changeCurrency('${sym}')">${sym}</button>`
+  ).join("");
+  return `<div class="cur-selector"><span class="cur-label">Devise</span><div class="cur-pills">${pills}</div></div>`;
+}
+
+// Change la devise active sans rebuild (préserve le panier) : maj des prix affichés.
+function changeCurrency(sym) {
+  if (!(state.allowedCurrencies || []).includes(sym)) return;
+  state.currency = sym;
+  hapticSelect();
+  // Pills actives
+  document.querySelectorAll(".cur-pill").forEach(b => {
+    b.classList.toggle("active", b.textContent === sym);
+  });
+  // Reprix des produits affichés
+  const products = state.catalog?.[state.country]?.[state.city] || {};
+  document.querySelectorAll("#productList .product").forEach(div => {
+    const idx  = div.dataset.idx;
+    const name = state.productNames[idx];
+    const priceEl = div.querySelector(".price");
+    if (name && priceEl && products[name] != null) priceEl.textContent = fmtCur(products[name]);
+  });
+  updateCartBar();
+  updateMinOrderBanner();
+}
+
 function buildMenuScreen() {
   const list = document.getElementById("productList");
   list.innerHTML = "";
   state.cart = {}; // reset cart au changement de ville
   state.productNames = [];
+  // Sélecteur de devise en tête (si plusieurs devises pour ce pays)
+  list.insertAdjacentHTML("beforeend", renderCurrencySelector());
   const products = state.catalog[state.country][state.city] || {};
   Object.entries(products).forEach(([name, price], idx) => {
     state.productNames[idx] = name;
@@ -2985,7 +3078,7 @@ function updateMinOrderBanner() {
   const total = computeCartTotal();
   const count = Object.values(state.cart).reduce((a,b)=>a+b,0);
   if (min.type === "amount" && total < min.value && total > 0) {
-    banner.textContent = t("min_amount", {min: min.value, diff: (min.value - total).toFixed(0)});
+    banner.textContent = t("min_amount", {min: min.value, diff: (min.value - total).toFixed(0), cur: state.currency || "€"});
     banner.style.display = "block";
   } else if (min.type === "qty" && count < min.value && count > 0) {
     banner.textContent = t("min_qty", {min: min.value});
@@ -3040,7 +3133,7 @@ function buildCartScreen() {
   const min   = getMinOrder();
   let minWarn = "";
   if (min && min.type === "amount" && total < min.value) {
-    minWarn = `<div class="banner" style="margin-top:14px;">${t("min_amount", {min: min.value, diff: (min.value-total).toFixed(0)})}</div>`;
+    minWarn = `<div class="banner" style="margin-top:14px;">${t("min_amount", {min: min.value, diff: (min.value-total).toFixed(0), cur: state.currency || "€"})}</div>`;
   } else if (min && min.type === "qty" && count < min.value) {
     minWarn = `<div class="banner" style="margin-top:14px;">${t("min_qty", {min: min.value})}</div>`;
   }
@@ -3385,6 +3478,7 @@ async function finalizeOrder() {
     payment:     state.payment,
     address:     state.address,
     selfie_b64:  state.selfie_b64,
+    display_currency: state.currency || "€",
   };
 
   try {
@@ -3650,6 +3744,7 @@ function renderOrderCard2(o) {
   const src     = o.source === "miniapp" ? "📲" : "💬";
   const photos  = (o.has_selfie ? "📸" : "") + (o.has_proof ? " 🏦" : "");
   const total   = (o.total||0).toLocaleString('fr-FR');
+  const cur     = o.display_currency || "€";
 
   // Quick actions selon status
   let actions = "";
@@ -3686,7 +3781,7 @@ function renderOrderCard2(o) {
       <div class="oc-info" onclick="openOrderDetail('${o.order_id}')">
         <div class="oc-line">
           <span class="oc-client">${client}${uName}</span>
-          <span class="oc-total">${total} €</span>
+          <span class="oc-total">${total} ${cur}</span>
         </div>
         <div class="oc-meta">
           <span>${src} ${o.city || '?'} · ${o.cart_count} art. ${photos}</span>
@@ -3877,7 +3972,7 @@ function renderOrderDetail(o) {
       ${cartHtml || '<div class="od-row"><span class="lbl">—</span></div>'}
       <div class="od-row" style="margin-top:8px; padding-top:8px; border-top:1px solid var(--border);">
         <span class="lbl">Total</span>
-        <span class="val" style="font-size:16px; background:var(--accent-grad); -webkit-background-clip:text; background-clip:text; color:transparent;">${(o.total||0).toLocaleString('fr-FR')} €</span>
+        <span class="val" style="font-size:16px; background:var(--accent-grad); -webkit-background-clip:text; background-clip:text; color:transparent;">${(o.total||0).toLocaleString('fr-FR')} ${o.display_currency || '€'}</span>
       </div>
     </div>
 
@@ -4366,6 +4461,7 @@ function renderClientHome() {
     };
     const status = active.status || "pending";
     const total = (active.total||0).toLocaleString('fr-FR');
+    const cur   = active.display_currency || "€";
     card.innerHTML = `
       <div class="order-card2 status-${status}" onclick="openTracking('${active.order_id}')">
         <div class="oc-top">
@@ -4377,7 +4473,7 @@ function renderClientHome() {
         <div class="oc-info">
           <div class="oc-line">
             <span class="oc-client">${active.city || '?'}</span>
-            <span class="oc-total">${total} €</span>
+            <span class="oc-total">${total} ${cur}</span>
           </div>
           <div class="oc-meta">
             <span>${active.cart_count} article(s) · ${active.payment || ''}</span>
@@ -4415,6 +4511,7 @@ function openClientHistory() {
       const status = o.status || "pending";
       const canTrack = ["pending", "confirmed", "delivering", "delivered"].includes(status);
       const total = (o.total||0).toLocaleString('fr-FR');
+      const cur   = o.display_currency || "€";
       const rating = o.rating ? '⭐'.repeat(o.rating) : '';
       return `
         <div class="order-card2 status-${status}" ${canTrack ? `onclick="openTracking('${o.order_id}')"` : ''}>
@@ -4428,7 +4525,7 @@ function openClientHistory() {
           <div class="oc-info">
             <div class="oc-line">
               <span class="oc-client">${o.city || '?'}</span>
-              <span class="oc-total">${total} €</span>
+              <span class="oc-total">${total} ${cur}</span>
             </div>
             <div class="oc-meta">
               <span>${o.cart_count} article(s) · ${o.payment || ''}</span>
@@ -4939,6 +5036,7 @@ async function reorderFromHistory(orderId) {
     // Pré-remplir le state comme si on avait navigué normalement
     state.country = d.country;
     state.city    = d.city;
+    setCountryCurrency(d.country);
     // Passer directement à l'écran menu → panier
     buildMenuScreen();
     // Charger le cart après build (buildMenuScreen reset state.cart)

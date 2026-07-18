@@ -446,3 +446,26 @@ MIN_ORDER: dict[str, dict] = {
 
 def get_currency(country: str) -> str:
     return CURRENCIES.get(country, "€")
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Devises d'AFFICHAGE proposées au client, par pays.
+# Modèle "même montant, symbole change" : le prix (ex: 150) reste identique,
+# seul le symbole affiché change. La 1ʳᵉ devise de la liste est celle par
+# défaut. Si la liste a une seule devise → pas de sélecteur (imposée).
+# ═══════════════════════════════════════════════════════════════════════════
+ALL_CURRENCIES = ["€", "$", "£"]   # "toutes les monnaies" pour le reste du monde
+
+COUNTRY_CURRENCIES: dict[str, list[str]] = {
+    "🇺🇸 États-Unis": ["$"],              # dollars uniquement
+    "🇬🇧 Angleterre": ["£"],              # livres uniquement (Londres + Manchester)
+    "🇹🇭 Thaïlande":  ["฿"],              # bahts uniquement
+    "🇲🇦 Maroc":       ["dh", "€", "$"],  # dirham / euro / dollar
+    # Tous les autres pays → ALL_CURRENCIES (voir get_currencies)
+}
+
+
+def get_currencies(country: str) -> list[str]:
+    """Liste des devises d'affichage proposées pour un pays.
+    Défaut = toutes les devises majeures (€/$/£)."""
+    return COUNTRY_CURRENCIES.get(country, ALL_CURRENCIES)
