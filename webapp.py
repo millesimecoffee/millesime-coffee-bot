@@ -168,6 +168,11 @@ def api_auth():
             "min_orders": catalog_mod.MIN_ORDER,
             "currencies": catalog_mod.CURRENCIES,
             "country_currencies": {c: catalog_mod.get_currencies(c) for c in catalog_mod.CATALOG},
+            # Contact vendeur/support pour le bouton "Nous contacter" (tracking client)
+            "support": {
+                "username": os.getenv("SUPPORT_USERNAME", "").lstrip("@").strip(),
+                "user_id":  os.getenv("OWNER_USER_ID", "").strip(),
+            },
             "payment_config": {
                 "bank_iban":    os.getenv("BANK_IBAN", ""),
                 "payment_link": os.getenv("PAYMENT_LINK", ""),

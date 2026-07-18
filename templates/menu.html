@@ -2384,7 +2384,8 @@
   </div>
 
   <div class="container" style="padding-top:0;">
-    <button class="next-btn" style="background:#444; box-shadow:none; margin-top:0;" onclick="closeTracking()">Fermer</button>
+    <button class="next-btn" onclick="contactSupport()">💬 Nous contacter</button>
+    <button class="next-btn" style="background:#444; box-shadow:none; margin-top:10px;" onclick="closeTracking()">Fermer</button>
   </div>
 </div>
 
@@ -2771,6 +2772,7 @@ async function checkPassword() {
       state.catalog = data.catalog;
       state.minOrders = data.min_orders;
       state.countryCurrencies = data.country_currencies || {};
+      state.support = data.support || {};
       state.payment_config = data.payment_config || {};
       // Check owner
       try {
@@ -4040,6 +4042,22 @@ function contactClient(elOrObj) {
   }
   // 3) Dernier recours (ID manquant / lien non supporté) → message via le bot
   askAndSendMessageToClient(client);
+}
+
+// Le client ouvre une conversation directe avec le vendeur/admin depuis le suivi.
+function contactSupport() {
+  hapticSelect();
+  const s = state.support || {};
+  // 1) Username public du vendeur → chat direct via t.me (le plus fiable)
+  if (s.username) {
+    const url = "https://t.me/" + s.username;
+    try { tg.openTelegramLink(url); return; } catch {}
+    try { window.open(url, "_blank"); return; } catch {}
+  }
+  // 2) Sinon deep-link par ID owner
+  if (s.user_id && openClientChatById(s.user_id)) return;
+  // 3) Rien de configuré
+  showToast("Contact vendeur indisponible", true);
 }
 
 // Envoi d'un message au client via le bot (repli si le chat direct n'est pas dispo).
