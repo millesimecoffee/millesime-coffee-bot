@@ -1945,9 +1945,11 @@
   </div>
 </div>
 
-<!-- ÉCRAN 2 : Pays -->
+<!-- ÉCRAN 2 : Pays (= accueil client : raccourcis commandes + villes) -->
 <div class="screen" id="screen-country">
   <div class="container">
+    <!-- Raccourcis client : commande en cours + historique (rendus dynamiquement) -->
+    <div id="clientHomeShortcuts"></div>
     <div class="section-title" data-i18n="select_country">Choisissez votre pays</div>
     <div class="card-grid full" id="countryList"></div>
   </div>
@@ -2745,7 +2747,8 @@ async function checkPassword() {
       if (state.is_owner) {
         showOwnerHome();
       } else {
-        // Check si le client a des commandes passées
+        // Précharger les commandes du client (en cours + passées) pour
+        // afficher les raccourcis en haut de l'accueil-villes.
         try {
           const clientResp = await fetch("/api/client/orders", {
             method: "POST",
@@ -2754,14 +2757,10 @@ async function checkPassword() {
           });
           if (clientResp.status === 200) {
             const cd = await clientResp.json();
-            if (cd.ok && cd.count > 0) {
-              state.clientData = cd;
-              showClientHome();
-              return;
-            }
+            if (cd.ok) state.clientData = cd;
           }
         } catch {}
-        // Aucune commande → flow classique catalogue
+        // Accueil unique = écran-villes, avec raccourcis commandes en haut
         buildCountryScreen();
         setScreen("country");
       }
@@ -2804,6 +2803,71 @@ function buildCountryScreen() {
     div.onclick = () => { state.country = country; buildCityScreen(); setScreen("city"); };
     list.appendChild(div);
   });
+  // Raccourcis "commande en cours" + "mes commandes" en haut de l'accueil
+  renderClientHomeShortcuts();
+  // Rafraîchir en arrière-plan pour refléter une commande fraîchement passée
+  if (!state.is_owner) {
+    reloadClientOrders().then(renderClientHomeShortcuts).catch(() => {});
+  }
+}
+
+// Raccourcis client affichés en haut de l'écran-villes (l'accueil).
+// - Carte "commande en cours" cliquable → tracking live (si commande active)
+// - Bouton "Mes commandes (N)" → historique (si commandes passées)
+// Masqué pour l'owner ou si le client n'a aucune donnée.
+function renderClientHomeShortcuts() {
+  const wrap = document.getElementById("clientHomeShortcuts");
+  if (!wrap) return;
+  if (state.is_owner) { wrap.innerHTML = ""; return; }
+  const cd = state.clientData || { orders: [], active: [], count: 0 };
+  const active = (cd.active || [])[0];
+  const count  = cd.count || (cd.orders || []).length || 0;
+
+  let html = "";
+
+  if (active) {
+    const statusLabels = {
+      pending:    "⏳ En attente de confirmation",
+      confirmed:  "☕ Préparation en cours",
+      delivering: "🛵 Livreur en route",
+    };
+    const status = active.status || "pending";
+    const total  = (active.total || 0).toLocaleString('fr-FR');
+    html += `
+      <div class="section-title" style="margin-top:4px;">🔥 Commande en cours</div>
+      <div class="order-card2 status-${status}" style="margin-bottom:8px;" onclick="openTracking('${active.order_id}')">
+        <div class="oc-top">
+          <div class="oc-left">
+            <span class="oc-oid">${escHtml(active.order_id)}</span>
+            <span class="age-badge age-fresh">${statusLabels[status] || escHtml(status)}</span>
+          </div>
+        </div>
+        <div class="oc-info">
+          <div class="oc-line">
+            <span class="oc-client">${escHtml(active.city || '?')}</span>
+            <span class="oc-total">${total} €</span>
+          </div>
+          <div class="oc-meta">
+            <span>${active.cart_count || 0} article(s) · ${escHtml(active.payment || '')}</span>
+            <span>Suivre en direct →</span>
+          </div>
+        </div>
+      </div>`;
+  }
+
+  if (count > 0) {
+    html += `
+      <div class="card" style="margin-bottom:16px;" onclick="openClientHistory()">
+        <span class="emoji">📜</span>
+        <div class="info">
+          <div class="name">Mes commandes</div>
+          <div class="meta">${count} commande${count > 1 ? 's' : ''} passée${count > 1 ? 's' : ''}</div>
+        </div>
+        <span class="arrow">›</span>
+      </div>`;
+  }
+
+  wrap.innerHTML = html;
 }
 
 function buildCityScreen() {
