@@ -319,6 +319,11 @@ CATALOG = {
             "🌸 TUCI 1G":   150.00,
             "🥦 WEED 3.5G":  60.00,
         },
+        "Miami": {
+            "❄️ COCA 1G":   150.00,
+            "🌸 TUCI 1G":   200.00,
+            "🐘 KETA 1G":   150.00,
+        },
     },
     "🇹🇭 Thaïlande": {
         "Phuket": {
