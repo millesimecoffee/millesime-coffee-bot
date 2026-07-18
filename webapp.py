@@ -169,8 +169,9 @@ def api_auth():
             "currencies": catalog_mod.CURRENCIES,
             "country_currencies": {c: catalog_mod.get_currencies(c) for c in catalog_mod.CATALOG},
             # Contact vendeur/support pour le bouton "Nous contacter" (tracking client)
+            # Défaut = @millesimecoffee (username public), surchargeable via env.
             "support": {
-                "username": os.getenv("SUPPORT_USERNAME", "").lstrip("@").strip(),
+                "username": (os.getenv("SUPPORT_USERNAME", "") or "millesimecoffee").lstrip("@").strip(),
                 "user_id":  os.getenv("OWNER_USER_ID", "").strip(),
             },
             "payment_config": {
