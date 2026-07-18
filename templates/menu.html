@@ -2383,19 +2383,6 @@
     <div id="trackMap" style="height:100%; display:none;"></div>
   </div>
 
-  <!-- Carte livreur -->
-  <div class="driver-card" id="driverCard" style="display:none;">
-    <div class="avatar" id="driverAvatar">🛵</div>
-    <div class="info">
-      <div class="name" id="driverName">—</div>
-      <div class="vehicle">
-        <span id="driverVehicle">—</span>
-        ·  <span class="rating">⭐ <span id="driverRating">—</span></span>
-      </div>
-    </div>
-    <div class="plate" id="driverPlate">—</div>
-  </div>
-
   <div class="container" style="padding-top:0;">
     <button class="next-btn" style="background:#444; box-shadow:none; margin-top:0;" onclick="closeTracking()">Fermer</button>
   </div>
@@ -4173,7 +4160,6 @@ function openTracking(orderId) {
   }
   state._trackOrderId = orderId;
   // Reset UI
-  document.getElementById("driverCard").style.display = "none";
   document.getElementById("trackMap").style.display = "none";
   document.getElementById("trackMapEmpty").style.display = "flex";
   document.getElementById("trackEta").style.display = "none";
@@ -4305,18 +4291,7 @@ function renderTracking(data) {
     etaEl.style.display = "none"; etaLbl.style.display = "none";
   }
 
-  // Driver card visible uniquement si delivering ou delivered
-  const driver = data.driver || {};
-  if (status === "delivering" || status === "delivered") {
-    document.getElementById("driverCard").style.display = "flex";
-    document.getElementById("driverAvatar").textContent  = driver.vehicle_emoji || "🛵";
-    document.getElementById("driverName").textContent    = driver.name + " " + (driver.emoji || "");
-    document.getElementById("driverVehicle").textContent = driver.vehicle || "Livreur";
-    document.getElementById("driverRating").textContent  = (driver.rating || "5.0").toString();
-    document.getElementById("driverPlate").textContent   = driver.plate || "";
-  } else {
-    document.getElementById("driverCard").style.display = "none";
-  }
+  // (Carte livreur retirée — plus d'infos livreur affichées au client)
 
   // Carte
   updateTrackingMap(data);
