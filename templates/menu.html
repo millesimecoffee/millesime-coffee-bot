@@ -1889,6 +1889,43 @@
     transition: background 0.2s, transform 0.12s var(--ease-out);
   }
   .copy-amount-btn:active { transform: scale(0.95); background: rgba(255,255,255,0.1); }
+
+  /* Autocomplétion d'adresse (Photon) */
+  .addr-suggestions { margin-top: 8px; display: flex; flex-direction: column; gap: 6px; }
+  .addr-suggest-item {
+    display: flex; align-items: flex-start; gap: 10px;
+    background: linear-gradient(180deg, rgba(255,255,255,0.02), transparent 40%), var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--r-md);
+    padding: 12px 14px;
+    cursor: pointer;
+    transition: background 0.15s, border-color 0.15s, transform 0.12s var(--ease-out);
+    box-shadow: var(--shadow-sm);
+  }
+  .addr-suggest-item:hover { background: var(--bg-card-hover); border-color: var(--border-strong); }
+  .addr-suggest-item:active { transform: scale(0.99); }
+  .addr-suggest-item .pin { font-size: 16px; line-height: 1.4; flex-shrink: 0; }
+  .addr-suggest-item .txt { font-size: 14px; line-height: 1.4; }
+  .addr-suggest-loading {
+    display: flex; align-items: center; gap: 10px;
+    padding: 12px 14px; font-size: 13px; opacity: 0.6;
+  }
+  .addr-suggest-empty {
+    padding: 12px 14px; font-size: 13px; opacity: 0.6; text-align: center;
+  }
+  .addr-suggest-manual {
+    text-align: center;
+    padding: 12px 14px;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--accent);
+    background: rgba(139,92,246,0.06);
+    border: 1px dashed rgba(139,92,246,0.35);
+    border-radius: var(--r-md);
+    cursor: pointer;
+    transition: background 0.15s;
+  }
+  .addr-suggest-manual:active { background: rgba(139,92,246,0.12); }
 </style>
 </head>
 <body>
@@ -2176,11 +2213,11 @@
   <div class="container">
     <div class="section-title" data-i18n="address_title">Adresse de livraison</div>
     <p style="font-size:13px; opacity:0.6; line-height:1.5; margin-bottom:10px;" data-i18n="address_help">
-      Entrez votre adresse complète (rue + ville, code postal) ou un point de repère (Tour Eiffel, etc.).
+      Tapez votre adresse et choisissez-la dans la liste des suggestions.
     </p>
-    <input type="text" id="addrInput" class="addr-input" placeholder="Ex: 10 rue de Rivoli, 75001 Paris" autocomplete="off">
-    <button class="next-btn" onclick="verifyAddress()" id="addrVerifyBtn" data-i18n="address_verify">🔍 Vérifier l'adresse</button>
-    <div id="addrResult" style="display:none;"></div>
+    <input type="text" id="addrInput" class="addr-input" placeholder="Ex: 10 rue de Rivoli, Paris" autocomplete="off" oninput="onAddrInput()">
+    <div id="addrSuggestions" class="addr-suggestions"></div>
+    <div id="addrSelected" style="display:none;"></div>
   </div>
 </div>
 
@@ -2490,8 +2527,11 @@ const T = {
     continue: "Continuer",
     // Adresse
     address_title: "Adresse de livraison",
-    address_help: "Entrez votre adresse complète (rue + ville, code postal) ou un point de repère.",
+    address_help: "Tapez votre adresse et choisissez-la dans la liste des suggestions.",
     address_verify: "🔍 Vérifier l'adresse",
+    address_searching: "Recherche…",
+    address_no_results: "Aucune adresse trouvée — vérifiez l'orthographe.",
+    address_manual: "Utiliser l'adresse telle que saisie",
     address_searching: "⏳ Recherche en cours...",
     address_found: "Adresse trouvée :",
     address_unverified: "⚠️ Adresse non vérifiée — vérifiez l'orthographe.",
@@ -2553,8 +2593,11 @@ const T = {
     i_sent_crypto: "✅ I sent the crypto",
     continue: "Continue",
     address_title: "Delivery address",
-    address_help: "Enter your full address (street + city, postcode) or a landmark.",
+    address_help: "Type your address and pick it from the suggestions.",
     address_verify: "🔍 Verify address",
+    address_searching: "Searching…",
+    address_no_results: "No address found — check the spelling.",
+    address_manual: "Use the address as typed",
     address_searching: "⏳ Searching...",
     address_found: "Address found:",
     address_unverified: "⚠️ Address not verified — check spelling.",
@@ -2613,8 +2656,11 @@ const T = {
     i_sent_crypto: "✅ He enviado la cripto",
     continue: "Continuar",
     address_title: "Dirección de entrega",
-    address_help: "Introduce tu dirección completa o un punto de referencia.",
+    address_help: "Escribe tu dirección y elígela en la lista de sugerencias.",
     address_verify: "🔍 Verificar dirección",
+    address_searching: "Buscando…",
+    address_no_results: "No se encontró la dirección — revisa la ortografía.",
+    address_manual: "Usar la dirección tal cual",
     address_searching: "⏳ Buscando...",
     address_found: "Dirección encontrada:",
     address_unverified: "⚠️ Dirección no verificada — revisa la ortografía.",
@@ -3347,57 +3393,95 @@ function afterPaymentMethodChosen() {
 // ═══════════════════════════════════════════════════════════════════════════
 // ADRESSE
 // ═══════════════════════════════════════════════════════════════════════════
-async function verifyAddress() {
-  const input = document.getElementById("addrInput");
-  const text  = input.value.trim();
-  if (!text) return;
-  const btn = document.getElementById("addrVerifyBtn");
-  const res = document.getElementById("addrResult");
+// ─── Autocomplétion d'adresse (Photon) ─────────────────────────────────
+let _addrDebounce = null;
+let _addrCandidates = {};
 
-  btn.disabled = true;
-  btn.innerHTML = '<span class="loader"></span>';
+function onAddrInput() {
+  const q = document.getElementById("addrInput").value.trim();
+  const sug = document.getElementById("addrSuggestions");
+  // Dès qu'on retape, on annule la sélection précédente
+  document.getElementById("addrSelected").style.display = "none";
+  clearTimeout(_addrDebounce);
+  if (q.length < 3) { sug.innerHTML = ""; return; }
+  _addrDebounce = setTimeout(() => fetchAddrSuggestions(q), 300);
+}
 
+async function fetchAddrSuggestions(q) {
+  const sug = document.getElementById("addrSuggestions");
+  sug.innerHTML = `<div class="addr-suggest-loading"><span class="loader"></span> ${escHtml(t("address_searching"))}</div>`;
   try {
-    const r = await fetch("/api/geocode", {
+    const r = await apiFetch("/api/geocode/suggest", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body:    JSON.stringify({
-        address:      text,
-        country:      state.country,
-        city:         state.city,
-        lang:         state.lang,
-      })
+      body: JSON.stringify({ q, lang: state.lang })
     });
-    const data = await r.json();
-    if (data.ok) {
-      state.address = {
-        text:      text,
-        formatted: data.formatted || text,
-        short:     data.short     || text,
-        lat:       data.lat       || null,
-        lon:       data.lon       || null,
-        maps_link: data.maps_link || "",
-        verified:  data.verified  || false,
-      };
-      res.style.display = "block";
-      res.innerHTML = `
-        <div class="addr-result">
-          <div style="font-size:12px; opacity:0.6; margin-bottom:6px;">${data.verified ? "📍 " + t("address_found") : t("address_unverified")}</div>
-          <div class="addr-line">${(state.address.short || state.address.formatted).replace(/\n/g,'<br>')}</div>
-          ${data.maps_link ? `<a class="map-link" href="${data.maps_link}" target="_blank" rel="noopener">${t("address_view_map")}</a>` : ""}
-          <button class="next-btn" onclick="goToSelfie()">${t("address_confirm")}</button>
-          <button class="next-btn" style="background:#444; box-shadow:none;" onclick="document.getElementById('addrResult').style.display='none';">${t("address_change")}</button>
-        </div>
-      `;
-    } else {
-      showToast(data.error || t("address_service_down"), true);
-    }
+    const d = await r.json();
+    if (!d.ok) { renderAddrManual(t("address_service_down")); return; }
+    if (!d.results || d.results.length === 0) { renderAddrManual(t("address_no_results")); return; }
+    _addrCandidates = {};
+    sug.innerHTML = d.results.map((c, i) => {
+      _addrCandidates[i] = c;
+      const line = (c.short || c.label || "").replace(/\n/g, ", ");
+      return `<div class="addr-suggest-item" onclick="pickAddrSuggestion(${i})">
+                <span class="pin">📍</span><span class="txt">${escHtml(line)}</span>
+              </div>`;
+    }).join("") +
+      `<div class="addr-suggest-manual" onclick="useManualAddr()">✏️ ${escHtml(t("address_manual"))}</div>`;
   } catch {
-    showToast(t("err_network"), true);
-  } finally {
-    btn.disabled = false;
-    btn.innerHTML = t("address_verify");
+    renderAddrManual(t("err_network"));
   }
+}
+
+function renderAddrManual(msg) {
+  document.getElementById("addrSuggestions").innerHTML =
+    `<div class="addr-suggest-empty">${escHtml(msg || "")}</div>
+     <div class="addr-suggest-manual" onclick="useManualAddr()">✏️ ${escHtml(t("address_manual"))}</div>`;
+}
+
+function pickAddrSuggestion(i) {
+  const c = _addrCandidates[i];
+  if (!c) return;
+  hapticSelect();
+  state.address = {
+    text:      document.getElementById("addrInput").value.trim(),
+    formatted: c.formatted || c.label,
+    short:     c.short || c.label,
+    lat:       c.lat || null,
+    lon:       c.lon || null,
+    maps_link: c.maps_link || "",
+    verified:  true,
+  };
+  showSelectedAddr();
+}
+
+function useManualAddr() {
+  const text = document.getElementById("addrInput").value.trim();
+  if (!text) return;
+  hapticSelect();
+  state.address = { text, formatted: text, short: text, lat: null, lon: null, maps_link: "", verified: false };
+  showSelectedAddr();
+}
+
+function showSelectedAddr() {
+  document.getElementById("addrSuggestions").innerHTML = "";
+  const a = state.address;
+  const sel = document.getElementById("addrSelected");
+  sel.style.display = "block";
+  sel.innerHTML = `
+    <div class="addr-result">
+      <div style="font-size:12px; opacity:0.6; margin-bottom:6px;">${a.verified ? "📍 " + t("address_found") : "✏️ " + t("address_unverified")}</div>
+      <div class="addr-line">${escHtml(a.short || a.formatted).replace(/\n/g,'<br>')}</div>
+      ${a.maps_link ? `<a class="map-link" href="${a.maps_link}" target="_blank" rel="noopener">${t("address_view_map")}</a>` : ""}
+      <button class="next-btn" onclick="goToSelfie()">${t("address_confirm")}</button>
+      <button class="next-btn" style="background:#444; box-shadow:none;" onclick="resetAddrSelection()">${t("address_change")}</button>
+    </div>`;
+}
+
+function resetAddrSelection() {
+  document.getElementById("addrSelected").style.display = "none";
+  const input = document.getElementById("addrInput");
+  input.focus();
+  if (input.value.trim().length >= 3) fetchAddrSuggestions(input.value.trim());
 }
 
 function goToSelfie() {

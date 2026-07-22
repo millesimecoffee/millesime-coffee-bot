@@ -531,6 +531,97 @@ def api_geocode():
     })
 
 
+def _photon_candidate(feat: dict) -> dict:
+    """Transforme un feature GeoJSON Photon en candidat d'adresse."""
+    props  = feat.get("properties", {}) or {}
+    geom   = feat.get("geometry", {}) or {}
+    coords = geom.get("coordinates") or [None, None]
+    lon    = coords[0] if len(coords) > 0 else None
+    lat    = coords[1] if len(coords) > 1 else None
+
+    housenumber = (props.get("housenumber") or "").strip()
+    street      = (props.get("street") or "").strip()
+    name        = (props.get("name") or "").strip()
+    city        = (props.get("city") or props.get("town") or props.get("village")
+                   or props.get("district") or props.get("county") or "").strip()
+    postcode    = (props.get("postcode") or "").strip()
+    country     = (props.get("country") or "").strip()
+
+    if housenumber and street:
+        line1 = f"{housenumber} {street}"
+    elif street:
+        line1 = street
+    else:
+        line1 = name
+
+    short_parts = [p for p in [line1.upper(), city.upper(), postcode] if p]
+    short_addr  = "\n".join(short_parts)
+    label_parts = [p for p in [line1, city, postcode, country] if p]
+    label       = ", ".join(label_parts) or name
+    maps_link   = f"https://www.openstreetmap.org/?mlat={lat}&mlon={lon}&zoom=18" if (lat and lon) else ""
+
+    return {
+        "label":     label,
+        "short":     short_addr or label,
+        "formatted": label,
+        "lat":       lat,
+        "lon":       lon,
+        "maps_link": maps_link,
+    }
+
+
+@app.route("/api/geocode/suggest", methods=["POST"])
+def api_geocode_suggest():
+    """Autocomplétion d'adresse via Photon (Komoot) — base OpenStreetMap, gratuite.
+    POST {q, lang?} → {ok, results: [{label, short, formatted, lat, lon, maps_link}]}
+    """
+    try:
+        data = request.get_json(force=True, silent=True) or {}
+    except Exception:
+        data = {}
+    q = (data.get("q") or data.get("address") or "").strip()
+    if len(q) < 3:
+        return jsonify({"ok": True, "results": []})
+
+    lang = (data.get("lang") or "fr").strip()
+    if lang not in ("fr", "en", "de", "it"):
+        lang = "en"   # Photon supporte fr/en/de/it ; défaut en
+
+    params = {"q": q, "limit": 6, "lang": lang}
+    # Biais géographique optionnel (centre de la ville) si fourni par le client
+    try:
+        blat = data.get("bias_lat"); blon = data.get("bias_lon")
+        if blat is not None and blon is not None:
+            params["lat"] = float(blat)
+            params["lon"] = float(blon)
+    except (ValueError, TypeError):
+        pass
+
+    try:
+        import httpx as _httpx
+        r = _httpx.get(
+            "https://photon.komoot.io/api/",
+            params=params,
+            headers={"User-Agent": "MillesimeCoffeeBot/1.0"},
+            timeout=8.0,
+        )
+        if r.status_code != 200:
+            return jsonify({"ok": False, "error": "service_down"})
+        feats = (r.json() or {}).get("features", []) or []
+    except Exception as exc:
+        logger.warning("photon suggest: %s", exc)
+        return jsonify({"ok": False, "error": "service_down"})
+
+    results, seen = [], set()
+    for f in feats:
+        cand = _photon_candidate(f)
+        key  = cand.get("short") or cand.get("label")
+        if key and key not in seen:
+            seen.add(key)
+            results.append(cand)
+    return jsonify({"ok": True, "results": results[:6]})
+
+
 # ═══════════════════════════════════════════════════════════════════════════
 # Finalisation de commande (depuis la Mini App)
 # ═══════════════════════════════════════════════════════════════════════════
