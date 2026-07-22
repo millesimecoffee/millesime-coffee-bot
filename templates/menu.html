@@ -1926,6 +1926,92 @@
     transition: background 0.15s;
   }
   .addr-suggest-manual:active { background: rgba(139,92,246,0.12); }
+
+  /* ═══ Cartes premium pays / villes (rich-card) ═══ */
+  .rich-card {
+    display: flex; align-items: center; gap: 14px;
+    background: linear-gradient(180deg, rgba(255,255,255,0.03), transparent 45%), var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--r-lg);
+    padding: 12px 14px;
+    margin-bottom: 10px;
+    cursor: pointer;
+    position: relative;
+    overflow: hidden;
+    box-shadow: var(--shadow-sm), inset 0 1px 0 rgba(255,255,255,0.04);
+    transition: transform .2s var(--ease-out), border-color .2s, box-shadow .2s;
+  }
+  .rich-card:hover {
+    border-color: var(--border-strong);
+    box-shadow: var(--shadow-md), inset 0 1px 0 rgba(255,255,255,0.06);
+    transform: translateY(-1px);
+  }
+  .rich-card:active { transform: scale(0.985); }
+  /* Reflet lumineux qui traverse au survol */
+  .rich-card::after {
+    content: '';
+    position: absolute; top: 0; left: -70%;
+    width: 45%; height: 100%;
+    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.07), transparent);
+    transform: skewX(-20deg);
+    transition: left .7s var(--ease-out);
+    pointer-events: none;
+  }
+  .rich-card:hover::after { left: 140%; }
+
+  .rc-thumb {
+    width: 62px; height: 46px;
+    border-radius: 11px;
+    flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center;
+    overflow: hidden;
+    position: relative;
+    box-shadow: 0 6px 16px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.14);
+  }
+  .rc-thumb.flag { background: var(--bg-secondary); }
+  .rc-flag { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .rc-flag-emoji {
+    font-size: 30px;
+    width: 100%; height: 100%;
+    align-items: center; justify-content: center;
+  }
+  .rc-thumb.city-thumb::before {
+    /* voile de profondeur sur la vignette ville */
+    content: '';
+    position: absolute; inset: 0;
+    background: radial-gradient(120% 100% at 30% 20%, rgba(255,255,255,0.25), transparent 55%),
+                linear-gradient(180deg, transparent 40%, rgba(0,0,0,0.25));
+  }
+  .rc-landmark {
+    font-size: 26px;
+    position: relative; z-index: 1;
+    filter: drop-shadow(0 2px 6px rgba(0,0,0,0.45));
+  }
+  .rc-info { flex: 1; min-width: 0; }
+  .rc-name {
+    font-size: 16px; font-weight: 700;
+    letter-spacing: -0.3px; margin-bottom: 3px;
+  }
+  .rc-meta { font-size: 12px; color: var(--txt-secondary); font-weight: 500; }
+  .rc-arrow { font-size: 22px; opacity: 0.28; flex-shrink: 0; }
+  .rich-card:hover .rc-arrow { opacity: 0.6; }
+
+  /* Hero accueil premium */
+  .welcome-hero { padding-top: 42px; }
+  .hero-badge {
+    display: inline-block;
+    font-size: 10px; font-weight: 800; letter-spacing: 2.5px;
+    padding: 6px 14px; border-radius: 999px;
+    background: rgba(139,92,246,0.12);
+    border: 1px solid rgba(139,92,246,0.3);
+    color: #c4b5fd;
+    margin-bottom: 18px;
+    text-transform: uppercase;
+  }
+  .welcome-hero .logo {
+    font-size: 64px;
+    filter: drop-shadow(0 10px 30px rgba(139,92,246,0.45));
+  }
 </style>
 </head>
 <body>
@@ -1982,27 +2068,37 @@
 
 <!-- ÉCRAN 0 : Langue -->
 <div class="screen active" id="screen-lang">
-  <div class="welcome">
+  <div class="welcome welcome-hero">
+    <div class="hero-badge">✦ PREMIUM DELIVERY</div>
     <div class="logo">☕</div>
     <h1>Millésime Coffee</h1>
     <p>Sélectionnez votre langue<br>Select your language · Elige tu idioma</p>
   </div>
   <div class="container">
     <div class="card-grid full">
-      <div class="card" onclick="setLang('fr')">
-        <span class="emoji">🇫🇷</span>
-        <div class="info"><div class="name">Français</div></div>
-        <span class="arrow">›</span>
+      <div class="rich-card" onclick="setLang('fr')">
+        <div class="rc-thumb flag">
+          <img class="rc-flag" src="https://flagcdn.com/w320/fr.png" alt="" loading="lazy" onerror="this.style.display='none';this.nextElementSibling.style.display='flex';">
+          <span class="rc-flag-emoji" style="display:none;">🇫🇷</span>
+        </div>
+        <div class="rc-info"><div class="rc-name">Français</div><div class="rc-meta">France · Belgique</div></div>
+        <span class="rc-arrow">›</span>
       </div>
-      <div class="card" onclick="setLang('en')">
-        <span class="emoji">🇬🇧</span>
-        <div class="info"><div class="name">English</div></div>
-        <span class="arrow">›</span>
+      <div class="rich-card" onclick="setLang('en')">
+        <div class="rc-thumb flag">
+          <img class="rc-flag" src="https://flagcdn.com/w320/gb.png" alt="" loading="lazy" onerror="this.style.display='none';this.nextElementSibling.style.display='flex';">
+          <span class="rc-flag-emoji" style="display:none;">🇬🇧</span>
+        </div>
+        <div class="rc-info"><div class="rc-name">English</div><div class="rc-meta">United Kingdom · USA</div></div>
+        <span class="rc-arrow">›</span>
       </div>
-      <div class="card" onclick="setLang('es')">
-        <span class="emoji">🇪🇸</span>
-        <div class="info"><div class="name">Español</div></div>
-        <span class="arrow">›</span>
+      <div class="rich-card" onclick="setLang('es')">
+        <div class="rc-thumb flag">
+          <img class="rc-flag" src="https://flagcdn.com/w320/es.png" alt="" loading="lazy" onerror="this.style.display='none';this.nextElementSibling.style.display='flex';">
+          <span class="rc-flag-emoji" style="display:none;">🇪🇸</span>
+        </div>
+        <div class="rc-info"><div class="rc-name">Español</div><div class="rc-meta">España · Latinoamérica</div></div>
+        <span class="rc-arrow">›</span>
       </div>
     </div>
   </div>
@@ -2930,6 +3026,54 @@ document.getElementById("pwdInput").addEventListener("keypress", e => {
 // ═══════════════════════════════════════════════════════════════════════════
 // ÉCRANS PAYS / VILLES / PRODUITS
 // ═══════════════════════════════════════════════════════════════════════════
+// ─── Helpers visuels (drapeaux, monuments, dégradés) ───────────────────
+// Drapeau emoji → code ISO2 minuscule (pour flagcdn)
+function _flagToISO(flag) {
+  try {
+    const cps = [...(flag || "")].map(c => c.codePointAt(0));
+    if (cps.length >= 2 &&
+        cps[0] >= 0x1F1E6 && cps[0] <= 0x1F1FF &&
+        cps[1] >= 0x1F1E6 && cps[1] <= 0x1F1FF) {
+      return String.fromCharCode(cps[0] - 0x1F1E6 + 97) +
+             String.fromCharCode(cps[1] - 0x1F1E6 + 97);
+    }
+  } catch {}
+  return "";
+}
+
+// Monument / ambiance par ville (repli 🏙️)
+const CITY_LANDMARKS = {
+  "Paris":"🗼","Bruxelles":"🍟","Londres":"🎡","Manchester":"🎸","Barcelone":"🏛️",
+  "Marbella":"🌴","Malaga":"🌊","Majorque":"🏖️","Tenerife":"🌋","Mykonos":"🌅",
+  "Santorini":"🌅","Corfu":"⛵","Rhodes":"🏛️","Albufeira":"🏖️","Lisbonne":"🚋",
+  "Porto":"🍷","Milan":"👗","Rome":"🏛️","Florence":"🎨","Budapest":"🌉","Tirana":"🏔️",
+  "Amsterdam":"🚲","Berlin":"🐻","Las Vegas":"🎰","Miami":"🌴","Phuket":"🏝️",
+  "Bangkok":"🛕","Marrakech":"🕌","Tanger":"⛵","Vilamoura":"⛵","Lanzarote":"🌋",
+  "Santorin":"🌅","Athènes":"🏛️","Split":"⛵","Dubrovnik":"🏰"
+};
+function _cityLandmark(city) { return CITY_LANDMARKS[city] || "🏙️"; }
+
+// Dégradé signature déterministe depuis le nom de ville
+function _hueFromText(s) {
+  let h = 0; for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) % 360;
+  return h;
+}
+function _cityGradient(city) {
+  const h = _hueFromText(city);
+  return `linear-gradient(135deg, hsl(${h} 65% 48%), hsl(${(h + 45) % 360} 68% 34%))`;
+}
+
+// HTML de la vignette drapeau (image flagcdn + repli emoji)
+function _flagThumb(emoji) {
+  const iso = _flagToISO(emoji);
+  if (!iso) return `<div class="rc-thumb flag"><span class="rc-flag-emoji" style="display:flex;">${emoji}</span></div>`;
+  return `<div class="rc-thumb flag">
+      <img class="rc-flag" src="https://flagcdn.com/w320/${iso}.png" alt="" loading="lazy"
+           onerror="this.style.display='none';this.nextElementSibling.style.display='flex';">
+      <span class="rc-flag-emoji" style="display:none;">${emoji}</span>
+    </div>`;
+}
+
 function buildCountryScreen() {
   const list = document.getElementById("countryList");
   list.innerHTML = "";
@@ -2938,14 +3082,14 @@ function buildCountryScreen() {
     const emoji  = country.match(/^(\S+)/)?.[1] || "🌍";
     const name   = country.replace(/^\S+\s*/, "");
     const div = document.createElement("div");
-    div.className = "card";
+    div.className = "rich-card";
     div.innerHTML = `
-      <span class="emoji">${emoji}</span>
-      <div class="info">
-        <div class="name">${name}</div>
-        <div class="meta">${cities.length} ${cities.length > 1 ? "villes" : "ville"}</div>
+      ${_flagThumb(emoji)}
+      <div class="rc-info">
+        <div class="rc-name">${escHtml(name)}</div>
+        <div class="rc-meta">${cities.length} ${cities.length > 1 ? "villes disponibles" : "ville disponible"}</div>
       </div>
-      <span class="arrow">›</span>
+      <span class="rc-arrow">›</span>
     `;
     div.onclick = () => { state.country = country; setCountryCurrency(country); buildCityScreen(); setScreen("city"); };
     list.appendChild(div);
@@ -3025,14 +3169,16 @@ function buildCityScreen() {
   Object.keys(cities).forEach(city => {
     const nProducts = Object.keys(cities[city]).length;
     const div = document.createElement("div");
-    div.className = "card";
+    div.className = "rich-card";
     div.innerHTML = `
-      <span class="emoji">🏙️</span>
-      <div class="info">
-        <div class="name">${city}</div>
-        <div class="meta">${nProducts} produit${nProducts>1?'s':''}</div>
+      <div class="rc-thumb city-thumb" style="background:${_cityGradient(city)}">
+        <span class="rc-landmark">${_cityLandmark(city)}</span>
       </div>
-      <span class="arrow">›</span>
+      <div class="rc-info">
+        <div class="rc-name">${escHtml(city)}</div>
+        <div class="rc-meta">${nProducts} produit${nProducts>1?'s':''} disponible${nProducts>1?'s':''}</div>
+      </div>
+      <span class="rc-arrow">›</span>
     `;
     div.onclick = () => { state.city = city; buildMenuScreen(); setScreen("menu"); };
     list.appendChild(div);
