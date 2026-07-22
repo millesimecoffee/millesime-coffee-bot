@@ -1845,6 +1845,50 @@
     border-color: transparent;
     box-shadow: 0 4px 14px rgba(139,92,246,0.35), inset 0 1px 0 rgba(255,255,255,0.2);
   }
+
+  /* Boîte montant à saisir (lien de paiement réutilisable) */
+  .link-amount-box {
+    background:
+      radial-gradient(120% 100% at 0% 0%, rgba(139,92,246,0.16), transparent 60%),
+      var(--bg-card);
+    border: 1px solid rgba(139,92,246,0.28);
+    border-radius: var(--r-lg);
+    padding: 20px 18px;
+    text-align: center;
+    margin-bottom: 14px;
+    box-shadow: var(--shadow-md), inset 0 1px 0 rgba(255,255,255,0.05);
+  }
+  .link-amount-box .lab {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 1.4px;
+    font-weight: 700;
+    opacity: 0.6;
+    margin-bottom: 8px;
+  }
+  .link-amount-box .val {
+    font-size: 40px;
+    font-weight: 900;
+    letter-spacing: -1.5px;
+    font-variant-numeric: tabular-nums;
+    background: var(--accent-grad);
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+    filter: drop-shadow(0 4px 20px rgba(139,92,246,0.35));
+    line-height: 1.05;
+    margin-bottom: 14px;
+  }
+  .copy-amount-btn {
+    background: rgba(255,255,255,0.06);
+    border: 1px solid var(--border-strong);
+    color: var(--txt-primary);
+    padding: 10px 18px;
+    border-radius: var(--r-sm);
+    font-size: 14px;
+    font-weight: 700;
+    cursor: pointer;
+    transition: background 0.2s, transform 0.12s var(--ease-out);
+  }
+  .copy-amount-btn:active { transform: scale(0.95); background: rgba(255,255,255,0.1); }
 </style>
 </head>
 <body>
@@ -2038,7 +2082,7 @@
     </div>
     <div class="pay-card" onclick="selectPaymentMethod('link')">
       <div class="ic">💳</div>
-      <div class="info"><div class="title" data-i18n="pay_link_title">Lien de paiement</div><div class="desc" data-i18n="pay_link_desc">Stripe / SumUp / etc.</div></div>
+      <div class="info"><div class="title" data-i18n="pay_link_title">Carte bancaire / Apple Pay</div><div class="desc" data-i18n="pay_link_desc">Paiement en ligne sécurisé</div></div>
       <span class="arrow">›</span>
     </div>
     <div class="pay-card" onclick="selectPaymentMethod('crypto')">
@@ -2077,13 +2121,20 @@
   </div>
 </div>
 
-<!-- ÉCRAN 6c : Lien externe -->
+<!-- ÉCRAN 6c : Lien de paiement réutilisable (montant saisi par le client) -->
 <div class="screen" id="screen-pay-link">
   <div class="container">
-    <div class="section-title" data-i18n="pay_link_open">Lien de paiement</div>
-    <div class="banner info" id="linkBanner"></div>
-    <a id="linkAnchor" class="next-btn" style="display:block; text-decoration:none; text-align:center;" target="_blank" rel="noopener" data-i18n="pay_link_open_btn">🔗 Ouvrir le lien de paiement</a>
-    <button class="next-btn" onclick="afterPaymentMethodChosen()" data-i18n="i_paid">✅ J'ai payé</button>
+    <div class="section-title">💳 Carte bancaire / Apple Pay</div>
+    <div class="link-amount-box">
+      <div class="lab" data-i18n="pay_link_amount_label">Montant à saisir sur la page</div>
+      <div class="val" id="linkAmount">—</div>
+      <button class="copy-amount-btn" onclick="copyLinkAmount()" data-i18n="pay_link_copy_amount">📋 Copier le montant</button>
+    </div>
+    <div class="banner info" style="font-size:13px;" data-i18n="pay_link_instructions">
+      Ouvrez la page de paiement, saisissez ce montant, puis payez par carte ou Apple Pay.
+    </div>
+    <a id="linkAnchor" class="next-btn" style="display:block; text-decoration:none; text-align:center;" target="_blank" rel="noopener" data-i18n="pay_link_open_btn">🔗 Ouvrir la page de paiement</a>
+    <button class="next-btn" style="background:#444; box-shadow:none;" onclick="afterPaymentMethodChosen()" data-i18n="i_paid">✅ J'ai payé</button>
   </div>
 </div>
 
@@ -2417,7 +2468,10 @@ const T = {
     // Paiement
     pay_cash_title: "💵 Cash", pay_cash_desc: "Paiement à la livraison",
     pay_virement_title: "🏦 Virement bancaire", pay_virement_desc: "IBAN + capture de preuve",
-    pay_link_title: "💳 Lien de paiement",  pay_link_desc: "Stripe / SumUp / etc.",
+    pay_link_title: "💳 Carte bancaire / Apple Pay",  pay_link_desc: "Paiement en ligne sécurisé",
+    pay_link_amount_label: "Montant à saisir sur la page", pay_link_copy_amount: "📋 Copier le montant",
+    pay_link_instructions: "Ouvrez la page de paiement, saisissez ce montant, puis payez par carte ou Apple Pay.",
+    pay_link_amount_copied: "Montant copié",
     pay_crypto_title: "₿ Crypto",            pay_crypto_desc: "ETH ou USDT (ERC-20)",
     pay_cash_currency: "Choisissez votre devise",
     pay_virement_iban: "IBAN à utiliser",
@@ -2478,7 +2532,10 @@ const T = {
     err_network: "Network error, retry.", added: "Added to cart",
     pay_cash_title: "💵 Cash", pay_cash_desc: "Pay on delivery",
     pay_virement_title: "🏦 Bank transfer", pay_virement_desc: "IBAN + proof screenshot",
-    pay_link_title: "💳 Payment link", pay_link_desc: "Stripe / SumUp / etc.",
+    pay_link_title: "💳 Card / Apple Pay", pay_link_desc: "Secure online payment",
+    pay_link_amount_label: "Amount to enter on the page", pay_link_copy_amount: "📋 Copy amount",
+    pay_link_instructions: "Open the payment page, enter this amount, then pay by card or Apple Pay.",
+    pay_link_amount_copied: "Amount copied",
     pay_crypto_title: "₿ Crypto", pay_crypto_desc: "ETH or USDT (ERC-20)",
     pay_cash_currency: "Choose currency",
     pay_virement_iban: "IBAN",
@@ -2535,7 +2592,10 @@ const T = {
     err_network: "Error de red, reintenta.", added: "Añadido al carrito",
     pay_cash_title: "💵 Efectivo", pay_cash_desc: "Pago contra entrega",
     pay_virement_title: "🏦 Transferencia bancaria", pay_virement_desc: "IBAN + captura de pantalla",
-    pay_link_title: "💳 Enlace de pago", pay_link_desc: "Stripe / SumUp / etc.",
+    pay_link_title: "💳 Tarjeta / Apple Pay", pay_link_desc: "Pago en línea seguro",
+    pay_link_amount_label: "Importe a introducir en la página", pay_link_copy_amount: "📋 Copiar importe",
+    pay_link_instructions: "Abre la página de pago, introduce este importe y paga con tarjeta o Apple Pay.",
+    pay_link_amount_copied: "Importe copiado",
     pay_crypto_title: "₿ Cripto", pay_crypto_desc: "ETH o USDT (ERC-20)",
     pay_cash_currency: "Elige tu moneda",
     pay_virement_iban: "IBAN",
@@ -3179,7 +3239,11 @@ function selectPaymentMethod(method) {
     setScreen("pay-virement");
   } else if (method === "link") {
     if (!cfg.payment_link) { showToast(t("pay_link_not_configured"), true); return; }
-    document.getElementById("linkBanner").textContent = cfg.payment_link;
+    // Lien réutilisable : le client saisit lui-même le montant sur la page.
+    // On lui affiche le montant exact à recopier + un bouton copier.
+    const total = computeCartTotal();
+    state._linkAmountNum = Math.round(total * 100) / 100;
+    document.getElementById("linkAmount").textContent = fmtCur(total);
     document.getElementById("linkAnchor").href = cfg.payment_link;
     setScreen("pay-link");
   } else if (method === "crypto") {
@@ -3257,6 +3321,18 @@ async function copyToClipboard(text) {
     try { document.execCommand("copy"); showToast(t("copied")); } catch {}
     document.body.removeChild(el);
   }
+}
+
+// Copier le montant (nombre seul) à recopier sur la page de paiement.
+function copyLinkAmount() {
+  const n = state._linkAmountNum != null ? state._linkAmountNum : computeCartTotal();
+  // On copie le nombre nu (sans symbole) — c'est ce qui se saisit sur SumUp.
+  const txt = String(n);
+  try { copyToClipboard(txt); } catch {
+    try { navigator.clipboard.writeText(txt); } catch {}
+  }
+  showToast("✅ " + t("pay_link_amount_copied"));
+  hapticSuccess();
 }
 
 function afterPaymentMethodChosen() {
