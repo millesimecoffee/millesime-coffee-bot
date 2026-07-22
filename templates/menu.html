@@ -3413,7 +3413,7 @@ async function fetchAddrSuggestions(q) {
   try {
     const r = await apiFetch("/api/geocode/suggest", {
       method: "POST",
-      body: JSON.stringify({ q, lang: state.lang })
+      body: JSON.stringify({ q, lang: state.lang, initData: tg.initData || "" })
     });
     const d = await r.json();
     if (!d.ok) { renderAddrManual(t("address_service_down")); return; }

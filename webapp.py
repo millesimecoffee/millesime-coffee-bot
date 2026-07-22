@@ -23,9 +23,16 @@ _MAX_IMAGE_PIXELS = 5_000_000  # 5 MP — largement suffisant pour un selfie
 
 
 @app.after_request
-def _bypass_ngrok_warning(response):
-    """Indique à ngrok de ne PAS afficher la page d'avertissement browser."""
+def _security_headers(response):
+    """En-têtes de sécurité + bypass ngrok.
+    NB : on ne met PAS X-Frame-Options (la Mini App tourne dans l'iframe
+    Telegram), et on autorise la caméra pour le selfie (camera=self)."""
     response.headers["ngrok-skip-browser-warning"] = "true"
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    response.headers["X-Robots-Tag"] = "noindex, nofollow, noarchive"
+    response.headers["Permissions-Policy"] = "camera=(self), microphone=(), geolocation=(self)"
+    response.headers["Cross-Origin-Resource-Policy"] = "same-site"
     return response
 
 
@@ -50,11 +57,56 @@ def menu_page():
     return render_template("menu.html")
 
 
-# Anti-spam très simple : mémorise les essais par IP
+# Anti-spam très simple : mémorise les essais par IP + user_id
 _pwd_attempts: dict[str, list[float]] = {}
 _PWD_MAX_ATTEMPTS = 5
 _PWD_WINDOW      = 300  # 5 min
 _pwd_lock = threading.Lock()
+
+# ── Sécurité : anti-rejeu initData + IP client fiable + rate-limit générique ──
+# Un initData Telegram capturé ne doit pas rester valide indéfiniment.
+# 24h par défaut : assez large pour ne pas couper une session, assez court
+# pour tuer un rejeu d'un vieux jeton. Réglable via env (0 = désactivé).
+_INITDATA_MAX_AGE = int(os.getenv("INITDATA_MAX_AGE", "86400"))
+
+# Nombre de proxys de confiance devant l'app (Render = 1). Sert à extraire
+# l'IP client réelle sans se faire spoofer par un X-Forwarded-For client.
+_TRUSTED_PROXY_HOPS = int(os.getenv("TRUSTED_PROXY_HOPS", "1"))
+
+# Rate-limiter générique en mémoire : {clé: [timestamps]}
+_rate_store: dict[str, list[float]] = {}
+_rate_lock = threading.Lock()
+
+
+def _client_ip(req) -> str:
+    """IP client fiable. X-Forwarded-For = 'client_spoofé…, IP_réelle_ajoutée_par_proxy'.
+    Les entrées de droite sont ajoutées par nos proxys de confiance et ne sont
+    pas contrôlables par le client → on prend l'IP à `_TRUSTED_PROXY_HOPS` du bout.
+    """
+    xff = req.headers.get("X-Forwarded-For", "")
+    if xff:
+        parts = [p.strip() for p in xff.split(",") if p.strip()]
+        if parts:
+            idx = len(parts) - _TRUSTED_PROXY_HOPS
+            if 0 <= idx < len(parts):
+                return parts[idx]
+            return parts[-1]
+    return req.remote_addr or "?"
+
+
+def _rate_limited(key: str, max_hits: int, window: float) -> bool:
+    """True si `key` a dépassé max_hits sur la fenêtre glissante. Enregistre le hit."""
+    now = time.time()
+    with _rate_lock:
+        recent = [t for t in _rate_store.get(key, []) if now - t < window]
+        recent.append(now)
+        _rate_store[key] = recent
+        # Nettoyage opportuniste pour éviter la croissance mémoire illimitée
+        if len(_rate_store) > 5000:
+            for k in list(_rate_store.keys()):
+                if not any(now - t < window for t in _rate_store[k]):
+                    del _rate_store[k]
+        return len(recent) > max_hits
 
 # Throttle des notifications "client entre dans le catalogue" :
 # évite de spammer l'owner si l'user ouvre/ferme plusieurs fois.
@@ -135,26 +187,45 @@ def api_auth():
     if not expected:
         return jsonify({"ok": False, "error": "no_password_configured"}), 500
 
-    ip = request.headers.get("X-Forwarded-For", request.remote_addr or "?").split(",")[0].strip()
-    now = time.time()
-
-    # Purge des essais expirés + check rate limit
-    with _pwd_lock:
-        recent = [t for t in _pwd_attempts.get(ip, []) if now - t < _PWD_WINDOW]
-        if len(recent) >= _PWD_MAX_ATTEMPTS:
-            _pwd_attempts[ip] = recent
-            return jsonify({"ok": False, "blocked": True, "error": "rate_limited"})
-        _pwd_attempts[ip] = recent
-
+    bot_token = os.getenv("BOT_TOKEN", "")
     try:
         data = request.get_json(force=True) or {}
     except Exception:
         data = {}
+
+    # 1) Exiger un initData Telegram AUTHENTIQUE : seul un vrai client Telegram
+    #    (impossible à forger sans le bot token) peut tenter le mot de passe.
+    #    Bloque tout accès script/navigateur direct hors de l'app Telegram.
+    parsed = _verify_init_data(data.get("initData", ""), bot_token)
+    if not parsed:
+        time.sleep(0.4)
+        return jsonify({"ok": False, "error": "auth_failed"}), 401
+
+    # Identité vérifiée → rate-limit par user_id (non spoofable) ET par IP réelle
+    import json as _json
+    try:
+        uid = str(int(_json.loads(parsed.get("user", "{}")).get("id", 0)))
+    except Exception:
+        uid = ""
+    ip  = _client_ip(request)
+    now = time.time()
+    keys = {f"pwd:ip:{ip}"}
+    if uid:
+        keys.add(f"pwd:uid:{uid}")
+
+    with _pwd_lock:
+        for k in keys:
+            recent = [t for t in _pwd_attempts.get(k, []) if now - t < _PWD_WINDOW]
+            _pwd_attempts[k] = recent
+            if len(recent) >= _PWD_MAX_ATTEMPTS:
+                return jsonify({"ok": False, "blocked": True, "error": "rate_limited"})
+
     pwd = str(data.get("password", "")).strip()
 
     if not pwd or pwd != expected:
         with _pwd_lock:
-            _pwd_attempts.setdefault(ip, []).append(now)
+            for k in keys:
+                _pwd_attempts.setdefault(k, []).append(now)
         time.sleep(0.5)  # léger throttle pour ralentir le brute force
         return jsonify({"ok": False, "error": "wrong_password"})
 
@@ -258,8 +329,18 @@ def _verify_init_data(init_data: str, bot_token: str) -> dict | None:
         dcs = "\n".join(f"{k}={v}" for k, v in sorted(pairs.items()))
         secret = hmac.new(b"WebAppData", bot_token.encode(), hashlib.sha256).digest()
         my_hash = hmac.new(secret, dcs.encode(), hashlib.sha256).hexdigest()
-        if hmac.compare_digest(my_hash, their_hash):
-            return pairs
+        if not hmac.compare_digest(my_hash, their_hash):
+            return None
+        # Anti-rejeu : refuser un initData trop ancien (jeton capturé/rejoué)
+        if _INITDATA_MAX_AGE > 0:
+            try:
+                auth_date = int(pairs.get("auth_date", "0"))
+            except (ValueError, TypeError):
+                auth_date = 0
+            if auth_date <= 0 or (time.time() - auth_date) > _INITDATA_MAX_AGE:
+                logger.info("initData rejeté : auth_date périmé/absent")
+                return None
+        return pairs
     except Exception as exc:
         logger.warning("verify_init_data exception: %s", exc)
     return None
@@ -667,6 +748,22 @@ def api_geocode_suggest():
         data = request.get_json(force=True, silent=True) or {}
     except Exception:
         data = {}
+
+    # Auth : seul un vrai client Telegram peut consommer le geocoding (anti-abus
+    # du quota Mapbox par des scripts externes).
+    bot_token = os.getenv("BOT_TOKEN", "")
+    parsed = _verify_init_data(data.get("initData", ""), bot_token)
+    if not parsed:
+        return jsonify({"ok": False, "error": "auth_failed"}), 401
+    # Rate-limit par utilisateur : 40 requêtes / minute (large pour l'autocomplete)
+    import json as _json
+    try:
+        uid = str(int(_json.loads(parsed.get("user", "{}")).get("id", 0)))
+    except Exception:
+        uid = _client_ip(request)
+    if _rate_limited(f"geo:{uid}", max_hits=40, window=60.0):
+        return jsonify({"ok": False, "error": "rate_limited"}), 429
+
     q = (data.get("q") or data.get("address") or "").strip()
     if len(q) < 3:
         return jsonify({"ok": True, "results": []})
