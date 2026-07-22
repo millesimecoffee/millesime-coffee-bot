@@ -570,33 +570,76 @@ def _photon_candidate(feat: dict) -> dict:
     }
 
 
-@app.route("/api/geocode/suggest", methods=["POST"])
-def api_geocode_suggest():
-    """Autocomplétion d'adresse via Photon (Komoot) — base OpenStreetMap, gratuite.
-    POST {q, lang?} → {ok, results: [{label, short, formatted, lat, lon, maps_link}]}
-    """
-    try:
-        data = request.get_json(force=True, silent=True) or {}
-    except Exception:
-        data = {}
-    q = (data.get("q") or data.get("address") or "").strip()
-    if len(q) < 3:
-        return jsonify({"ok": True, "results": []})
+def _mapbox_candidate(feat: dict) -> dict:
+    """Transforme un feature Mapbox Geocoding v6 en candidat d'adresse."""
+    props  = feat.get("properties", {}) or {}
+    geom   = feat.get("geometry", {}) or {}
+    coords = geom.get("coordinates") or [None, None]
+    lon    = coords[0] if len(coords) > 0 else None
+    lat    = coords[1] if len(coords) > 1 else None
 
-    lang = (data.get("lang") or "fr").strip()
-    if lang not in ("fr", "en", "de", "it"):
-        lang = "en"   # Photon supporte fr/en/de/it ; défaut en
+    ctx      = props.get("context", {}) or {}
+    line1    = (props.get("name") or "").strip()
+    city     = ((ctx.get("place") or {}).get("name")
+                or (ctx.get("locality") or {}).get("name") or "").strip()
+    postcode = ((ctx.get("postcode") or {}).get("name") or "").strip()
+    country  = ((ctx.get("country") or {}).get("name") or "").strip()
 
-    params = {"q": q, "limit": 6, "lang": lang}
-    # Biais géographique optionnel (centre de la ville) si fourni par le client
+    short_parts = [p for p in [line1.upper(), city.upper(), postcode] if p]
+    short_addr  = "\n".join(short_parts)
+    label       = (props.get("full_address") or props.get("place_formatted") or line1 or "").strip()
+    maps_link   = f"https://www.openstreetmap.org/?mlat={lat}&mlon={lon}&zoom=18" if (lat and lon) else ""
+
+    return {
+        "label":     label or line1,
+        "short":     short_addr or label,
+        "formatted": label or line1,
+        "lat":       lat,
+        "lon":       lon,
+        "maps_link": maps_link,
+    }
+
+
+def _suggest_mapbox(q: str, lang: str, bias_lat, bias_lon, token: str):
+    """Autocomplétion via Mapbox Geocoding API v6. Retourne (results | None)."""
+    params = {
+        "q":            q,
+        "access_token": token,
+        "autocomplete": "true",
+        "limit":        6,
+        "language":     lang if lang in ("fr", "en", "es", "de", "it", "pt", "nl") else "en",
+        "types":        "address,street,place,locality,neighborhood",
+    }
     try:
-        blat = data.get("bias_lat"); blon = data.get("bias_lon")
-        if blat is not None and blon is not None:
-            params["lat"] = float(blat)
-            params["lon"] = float(blon)
+        if bias_lat is not None and bias_lon is not None:
+            params["proximity"] = f"{float(bias_lon)},{float(bias_lat)}"
     except (ValueError, TypeError):
         pass
+    try:
+        import httpx as _httpx
+        r = _httpx.get(
+            "https://api.mapbox.com/search/geocode/v6/forward",
+            params=params, timeout=8.0,
+        )
+        if r.status_code != 200:
+            logger.warning("mapbox suggest HTTP %s: %s", r.status_code, r.text[:200])
+            return None
+        feats = (r.json() or {}).get("features", []) or []
+    except Exception as exc:
+        logger.warning("mapbox suggest: %s", exc)
+        return None
+    return [_mapbox_candidate(f) for f in feats]
 
+
+def _suggest_photon(q: str, lang: str, bias_lat, bias_lon):
+    """Autocomplétion via Photon (OSM). Retourne (results | None)."""
+    params = {"q": q, "limit": 6, "lang": lang if lang in ("fr", "en", "de", "it") else "en"}
+    try:
+        if bias_lat is not None and bias_lon is not None:
+            params["lat"] = float(bias_lat)
+            params["lon"] = float(bias_lon)
+    except (ValueError, TypeError):
+        pass
     try:
         import httpx as _httpx
         r = _httpx.get(
@@ -606,20 +649,52 @@ def api_geocode_suggest():
             timeout=8.0,
         )
         if r.status_code != 200:
-            return jsonify({"ok": False, "error": "service_down"})
+            return None
         feats = (r.json() or {}).get("features", []) or []
     except Exception as exc:
         logger.warning("photon suggest: %s", exc)
+        return None
+    return [_photon_candidate(f) for f in feats]
+
+
+@app.route("/api/geocode/suggest", methods=["POST"])
+def api_geocode_suggest():
+    """Autocomplétion d'adresse. Mapbox si MAPBOX_TOKEN configuré (meilleure
+    couverture), sinon repli Photon (OSM, gratuit).
+    POST {q, lang?, bias_lat?, bias_lon?} → {ok, results:[...], provider}
+    """
+    try:
+        data = request.get_json(force=True, silent=True) or {}
+    except Exception:
+        data = {}
+    q = (data.get("q") or data.get("address") or "").strip()
+    if len(q) < 3:
+        return jsonify({"ok": True, "results": []})
+
+    lang     = (data.get("lang") or "fr").strip().lower()
+    bias_lat = data.get("bias_lat")
+    bias_lon = data.get("bias_lon")
+
+    mapbox_token = os.getenv("MAPBOX_TOKEN", "").strip()
+    provider = "photon"
+    raw = None
+    if mapbox_token:
+        raw = _suggest_mapbox(q, lang, bias_lat, bias_lon, mapbox_token)
+        if raw is not None:
+            provider = "mapbox"
+    if raw is None:   # pas de token, ou Mapbox en échec → repli Photon
+        raw = _suggest_photon(q, lang, bias_lat, bias_lon)
+        provider = "photon"
+    if raw is None:
         return jsonify({"ok": False, "error": "service_down"})
 
     results, seen = [], set()
-    for f in feats:
-        cand = _photon_candidate(f)
-        key  = cand.get("short") or cand.get("label")
+    for cand in raw:
+        key = cand.get("short") or cand.get("label")
         if key and key not in seen:
             seen.add(key)
             results.append(cand)
-    return jsonify({"ok": True, "results": results[:6]})
+    return jsonify({"ok": True, "results": results[:6], "provider": provider})
 
 
 # ═══════════════════════════════════════════════════════════════════════════
