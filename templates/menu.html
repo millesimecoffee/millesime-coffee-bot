@@ -2036,13 +2036,8 @@
       <div class="info"><div class="title" data-i18n="pay_virement_title">Virement bancaire</div><div class="desc" data-i18n="pay_virement_desc">IBAN + capture de preuve</div></div>
       <span class="arrow">›</span>
     </div>
-    <div class="pay-card" id="paySumupCard" style="display:none;" onclick="selectPaymentMethod('sumup')">
-      <div class="ic">💳</div>
-      <div class="info"><div class="title">Carte bancaire / Apple Pay</div><div class="desc">Paiement sécurisé — montant exact</div></div>
-      <span class="arrow">›</span>
-    </div>
     <div class="pay-card" onclick="selectPaymentMethod('link')">
-      <div class="ic">🔗</div>
+      <div class="ic">💳</div>
       <div class="info"><div class="title" data-i18n="pay_link_title">Lien de paiement</div><div class="desc" data-i18n="pay_link_desc">Stripe / SumUp / etc.</div></div>
       <span class="arrow">›</span>
     </div>
@@ -2050,21 +2045,6 @@
       <div class="ic">₿</div>
       <div class="info"><div class="title" data-i18n="pay_crypto_title">Crypto</div><div class="desc" data-i18n="pay_crypto_desc">ETH ou USDT (réseau ERC-20)</div></div>
       <span class="arrow">›</span>
-    </div>
-  </div>
-</div>
-
-<!-- ÉCRAN 6z : SumUp → Carte / Apple Pay -->
-<div class="screen" id="screen-pay-sumup">
-  <div class="container">
-    <div class="section-title">💳 Carte bancaire / Apple Pay</div>
-    <div class="banner info" id="sumupAmountBanner">—</div>
-    <div id="sumupBody">
-      <button class="next-btn" id="sumupPayBtn" onclick="openSumUpCheckout()">💳 Payer maintenant</button>
-      <div id="sumupStatusMsg" style="text-align:center; margin:16px 0 12px; font-size:14px; opacity:0.75;">
-        La page de paiement sécurisée SumUp va s'ouvrir.
-      </div>
-      <button class="next-btn" style="background:#444; box-shadow:none;" onclick="verifySumUpPayment(true)">🔄 J'ai payé — vérifier</button>
     </div>
   </div>
 </div>
@@ -2697,7 +2677,6 @@ function updateHeader(name) {
     payment:           { t: t("confirm_payment"), s: "" },
     "pay-cash":        { t: t("pay_cash_title"), s: t("pay_cash_currency") },
     "pay-virement":    { t: t("pay_virement_title"), s: "" },
-    "pay-sumup":       { t: "Carte / Apple Pay", s: "" },
     "pay-link":        { t: t("pay_link_title"), s: "" },
     "pay-crypto":      { t: t("pay_crypto_title"), s: t("pay_crypto_choose") },
     "pay-crypto-qr":   { t: state.payment?.crypto_name ? `₿ ${state.payment.crypto_name}` : "Crypto", s: "" },
@@ -2718,7 +2697,6 @@ document.getElementById("backBtn").addEventListener("click", () => {
   // Cleanup avant changement d'écran
   const curId = document.querySelector(".screen.active")?.id || "";
   if (curId === "screen-selfie") stopSelfieCam();
-  if (curId === "screen-pay-sumup") stopSumUpPolling();
 
   const prev = state.history.pop();
   if (!prev) return;
@@ -3178,9 +3156,6 @@ function buildCartScreen() {
 // Maintenant, on continue le flow IN-APP : on va à l'écran paiement.
 function submitCart() {
   try { tg.MainButton.hide(); } catch {}
-  // Afficher la carte SumUp (Carte / Apple Pay) seulement si configurée côté serveur
-  const sumupCard = document.getElementById("paySumupCard");
-  if (sumupCard) sumupCard.style.display = (state.payment_config && state.payment_config.sumup) ? "flex" : "none";
   setScreen("payment");
 }
 
@@ -3210,110 +3185,6 @@ function selectPaymentMethod(method) {
   } else if (method === "crypto") {
     if (!cfg.crypto_eth && !cfg.crypto_usdt) { showToast(t("pay_crypto_not_configured"), true); return; }
     setScreen("pay-crypto");
-  } else if (method === "sumup") {
-    if (!cfg.sumup) { showToast("Paiement carte non configuré", true); return; }
-    createSumUpCheckout();
-  }
-}
-
-// ─── SumUp : Carte bancaire / Apple Pay (montant exact via API) ──────────
-state._sumupPoll = null;
-
-async function createSumUpCheckout() {
-  const total = computeCartTotal();
-  const sym   = state.currency || "€";
-  const banner = document.getElementById("sumupAmountBanner");
-  const body   = document.getElementById("sumupBody");
-  banner.textContent = `Montant à payer : ${fmtCur(total)}`;
-  body.style.opacity = "0.5";
-  document.getElementById("sumupStatusMsg").textContent = "Préparation du paiement…";
-  setScreen("pay-sumup");
-  try {
-    const r = await apiFetch("/api/pay/sumup/create", {
-      method: "POST",
-      body: JSON.stringify({
-        initData:    tg.initData || "",
-        amount:      total,
-        description: `Commande ${state.city || ""} — ${total} ${sym}`.trim(),
-      })
-    });
-    const d = await r.json();
-    if (!d.ok || !d.url) {
-      showToast("Erreur SumUp — réessayez", true);
-      body.style.opacity = "1";
-      setScreen("payment");
-      return;
-    }
-    state.payment.sumup_id  = d.id;
-    state.payment.sumup_url = d.url;
-    state.payment.sumup_ref = d.reference;
-    body.style.opacity = "1";
-    document.getElementById("sumupStatusMsg").textContent = "Appuyez sur « Payer maintenant » pour ouvrir la page sécurisée.";
-    // Ouvrir directement la page de paiement
-    openSumUpCheckout();
-    startSumUpPolling();
-  } catch {
-    showToast(t("err_network"), true);
-    body.style.opacity = "1";
-    setScreen("payment");
-  }
-}
-
-function openSumUpCheckout() {
-  const url = state.payment && state.payment.sumup_url;
-  if (!url) return;
-  hapticMedium();
-  // openLink ouvre le navigateur externe (Safari) → Apple Pay disponible
-  try { tg.openLink(url); return; } catch {}
-  try { window.open(url, "_blank"); } catch {}
-}
-
-function startSumUpPolling() {
-  stopSumUpPolling();
-  let ticks = 0;
-  state._sumupPoll = setInterval(async () => {
-    ticks++;
-    if (ticks > 200) { stopSumUpPolling(); return; }  // ~10 min max
-    const paid = await checkSumUpStatus();
-    if (paid) stopSumUpPolling();
-  }, 3000);
-}
-
-function stopSumUpPolling() {
-  if (state._sumupPoll) { clearInterval(state._sumupPoll); state._sumupPoll = null; }
-}
-
-async function checkSumUpStatus() {
-  const id = state.payment && state.payment.sumup_id;
-  if (!id) return false;
-  try {
-    const r = await apiFetch("/api/pay/sumup/status", {
-      method: "POST",
-      body: JSON.stringify({ initData: tg.initData || "", id })
-    });
-    const d = await r.json();
-    if (!d.ok) return false;
-    if (d.status === "PAID") {
-      state.payment.paid  = true;
-      state.payment.label = "💳 Carte / Apple Pay ✓ payé";
-      hapticSuccess();
-      showToast("✅ Paiement reçu !");
-      afterPaymentMethodChosen();
-      return true;
-    }
-    if (d.status === "FAILED" || d.status === "EXPIRED") {
-      document.getElementById("sumupStatusMsg").textContent =
-        "Paiement " + (d.status === "FAILED" ? "échoué" : "expiré") + " — réessayez.";
-    }
-    return false;
-  } catch { return false; }
-}
-
-// Bouton "J'ai payé — vérifier" (manuel)
-async function verifySumUpPayment(manual) {
-  const paid = await checkSumUpStatus();
-  if (!paid && manual) {
-    showToast("Paiement pas encore reçu — patientez quelques secondes", true);
   }
 }
 
@@ -3389,12 +3260,10 @@ async function copyToClipboard(text) {
 }
 
 function afterPaymentMethodChosen() {
-  stopSumUpPolling();
   if (!state.payment.label) {
     // Cas cash : currency déjà set; Sinon construire un label par défaut
     if (state.payment.method === "virement") state.payment.label = "🏦 Virement bancaire";
     else if (state.payment.method === "link") state.payment.label = "💳 Lien de paiement";
-    else if (state.payment.method === "sumup") state.payment.label = "💳 Carte / Apple Pay";
   }
   setScreen("address");
 }
