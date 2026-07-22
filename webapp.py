@@ -179,6 +179,9 @@ def api_auth():
                 "payment_link": os.getenv("PAYMENT_LINK", ""),
                 "crypto_eth":   os.getenv("CRYPTO_ETH", ""),
                 "crypto_usdt":  os.getenv("CRYPTO_USDT", ""),
+                # Carte / Apple Pay via SumUp — actif seulement si clés configurées
+                "sumup":        bool(os.getenv("SUMUP_API_KEY", "") and os.getenv("SUMUP_MERCHANT_CODE", "")),
+                "sumup_currency": os.getenv("SUMUP_CURRENCY", "EUR"),
             },
         }
         # Notif owner : "client entré dans le catalogue" (si initData valide)
@@ -211,6 +214,135 @@ def api_catalog():
     except Exception as exc:
         logger.error("api_catalog: %s", exc)
         return jsonify({"error": "load_failed"}), 500
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Paiement SumUp — Apple Pay + carte, montant exact (Checkouts API)
+# Doc : POST /v0.1/checkouts (hosted_checkout) → hosted_checkout_url
+#       GET  /v0.1/checkouts/{id} → status PENDING/PAID/FAILED/EXPIRED
+# Gated par SUMUP_API_KEY + SUMUP_MERCHANT_CODE (sinon endpoints désactivés).
+# ═══════════════════════════════════════════════════════════════════════════
+_SUMUP_API = "https://api.sumup.com/v0.1/checkouts"
+
+
+def _sumup_conf():
+    return (
+        os.getenv("SUMUP_API_KEY", "").strip(),
+        os.getenv("SUMUP_MERCHANT_CODE", "").strip(),
+        os.getenv("SUMUP_CURRENCY", "EUR").strip() or "EUR",
+    )
+
+
+@app.route("/api/pay/sumup/create", methods=["POST"])
+def api_pay_sumup_create():
+    """Crée un checkout SumUp pour le montant exact du panier.
+    POST {initData, amount, description?}
+    Retourne {ok, id, url}.
+    """
+    api_key, merchant_code, currency = _sumup_conf()
+    if not (api_key and merchant_code):
+        return jsonify({"ok": False, "error": "sumup_not_configured"}), 400
+
+    bot_token = os.getenv("BOT_TOKEN", "")
+    try:
+        data = request.get_json(force=True, silent=True) or {}
+    except Exception:
+        data = {}
+    if not _verify_init_data(data.get("initData", ""), bot_token):
+        return jsonify({"ok": False, "error": "auth_failed"}), 401
+
+    # Montant : positif, plafonné (garde-fou)
+    try:
+        amount = round(float(data.get("amount", 0)), 2)
+    except (ValueError, TypeError):
+        return jsonify({"ok": False, "error": "bad_amount"}), 400
+    if amount <= 0 or amount > 100000:
+        return jsonify({"ok": False, "error": "bad_amount"}), 400
+
+    description = str(data.get("description", "") or "Commande")[:200]
+
+    import uuid
+    checkout_ref = "MC-" + uuid.uuid4().hex[:16]
+    payload = {
+        "checkout_reference": checkout_ref,
+        "amount":             amount,
+        "currency":           currency,
+        "merchant_code":      merchant_code,
+        "description":        description,
+        "hosted_checkout":    {"enabled": True},
+    }
+
+    import httpx as _httpx
+    try:
+        with _httpx.Client(timeout=15.0) as c:
+            r = c.post(
+                _SUMUP_API,
+                json=payload,
+                headers={"Authorization": f"Bearer {api_key}"},
+            )
+    except Exception as exc:
+        logger.error("sumup create: %s", exc)
+        return jsonify({"ok": False, "error": "sumup_unreachable"}), 502
+
+    if r.status_code not in (200, 201):
+        logger.error("sumup create HTTP %s: %s", r.status_code, r.text[:300])
+        return jsonify({"ok": False, "error": "sumup_error"}), 502
+
+    try:
+        body = r.json()
+    except Exception:
+        return jsonify({"ok": False, "error": "sumup_bad_response"}), 502
+
+    checkout_id = body.get("id") or ""
+    hosted_url  = body.get("hosted_checkout_url") or ""
+    if not (checkout_id and hosted_url):
+        logger.error("sumup create missing id/url: %s", str(body)[:300])
+        return jsonify({"ok": False, "error": "sumup_no_url"}), 502
+
+    return jsonify({"ok": True, "id": checkout_id, "url": hosted_url, "reference": checkout_ref})
+
+
+@app.route("/api/pay/sumup/status", methods=["POST"])
+def api_pay_sumup_status():
+    """Statut d'un checkout SumUp.
+    POST {initData, id}
+    Retourne {ok, status} — status ∈ PENDING|PAID|FAILED|EXPIRED.
+    """
+    api_key, merchant_code, _ = _sumup_conf()
+    if not (api_key and merchant_code):
+        return jsonify({"ok": False, "error": "sumup_not_configured"}), 400
+
+    bot_token = os.getenv("BOT_TOKEN", "")
+    try:
+        data = request.get_json(force=True, silent=True) or {}
+    except Exception:
+        data = {}
+    if not _verify_init_data(data.get("initData", ""), bot_token):
+        return jsonify({"ok": False, "error": "auth_failed"}), 401
+
+    checkout_id = str(data.get("id", "")).strip()
+    if not checkout_id:
+        return jsonify({"ok": False, "error": "no_id"}), 400
+
+    import httpx as _httpx
+    try:
+        with _httpx.Client(timeout=15.0) as c:
+            r = c.get(
+                f"{_SUMUP_API}/{checkout_id}",
+                headers={"Authorization": f"Bearer {api_key}"},
+            )
+    except Exception as exc:
+        logger.error("sumup status: %s", exc)
+        return jsonify({"ok": False, "error": "sumup_unreachable"}), 502
+
+    if r.status_code != 200:
+        return jsonify({"ok": False, "error": "sumup_error"}), 502
+    try:
+        body = r.json()
+    except Exception:
+        return jsonify({"ok": False, "error": "sumup_bad_response"}), 502
+
+    return jsonify({"ok": True, "status": (body.get("status") or "PENDING")})
 
 
 # Cart en attente entre la Mini App et le clic paiement dans le chat
@@ -710,6 +842,7 @@ def api_finalize_order():
         "payment_method": payment.get("method", ""),
         "payment_currency": payment.get("currency", ""),
         "payment_crypto":   payment.get("crypto_name", ""),
+        "payment_sumup_id": payment.get("sumup_id", ""),   # id checkout SumUp si carte/Apple Pay
         "display_currency": disp_cur,   # devise d'affichage choisie (symbole)
         "address":   (address.get("short") or address.get("formatted") or address.get("text") or ""),
         "address_verified": bool(address.get("verified")),
