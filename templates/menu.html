@@ -2073,7 +2073,7 @@
   /* Monument central */
   .ct-landmark {
     position: absolute; left: 50%; top: 50%; transform: translate(-50%,-52%);
-    font-size: 48px; z-index: 3;
+    font-size: 48px; z-index: 1;   /* derrière la photo : ne sert que de repli */
     filter: drop-shadow(0 0 12px rgba(255,45,155,0.75)) drop-shadow(0 5px 8px rgba(0,0,0,0.55));
     animation: ctFloat 3.2s ease-in-out infinite;
   }
@@ -3443,7 +3443,6 @@ function buildCityScreen() {
         <div class="ct-overlay"></div>
         <div class="ct-shine"></div>
         <div class="ct-city">
-          <span class="ct-city-land">${_cityLandmark(city)}</span>
           <span class="ct-city-name">${escHtml(city)}</span>
         </div>
       </div>
