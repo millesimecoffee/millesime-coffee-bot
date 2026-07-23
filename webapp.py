@@ -57,6 +57,22 @@ def menu_page():
     return render_template("menu.html")
 
 
+@app.route("/cityimg/<slug>.jpg")
+def serve_city_image(slug):
+    """Sert une photo de ville (auto-hébergée) depuis cityimg/ via un chemin
+    absolu (fiable sur Render, contrairement au static Flask par défaut)."""
+    import re as _re
+    from flask import send_file
+    if not _re.fullmatch(r"[a-z0-9]{1,40}", slug or ""):
+        return ("bad request", 400)
+    path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "cityimg", slug + ".jpg")
+    if not os.path.exists(path):
+        return ("not found", 404)
+    resp = send_file(path, mimetype="image/jpeg")
+    resp.headers["Cache-Control"] = "public, max-age=604800"
+    return resp
+
+
 # Anti-spam très simple : mémorise les essais par IP + user_id
 _pwd_attempts: dict[str, list[float]] = {}
 _PWD_MAX_ATTEMPTS = 5

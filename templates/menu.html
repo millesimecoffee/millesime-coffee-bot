@@ -2102,10 +2102,38 @@
     text-shadow: 0 0 12px rgba(255,45,155,0.55);
   }
   .ct-count { font-size: 12px; color: var(--txt-secondary); margin-top: 2px; }
-  .ct-go { font-size: 24px; color: var(--accent); opacity: 0.75; flex-shrink: 0; }
-  .city-tile:hover .ct-go { opacity: 1; }
+  .ct-go { font-size: 14px; font-weight: 800; color: var(--accent); opacity: 0.9; flex-shrink: 0; letter-spacing: 0.3px; }
+  .city-tile:hover .ct-go { opacity: 1; text-shadow: 0 0 10px rgba(255,45,155,0.6); }
+
+  /* Photo réelle de la ville (par-dessus la scène synthwave = repli) */
+  .ct-photo {
+    position: absolute; inset: 0;
+    width: 100%; height: 100%;
+    object-fit: cover;
+    z-index: 2;
+    transition: transform 0.5s var(--ease-out);
+  }
+  .city-tile:hover .ct-photo { transform: scale(1.06); }
+  /* Voile néon + assombrissement bas pour lisibilité du nom */
+  .ct-overlay {
+    position: absolute; inset: 0; z-index: 3; pointer-events: none;
+    background:
+      linear-gradient(180deg, rgba(10,10,18,0.15) 0%, transparent 32%, rgba(8,6,16,0.86) 100%),
+      linear-gradient(120deg, rgba(255,45,155,0.22), transparent 42%, rgba(34,211,238,0.16));
+  }
+  /* Nom de ville en néon, posé sur la photo */
+  .ct-city {
+    position: absolute; left: 15px; bottom: 12px; z-index: 5;
+    display: flex; align-items: center; gap: 9px;
+  }
+  .ct-city-land { font-size: 24px; filter: drop-shadow(0 2px 6px rgba(0,0,0,0.7)); }
+  .ct-city-name {
+    font-size: 24px; font-weight: 900; letter-spacing: -0.5px; color: #fff;
+    text-shadow: 0 0 16px rgba(255,45,155,0.75), 0 2px 8px rgba(0,0,0,0.85);
+  }
   @media (prefers-reduced-motion: reduce) {
     .ct-sun, .ct-grid, .ct-landmark, .ct-stars, .ct-shine { animation: none; }
+    .city-tile:hover .ct-photo { transform: none; }
   }
 
   /* Hero accueil premium */
@@ -3284,6 +3312,11 @@ function _hueFromText(s) {
   let h = 0; for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) % 360;
   return h;
 }
+// Slug ville pour l'URL photo (identique au slug Python : NFKD → ASCII → a-z0-9)
+function _citySlug(s) {
+  return (s || "").normalize("NFKD").replace(/[^\x00-\x7F]/g, "")
+    .toLowerCase().replace(/[^a-z0-9]+/g, "");
+}
 function _cityGradient(city) {
   const h = _hueFromText(city);
   return `linear-gradient(135deg, hsl(${h} 65% 48%), hsl(${(h + 45) % 360} 68% 34%))`;
@@ -3406,14 +3439,17 @@ function buildCityScreen() {
         <div class="ct-grid"></div>
         <div class="ct-palms"></div>
         <div class="ct-landmark">${_cityLandmark(city)}</div>
+        <img class="ct-photo" src="/cityimg/${_citySlug(city)}.jpg" alt="" loading="lazy" onerror="this.remove()">
+        <div class="ct-overlay"></div>
         <div class="ct-shine"></div>
+        <div class="ct-city">
+          <span class="ct-city-land">${_cityLandmark(city)}</span>
+          <span class="ct-city-name">${escHtml(city)}</span>
+        </div>
       </div>
       <div class="ct-footer">
-        <div class="ct-info">
-          <div class="ct-name">${escHtml(city)}</div>
-          <div class="ct-count">${nProducts} produit${nProducts>1?'s':''} disponible${nProducts>1?'s':''}</div>
-        </div>
-        <span class="ct-go">›</span>
+        <div class="ct-count">${nProducts} produit${nProducts>1?'s':''} disponible${nProducts>1?'s':''}</div>
+        <span class="ct-go">Commander ›</span>
       </div>
     `;
     div.onclick = () => { state.city = city; buildMenuScreen(); setScreen("menu"); };
