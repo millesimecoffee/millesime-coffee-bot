@@ -509,25 +509,6 @@
   }
   .qr-wrap img { width: 100%; height: auto; display: block; border-radius: 6px; }
 
-  /* Upload preuve virement */
-  .upload-zone {
-    border: 2px dashed rgba(255,255,255,0.15);
-    border-radius: 14px;
-    padding: 28px 16px;
-    text-align: center;
-    margin: 14px 0;
-    cursor: pointer;
-    transition: border-color .15s, background .15s;
-    background: var(--bg-card);
-  }
-  .upload-zone.has-file {
-    border-color: var(--success);
-    background: rgba(16,185,129,0.08);
-  }
-  .upload-zone .icon { font-size: 36px; margin-bottom: 8px; opacity: 0.7; }
-  .upload-zone .label { font-size: 14px; opacity: 0.7; }
-  .upload-zone input[type=file] { display: none; }
-
   /* Adresse text input */
   .addr-input {
     width: 100%;
@@ -886,6 +867,17 @@
   .age-fresh  { background: rgba(16,185,129,0.15);  color: #34d399; }
   .age-normal { background: rgba(245,158,11,0.15);  color: #fbbf24; }
   .age-old    { background: rgba(239,68,68,0.15);   color: #f87171; animation: agePulse 1.6s ease-in-out infinite; }
+  /* Marque une annulation venue du client, pas de l'owner */
+  .oc-bycli {
+    padding: 2px 7px;
+    border-radius: 6px;
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+    background: rgba(148,163,184,0.15);
+    color: #94a3b8;
+  }
   @keyframes agePulse {
     0%,100% { box-shadow: 0 0 0 0 rgba(239,68,68,0.4); }
     50%      { box-shadow: 0 0 0 6px rgba(239,68,68,0); }
@@ -1286,9 +1278,51 @@
     text-shadow: 0 3px 10px rgba(0,0,0,0.6);
     filter: drop-shadow(0 0 6px rgba(16,185,129,0.5));
   }
+  /* Flèche de cap : orientée vers la direction de déplacement du livreur.
+     Rotation pilotée en JS, d'où l'absence de transform ici. */
+  .leaflet-driver-icon .arrow {
+    position: absolute;
+    top: 50%; left: 50%;
+    margin: -32px 0 0 -7px;
+    font-size: 15px;
+    color: var(--accent);
+    text-shadow: 0 0 6px rgba(255,45,155,0.8);
+    transform-origin: 50% 26px;
+    z-index: 3;
+    pointer-events: none;
+  }
   @keyframes bobMarker {
     from { transform: translateY(0); }
     to   { transform: translateY(-4px); }
+  }
+  /* Badge « en direct » posé sur la carte */
+  .track-live {
+    position: absolute;
+    top: 10px; left: 10px;
+    z-index: 500;
+    display: flex; align-items: center;
+    gap: 5px;
+    padding: 5px 11px;
+    border-radius: 999px;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.3px;
+    background: rgba(15,16,21,0.85);
+    backdrop-filter: blur(6px);
+    color: #94a3b8;
+    border: 1px solid rgba(255,255,255,0.08);
+  }
+  .track-live.on {
+    color: #34d399;
+    border-color: rgba(16,185,129,0.35);
+    animation: livePulse 2s ease-in-out infinite;
+  }
+  @keyframes livePulse {
+    0%,100% { box-shadow: 0 0 0 0 rgba(16,185,129,0.35); }
+    50%     { box-shadow: 0 0 0 5px rgba(16,185,129,0); }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .track-live.on { animation: none; }
   }
   /* Polyline animée dashed */
   .leaflet-interactive.route {
@@ -2468,11 +2502,6 @@
       <div class="info"><div class="title" data-i18n="pay_cash_title">Cash</div><div class="desc" data-i18n="pay_cash_desc">Paiement à la livraison</div></div>
       <span class="arrow">›</span>
     </div>
-    <div class="pay-card" onclick="selectPaymentMethod('virement')">
-      <div class="ic">🏦</div>
-      <div class="info"><div class="title" data-i18n="pay_virement_title">Virement bancaire</div><div class="desc" data-i18n="pay_virement_desc">IBAN + capture de preuve</div></div>
-      <span class="arrow">›</span>
-    </div>
     <div class="pay-card" onclick="selectPaymentMethod('link')">
       <div class="ic">💳</div>
       <div class="info"><div class="title" data-i18n="pay_link_title">Carte bancaire / Apple Pay</div><div class="desc" data-i18n="pay_link_desc">Paiement en ligne sécurisé</div></div>
@@ -2494,27 +2523,7 @@
   </div>
 </div>
 
-<!-- ÉCRAN 6b : Virement → IBAN + photo -->
-<div class="screen" id="screen-pay-virement">
-  <div class="container">
-    <div class="section-title" data-i18n="pay_virement_iban">IBAN à utiliser</div>
-    <div class="copy-box">
-      <div class="value" id="ibanValue">—</div>
-      <button class="copy-btn" onclick="copyToClipboard(document.getElementById('ibanValue').textContent)" data-i18n="copy">Copier</button>
-    </div>
-    <div class="banner info" data-i18n="pay_virement_help">
-      Effectuez le virement à cette adresse, puis envoyez la capture d'écran ci-dessous.
-    </div>
-    <label class="upload-zone" id="proofZone">
-      <div class="icon">📸</div>
-      <div class="label" id="proofLabel" data-i18n="upload_proof">Cliquez pour envoyer la capture du virement</div>
-      <input type="file" accept="image/*" onchange="onProofPicked(event)">
-    </label>
-    <button class="next-btn" id="virementNextBtn" disabled onclick="afterPaymentMethodChosen()" data-i18n="continue">Continuer</button>
-  </div>
-</div>
-
-<!-- ÉCRAN 6c : Lien de paiement réutilisable (montant saisi par le client) -->
+<!-- ÉCRAN 6b : Lien de paiement réutilisable (montant saisi par le client) -->
 <div class="screen" id="screen-pay-link">
   <div class="container">
     <div class="section-title">💳 Carte bancaire / Apple Pay</div>
@@ -2824,6 +2833,7 @@
       <div style="font-size:40px;">🗺️</div>
       <div style="font-size:13px;">La carte s'affichera quand le livreur sera en route</div>
     </div>
+    <div class="track-live" id="trackLiveBadge" style="display:none;"></div>
     <div id="trackMap" style="height:100%; display:none;"></div>
   </div>
 
@@ -2860,23 +2870,17 @@ const T = {
     err_network: "Erreur réseau, réessayez.", added: "Ajouté au panier",
     // Paiement
     pay_cash_title: "💵 Cash", pay_cash_desc: "Paiement à la livraison",
-    pay_virement_title: "🏦 Virement bancaire", pay_virement_desc: "IBAN + capture de preuve",
     pay_link_title: "💳 Carte bancaire / Apple Pay",  pay_link_desc: "Paiement en ligne sécurisé",
     pay_link_amount_label: "Montant à saisir sur la page", pay_link_copy_amount: "📋 Copier le montant",
     pay_link_instructions: "Ouvrez la page de paiement, saisissez ce montant, puis payez par carte ou Apple Pay.",
     pay_link_amount_copied: "Montant copié",
     pay_crypto_title: "₿ Crypto",            pay_crypto_desc: "ETH ou USDT (ERC-20)",
     pay_cash_currency: "Choisissez votre devise",
-    pay_virement_iban: "IBAN à utiliser",
-    pay_virement_help: "Effectuez le virement, puis envoyez la capture d'écran.",
-    pay_virement_not_configured: "⚠️ Virement bancaire non configuré.",
     pay_link_not_configured: "⚠️ Lien de paiement non configuré.",
     pay_link_open: "Lien de paiement", pay_link_open_btn: "🔗 Ouvrir le lien",
     pay_crypto_choose: "Choisissez la crypto",
     pay_crypto_help: "Une fois le transfert envoyé, appuyez sur le bouton ci-dessous.",
     pay_crypto_not_configured: "⚠️ Adresse crypto non configurée.",
-    upload_proof: "Cliquez pour envoyer la capture du virement",
-    proof_loaded: "✓ Capture chargée",
     copy: "Copier", copied: "✓ Copié !",
     i_paid: "✅ J'ai payé",
     i_sent_crypto: "✅ J'ai envoyé la crypto",
@@ -2927,23 +2931,17 @@ const T = {
     subtotal: "Subtotal", total: "Total", items: "item(s)",
     err_network: "Network error, retry.", added: "Added to cart",
     pay_cash_title: "💵 Cash", pay_cash_desc: "Pay on delivery",
-    pay_virement_title: "🏦 Bank transfer", pay_virement_desc: "IBAN + proof screenshot",
     pay_link_title: "💳 Card / Apple Pay", pay_link_desc: "Secure online payment",
     pay_link_amount_label: "Amount to enter on the page", pay_link_copy_amount: "📋 Copy amount",
     pay_link_instructions: "Open the payment page, enter this amount, then pay by card or Apple Pay.",
     pay_link_amount_copied: "Amount copied",
     pay_crypto_title: "₿ Crypto", pay_crypto_desc: "ETH or USDT (ERC-20)",
     pay_cash_currency: "Choose currency",
-    pay_virement_iban: "IBAN",
-    pay_virement_help: "Send the transfer, then upload the screenshot.",
-    pay_virement_not_configured: "⚠️ Bank transfer not configured.",
     pay_link_not_configured: "⚠️ Payment link not configured.",
     pay_link_open: "Payment link", pay_link_open_btn: "🔗 Open payment link",
     pay_crypto_choose: "Choose crypto",
     pay_crypto_help: "Once sent, press the button below.",
     pay_crypto_not_configured: "⚠️ Crypto address not configured.",
-    upload_proof: "Tap to upload your transfer screenshot",
-    proof_loaded: "✓ Screenshot uploaded",
     copy: "Copy", copied: "✓ Copied!",
     i_paid: "✅ I have paid",
     i_sent_crypto: "✅ I sent the crypto",
@@ -2990,23 +2988,17 @@ const T = {
     subtotal: "Subtotal", total: "Total", items: "artículo(s)",
     err_network: "Error de red, reintenta.", added: "Añadido al carrito",
     pay_cash_title: "💵 Efectivo", pay_cash_desc: "Pago contra entrega",
-    pay_virement_title: "🏦 Transferencia bancaria", pay_virement_desc: "IBAN + captura de pantalla",
     pay_link_title: "💳 Tarjeta / Apple Pay", pay_link_desc: "Pago en línea seguro",
     pay_link_amount_label: "Importe a introducir en la página", pay_link_copy_amount: "📋 Copiar importe",
     pay_link_instructions: "Abre la página de pago, introduce este importe y paga con tarjeta o Apple Pay.",
     pay_link_amount_copied: "Importe copiado",
     pay_crypto_title: "₿ Cripto", pay_crypto_desc: "ETH o USDT (ERC-20)",
     pay_cash_currency: "Elige tu moneda",
-    pay_virement_iban: "IBAN",
-    pay_virement_help: "Envía la transferencia y luego sube la captura.",
-    pay_virement_not_configured: "⚠️ Transferencia bancaria no configurada.",
     pay_link_not_configured: "⚠️ Enlace de pago no configurado.",
     pay_link_open: "Enlace de pago", pay_link_open_btn: "🔗 Abrir el enlace",
     pay_crypto_choose: "Elige la cripto",
     pay_crypto_help: "Una vez enviado, pulsa el botón.",
     pay_crypto_not_configured: "⚠️ Dirección cripto no configurada.",
-    upload_proof: "Pulsa para subir la captura",
-    proof_loaded: "✓ Captura cargada",
     copy: "Copiar", copied: "✓ ¡Copiado!",
     i_paid: "✅ He pagado",
     i_sent_crypto: "✅ He enviado la cripto",
@@ -3058,8 +3050,8 @@ const state = {
   countryCurrencies: {},// {pays: [devises autorisées]} — affichage
   allowedCurrencies: ["€"], // devises proposées pour le pays courant
   currency: "€",        // devise d'affichage active (symbole)
-  payment_config: null, // {bank_iban, payment_link, crypto_eth, crypto_usdt}
-  payment: {},          // {method, currency, crypto_name, crypto_addr, proof_b64, label}
+  payment_config: null, // {payment_link, crypto_eth, crypto_usdt}
+  payment: {},          // {method, currency, crypto_name, crypto_addr, label}
   address: {},          // {text, formatted, short, lat, lon, maps_link, verified}
   selfie_b64: null,
   productNames: [],
@@ -3138,7 +3130,6 @@ function updateHeader(name) {
     cart:              { t: t("your_cart"), s: "" },
     payment:           { t: t("confirm_payment"), s: "" },
     "pay-cash":        { t: t("pay_cash_title"), s: t("pay_cash_currency") },
-    "pay-virement":    { t: t("pay_virement_title"), s: "" },
     "pay-link":        { t: t("pay_link_title"), s: "" },
     "pay-crypto":      { t: t("pay_crypto_title"), s: t("pay_crypto_choose") },
     "pay-crypto-qr":   { t: state.payment?.crypto_name ? `₿ ${state.payment.crypto_name}` : "Crypto", s: "" },
@@ -3451,7 +3442,7 @@ function cityTileHTML(country, city, subtitle) {
         <div class="ct-grid"></div>
         <div class="ct-palms"></div>
         <div class="ct-landmark">${_cityLandmark(city)}</div>
-        <img class="ct-photo" src="/cityimg/${_citySlug(city)}.jpg?v=3" alt="" loading="lazy" onerror="this.remove()">
+        <img class="ct-photo" src="/cityimg/${_citySlug(city)}.jpg?v=4" alt="" loading="lazy" onerror="this.remove()">
         <div class="ct-overlay"></div>
         <div class="ct-shine"></div>
         <div class="ct-city"><span class="ct-city-name">${escHtml(city)}</span></div>
@@ -3748,14 +3739,6 @@ function selectPaymentMethod(method) {
   if (method === "cash") {
     buildCashCurrencies();
     setScreen("pay-cash");
-  } else if (method === "virement") {
-    if (!cfg.bank_iban) { showToast(t("pay_virement_not_configured"), true); return; }
-    document.getElementById("ibanValue").textContent = cfg.bank_iban;
-    state.payment.proof_b64 = null;
-    document.getElementById("proofZone").classList.remove("has-file");
-    document.getElementById("proofLabel").textContent = t("upload_proof");
-    document.getElementById("virementNextBtn").disabled = true;
-    setScreen("pay-virement");
   } else if (method === "link") {
     if (!cfg.payment_link) { showToast(t("pay_link_not_configured"), true); return; }
     // Lien réutilisable : le client saisit lui-même le montant sur la page.
@@ -3797,19 +3780,6 @@ function buildCashCurrencies() {
     };
     cont.appendChild(d);
   });
-}
-
-function onProofPicked(ev) {
-  const file = ev.target.files && ev.target.files[0];
-  if (!file) return;
-  const reader = new FileReader();
-  reader.onload = e => {
-    state.payment.proof_b64 = e.target.result;  // data:image/...;base64,...
-    document.getElementById("proofZone").classList.add("has-file");
-    document.getElementById("proofLabel").textContent = t("proof_loaded") + " — " + file.name;
-    document.getElementById("virementNextBtn").disabled = false;
-  };
-  reader.readAsDataURL(file);
 }
 
 function selectCrypto(name) {
@@ -3857,8 +3827,7 @@ function copyLinkAmount() {
 function afterPaymentMethodChosen() {
   if (!state.payment.label) {
     // Cas cash : currency déjà set; Sinon construire un label par défaut
-    if (state.payment.method === "virement") state.payment.label = "🏦 Virement bancaire";
-    else if (state.payment.method === "link") state.payment.label = "💳 Lien de paiement";
+    if (state.payment.method === "link") state.payment.label = "💳 Lien de paiement";
   }
   setScreen("address");
 }
@@ -4242,7 +4211,10 @@ function renderCAChart(history) {
   }).join("");
   const dayNames = ["D","L","M","M","J","V","S"];
   labels.innerHTML = history.map(h => {
-    const dt = new Date(h.day);
+    // "YYYY-MM-DD" via new Date() serait lu en UTC puis rendu en local : on
+    // construit la date en local pour que l'initiale du jour soit la bonne.
+    const [y, m, d] = String(h.day).split("-").map(Number);
+    const dt = new Date(y, (m || 1) - 1, d || 1);
     return `<span>${dayNames[dt.getDay()]}</span>`;
   }).join("");
 }
@@ -4337,7 +4309,7 @@ function renderOwnerOrders() {
   }
   const all  = state.ownerData.orders || [];
   const sf   = state.currentStatusFilter || "";
-  let filtered = sf ? all.filter(o => (o.status || "pending") === sf) : all;
+  let filtered = sf ? all.filter(o => _matchesStatus(o.status, sf)) : all;
 
   // Filtre recherche
   const q = (state.currentSearchQuery || "").toLowerCase().trim();
@@ -4356,15 +4328,35 @@ function renderOwnerOrders() {
   list.innerHTML = filtered.map(renderOrderCard2).join("");
 }
 
+// Le statut peut être enregistré sans que le client ait pu être prévenu (bot
+// bloqué, réseau). On le dit explicitement au lieu d'un « ✓ » trompeur.
+function _statusToast(data, successLabel) {
+  if (data.notified === false && !data.unchanged) {
+    showToast(`${successLabel} — ⚠️ client non prévenu`, true);
+    hapticError();
+  } else {
+    showToast(successLabel);
+    hapticSuccess();
+  }
+}
+
+// L'onglet « Annulées » couvre les deux origines d'annulation (owner et client).
+function _matchesStatus(status, filter) {
+  const s = status || "pending";
+  if (filter === "cancelled") return s === "cancelled" || s === "cancelled_by_client";
+  return s === filter;
+}
+
 // Carte commande v2 réutilisable (dashboard + liste)
 function renderOrderCard2(o) {
-  const status = o.status || "pending";
+  const status  = o.status || "pending";
   const timeAgo = _timeAgo(o.created_at);
   const ageCls  = _ageColorClass(o.created_at, status);
-  const client  = (o.user_name || '?').replace(/[<>]/g,'');
-  const uName   = o.username ? ` @${o.username}` : '';
+  const client  = escHtml(o.user_name || '?');
+  const uName   = o.username ? ` @${escHtml(o.username)}` : '';
   const src     = o.source === "miniapp" ? "📲" : "💬";
   const photos  = (o.has_selfie ? "📸" : "") + (o.has_proof ? " 🏦" : "");
+  const byClient = status === "cancelled_by_client" ? ' <span class="oc-bycli">par le client</span>' : '';
   const total   = (o.total||0).toLocaleString('fr-FR');
   const cur     = o.display_currency || "€";
 
@@ -4396,18 +4388,18 @@ function renderOrderCard2(o) {
     <div class="order-card2 status-${status}">
       <div class="oc-top">
         <div class="oc-left">
-          <span class="oc-oid">${o.order_id}</span>
-          <span class="age-badge ${ageCls}">${timeAgo}</span>
+          <span class="oc-oid">${escHtml(o.order_id)}</span>
+          <span class="age-badge ${ageCls}">${timeAgo}</span>${byClient}
         </div>
       </div>
-      <div class="oc-info" onclick="openOrderDetail('${o.order_id}')">
+      <div class="oc-info" onclick="openOrderDetail('${escHtml(o.order_id)}')">
         <div class="oc-line">
           <span class="oc-client">${client}${uName}</span>
-          <span class="oc-total">${total} ${cur}</span>
+          <span class="oc-total">${total} ${escHtml(cur)}</span>
         </div>
         <div class="oc-meta">
-          <span>${src} ${o.city || '?'} · ${o.cart_count} art. ${photos}</span>
-          <span>${o.country ? (o.country.match(/^\S+/) ? o.country.match(/^\S+/)[0] : '') : ''}</span>
+          <span>${src} ${escHtml(o.city || '?')} · ${o.cart_count} art. ${photos}</span>
+          <span>${escHtml(o.country ? (o.country.match(/^\S+/) ? o.country.match(/^\S+/)[0] : '') : '')}</span>
         </div>
       </div>
       <div class="oc-actions">
@@ -4440,8 +4432,7 @@ async function quickAction(orderId, newStatus, btn) {
     const data = await r.json();
     if (data.ok) {
       const lbls = {confirmed:"✅ Confirmée", delivering:"🚚 En livraison", delivered:"📦 Livrée", cancelled:"❌ Annulée"};
-      showToast(lbls[newStatus] || "✓");
-      hapticSuccess();
+      _statusToast(data, lbls[newStatus] || "✓");
       // Reload data + re-render en place
       await loadOwnerData(false);
       renderOwnerOrders();
@@ -4458,11 +4449,32 @@ async function quickAction(orderId, newStatus, btn) {
 }
 
 // Helpers age
+// Les horodatages serveur récents portent leur décalage ("…+00:00"), les anciens
+// sont naïfs. Sans décalage, le navigateur interpréterait de l'UTC comme de
+// l'heure locale : on le force donc à UTC, sinon l'âge des commandes est faux.
+function _parseServerDate(iso) {
+  if (!iso) return null;
+  let s = String(iso).trim().replace(" ", "T");
+  if (!/(Z|[+-]\d{2}:?\d{2})$/.test(s)) s += "Z";
+  const dt = new Date(s);
+  return isNaN(dt.getTime()) ? null : dt;
+}
+
+// Affiche un horodatage serveur dans le fuseau du lecteur (et non en UTC brut).
+function _fmtDateTime(iso) {
+  const dt = _parseServerDate(iso);
+  if (!dt) return "";
+  const p = n => String(n).padStart(2, "0");
+  return `${p(dt.getDate())}/${p(dt.getMonth() + 1)} ${p(dt.getHours())}:${p(dt.getMinutes())}`;
+}
+
 function _timeAgo(iso) {
   if (!iso) return "—";
   try {
-    const dt = new Date(iso.replace(" ", "T"));
+    const dt = _parseServerDate(iso);
+    if (!dt) return "—";
     const diff = (Date.now() - dt.getTime()) / 1000;
+    if (diff < 0) return "à l'instant";
     if (diff < 60) return "à l'instant";
     if (diff < 3600) return `il y a ${Math.floor(diff/60)} min`;
     if (diff < 86400) return `il y a ${Math.floor(diff/3600)} h`;
@@ -4474,7 +4486,8 @@ function _ageColorClass(iso, status) {
   // Delivered/cancelled = pas de urgence
   if (status === "delivered" || status === "cancelled" || status === "cancelled_by_client") return "age-fresh";
   try {
-    const dt = new Date(iso.replace(" ", "T"));
+    const dt = _parseServerDate(iso);
+    if (!dt) return "age-normal";
     const diffMin = (Date.now() - dt.getTime()) / 60000;
     if (diffMin < 15) return "age-fresh";
     if (diffMin < 30) return "age-normal";
@@ -4516,17 +4529,17 @@ function renderOrderDetail(o) {
   // En-tête avec bouton refresh
   const refreshHdr = `<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px;">
     <div class="section-title" style="margin:0;">Commande</div>
-    <span style="cursor:pointer; font-size:18px; opacity:0.7;" onclick="openOrderDetail('${o.order_id}')">🔄</span>
+    <span style="cursor:pointer; font-size:18px; opacity:0.7;" onclick="openOrderDetail('${escHtml(o.order_id)}')">🔄</span>
   </div>`;
   const statusLabels = {
     pending:"⏳ En attente", confirmed:"✅ Confirmée",
     delivering:"🚚 Livraison", delivered:"📦 Livrée",
     cancelled:"❌ Annulée", cancelled_by_client:"❌ Annulé client",
   };
-  const date = (o.created_at || "").replace("T", " ").slice(0, 16);
+  const date = _fmtDateTime(o.created_at);
   const cart = o.cart || {};
   const cartHtml = Object.entries(cart).map(([name, qty]) =>
-    `<div class="od-row"><span class="lbl">${name} × ${qty}</span></div>`
+    `<div class="od-row"><span class="lbl">${escHtml(name)} × ${escHtml(qty)}</span></div>`
   ).join("");
 
   const initDataQS = "?initData=" + encodeURIComponent(tg.initData || "");
@@ -4554,7 +4567,7 @@ function renderOrderDetail(o) {
   }
   const timelineHtml = evts.length ? `<div class="tl">${evts.map((e, i) => {
     const dur = (e.time && e.prev) ? _diffHuman(e.prev, e.time) : "";
-    const timeStr = e.time ? (e.time.replace("T"," ").slice(0,16)) : "";
+    const timeStr = e.time ? _fmtDateTime(e.time) : "";
     return `<div class="tl-event done">
       <span class="label">${e.label}</span>${e.eta ? ` <span class="dur">ETA ${e.eta}</span>` : ""}${dur ? ` <span class="dur">+${dur}</span>` : ""}
       ${timeStr ? `<span class="time">${timeStr}</span>` : ""}
@@ -4572,7 +4585,7 @@ function renderOrderDetail(o) {
   el.innerHTML = refreshHdr + noteHtml + `
     <div class="od-section">
       <h4>📦 Commande</h4>
-      <div class="od-row"><span class="lbl">N° de commande</span><span class="val" style="font-family:monospace;color:var(--accent);">${o.order_id}</span></div>
+      <div class="od-row"><span class="lbl">N° de commande</span><span class="val" style="font-family:monospace;color:var(--accent);">${escHtml(o.order_id)}</span></div>
       <div class="od-row"><span class="lbl">Statut</span><span class="val"><span class="status-badge status-${status}">${statusLabels[status] || status}</span></span></div>
       <div class="od-row"><span class="lbl">Date</span><span class="val">${date}</span></div>
       <div class="od-row"><span class="lbl">Source</span><span class="val">${o.source === 'miniapp' ? '📲 Mini App' : '💬 Bot'}</span></div>
@@ -4582,11 +4595,11 @@ function renderOrderDetail(o) {
 
     <div class="od-section">
       <h4>👤 Client</h4>
-      <div class="od-row"><span class="lbl">Nom</span><span class="val">${(o.user_name||'?').replace(/[<>]/g,'')}</span></div>
-      ${o.username ? `<div class="od-row"><span class="lbl">Username</span><span class="val">@${o.username}</span></div>` : ''}
-      <div class="od-row"><span class="lbl">ID</span><span class="val" style="font-family:monospace;">${o.user_id}</span></div>
-      <div class="od-row"><span class="lbl">Langue</span><span class="val">${(o.lang||'fr').toUpperCase()}</span></div>
-      ${o.phone ? `<div class="od-row"><span class="lbl">Téléphone</span><span class="val">${o.phone}</span></div>` : ''}
+      <div class="od-row"><span class="lbl">Nom</span><span class="val">${escHtml(o.user_name || '?')}</span></div>
+      ${o.username ? `<div class="od-row"><span class="lbl">Username</span><span class="val">@${escHtml(o.username)}</span></div>` : ''}
+      <div class="od-row"><span class="lbl">ID</span><span class="val" style="font-family:monospace;">${escHtml(o.user_id)}</span></div>
+      <div class="od-row"><span class="lbl">Langue</span><span class="val">${escHtml((o.lang||'fr').toUpperCase())}</span></div>
+      ${o.phone ? `<div class="od-row"><span class="lbl">Téléphone</span><span class="val">${escHtml(o.phone)}</span></div>` : ''}
     </div>
 
     <div class="od-section">
@@ -4594,24 +4607,24 @@ function renderOrderDetail(o) {
       ${cartHtml || '<div class="od-row"><span class="lbl">—</span></div>'}
       <div class="od-row" style="margin-top:8px; padding-top:8px; border-top:1px solid var(--border);">
         <span class="lbl">Total</span>
-        <span class="val" style="font-size:16px; background:var(--accent-grad); -webkit-background-clip:text; background-clip:text; color:transparent;">${(o.total||0).toLocaleString('fr-FR')} ${o.display_currency || '€'}</span>
+        <span class="val" style="font-size:16px; background:var(--accent-grad); -webkit-background-clip:text; background-clip:text; color:transparent;">${(o.total||0).toLocaleString('fr-FR')} ${escHtml(o.display_currency || '€')}</span>
       </div>
     </div>
 
     <div class="od-section">
       <h4>💳 Paiement</h4>
-      <div class="od-row"><span class="lbl">Mode</span><span class="val">${o.payment || '—'}</span></div>
-      ${o.payment_crypto ? `<div class="od-row"><span class="lbl">Crypto</span><span class="val">${o.payment_crypto}</span></div>` : ''}
-      ${o.payment_currency ? `<div class="od-row"><span class="lbl">Devise</span><span class="val">${o.payment_currency}</span></div>` : ''}
+      <div class="od-row"><span class="lbl">Mode</span><span class="val">${escHtml(o.payment || '—')}</span></div>
+      ${o.payment_crypto ? `<div class="od-row"><span class="lbl">Crypto</span><span class="val">${escHtml(o.payment_crypto)}</span></div>` : ''}
+      ${o.payment_currency ? `<div class="od-row"><span class="lbl">Devise</span><span class="val">${escHtml(o.payment_currency)}</span></div>` : ''}
       ${proofImg ? '<h4 style="margin-top:12px;">🏦 Preuve de virement</h4>' + proofImg : ''}
     </div>
 
     <div class="od-section">
       <h4>📍 Adresse</h4>
       <div class="od-row" style="font-family:monospace; white-space:pre-line;">
-        <span class="lbl" style="text-transform:uppercase; line-height:1.6;">${(o.address || '—').replace(/[<>]/g,'')}</span>
+        <span class="lbl" style="text-transform:uppercase; line-height:1.6;">${escHtml(o.address || '—')}</span>
       </div>
-      ${o.maps_link ? `<a href="${o.maps_link}" target="_blank" rel="noopener" style="display:inline-block; margin-top:8px; color:#ff2d9b; font-size:13px;">🗺️ Ouvrir dans la carte</a>` : ''}
+      ${o.maps_link ? `<a href="${escHtml(o.maps_link)}" target="_blank" rel="noopener" style="display:inline-block; margin-top:8px; color:#ff2d9b; font-size:13px;">🗺️ Ouvrir dans la carte</a>` : ''}
     </div>
 
     ${selfieImg ? `<div class="od-section"><h4>📸 Selfie client</h4>${selfieImg}</div>` : ''}
@@ -4759,7 +4772,7 @@ async function setOrderStatus(orderId, newStatus) {
     const data = await r.json();
     if (data.ok) {
       const lbls = {confirmed:"✅ Confirmée", delivering:"🚚 En livraison", delivered:"📦 Livrée", cancelled:"❌ Annulée"};
-      showToast(lbls[newStatus] || "✓ Mis à jour");
+      _statusToast(data, lbls[newStatus] || "✓ Mis à jour");
       // Recharger detail (qui reconstruit avec les nouveaux boutons selon nouveau status)
       await openOrderDetail(orderId);
       // Et la data principale en arrière-plan
@@ -4818,6 +4831,11 @@ state._trackPolyline = null;
 state._trackPollTimer = null;
 state._trackEtaTimer  = null;
 state._trackLastData  = null;
+state._trackRaf       = null;   // frame d'animation du marqueur livreur
+state._trackDriverAt  = null;   // dernière position atteinte par l'animation
+state._trackDriverHeading = null;
+state._trackFitted    = false;  // cadrage initial déjà fait ?
+state._trackUserMoved = false;  // le client a bougé la carte à la main
 
 function openTracking(orderId) {
   if (!orderId) {
@@ -4829,8 +4847,14 @@ function openTracking(orderId) {
   }
   state._trackOrderId = orderId;
   // Reset UI
+  state._trackFitted    = false;
+  state._trackUserMoved = false;
+  state._trackDriverAt  = null;
+  state._trackDriverHeading = null;
   document.getElementById("trackMap").style.display = "none";
   document.getElementById("trackMapEmpty").style.display = "flex";
+  const _lb = document.getElementById("trackLiveBadge");
+  if (_lb) _lb.style.display = "none";
   document.getElementById("trackEta").style.display = "none";
   document.getElementById("trackEtaLabel").style.display = "none";
   setScreen("tracking");
@@ -4841,12 +4865,16 @@ function openTracking(orderId) {
 function closeTracking() {
   stopTrackingPoll();
   // Cleanup map
+  cancelAnimationFrame(state._trackRaf);
   if (state._trackMap) {
     try { state._trackMap.remove(); } catch {}
     state._trackMap = null;
     state._trackDestMarker = null;
     state._trackDriverMarker = null;
     state._trackPolyline = null;
+    state._trackDriverAt = null;
+    state._trackDriverHeading = null;
+    state._trackFitted = false;
   }
   // Retour à success si on vient de finaliser, sinon close
   const prev = state.history.pop();
@@ -4863,7 +4891,9 @@ function closeTracking() {
 
 function startTrackingPoll() {
   stopTrackingPoll();
-  state._trackPollTimer = setInterval(loadTrackingOnce, 8000);  // 8s
+  // Même cadence que l'animation du marqueur, sinon le glissement se termine
+  // trop tôt (saccade) ou trop tard (retard sur la position réelle).
+  state._trackPollTimer = setInterval(loadTrackingOnce, TRACK_POLL_MS);
   // Décompte ETA tous les seconds (cosmétique)
   state._trackEtaTimer = setInterval(tickEta, 1000);
 }
@@ -4966,24 +4996,105 @@ function renderTracking(data) {
   updateTrackingMap(data);
 }
 
+// ── Carte de suivi ──────────────────────────────────────────────────────────
+// Le serveur n'envoie une position que toutes les 8 s. Sans interpolation, le
+// marqueur sauterait d'un point à l'autre. On anime donc la transition sur la
+// durée qui sépare deux relevés, comme le fait Uber Eats.
+const TRACK_POLL_MS = 8000;
+
+function _lerp(a, b, t) { return a + (b - a) * t; }
+
+// Interpolation d'angle par le plus court chemin (evite le tour complet à 359°→1°)
+function _lerpAngle(a, b, t) {
+  let d = ((b - a + 540) % 360) - 180;
+  return a + d * t;
+}
+
+function animateDriverTo(lat, lon, heading) {
+  const marker = state._trackDriverMarker;
+  if (!marker) return;
+  const from = state._trackDriverAt || marker.getLatLng();
+  const fromHeading = state._trackDriverHeading ?? heading ?? 0;
+  const toHeading   = heading ?? fromHeading;
+
+  // Deux cas où l'on place le marqueur sans animer :
+  //  - saut énorme (première position, ou reprise après une coupure) : le
+  //    faire glisser à travers la ville n'aurait aucun sens ;
+  //  - onglet masqué (le client a quitté la Mini App) : requestAnimationFrame
+  //    est gelé par le navigateur, la frame ne s'exécuterait jamais et le
+  //    marqueur resterait bloqué sur une position périmée.
+  const jumpKm = _haversineKm(from.lat, from.lng, lat, lon);
+  if (jumpKm > 3 || document.hidden) {
+    marker.setLatLng([lat, lon]);
+    state._trackDriverAt = L.latLng(lat, lon);
+    state._trackDriverHeading = toHeading;
+    _setDriverHeading(toHeading);
+    _updateRoute(lat, lon);
+    return;
+  }
+
+  cancelAnimationFrame(state._trackRaf);
+  const t0 = performance.now();
+  const step = (now) => {
+    const t = Math.min(1, (now - t0) / TRACK_POLL_MS);
+    // Adoucissement : démarrage et arrivée moins secs qu'un déplacement linéaire
+    const e = t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
+    const cLat = _lerp(from.lat, lat, e);
+    const cLon = _lerp(from.lng, lon, e);
+    marker.setLatLng([cLat, cLon]);
+    _setDriverHeading(_lerpAngle(fromHeading, toHeading, e));
+    _updateRoute(cLat, cLon);
+    if (t < 1) state._trackRaf = requestAnimationFrame(step);
+    else {
+      state._trackDriverAt = L.latLng(lat, lon);
+      state._trackDriverHeading = toHeading;
+    }
+  };
+  state._trackRaf = requestAnimationFrame(step);
+}
+
+function _setDriverHeading(deg) {
+  const el = state._trackDriverMarker?.getElement()?.querySelector(".arrow");
+  if (el) el.style.transform = `rotate(${deg}deg)`;
+}
+
+function _updateRoute(lat, lon) {
+  const dest = state._trackLastData?.dest;
+  if (!dest || !state._trackPolyline) return;
+  state._trackPolyline.setLatLngs([[lat, lon], [dest.lat, dest.lon]]);
+}
+
+function _haversineKm(lat1, lon1, lat2, lon2) {
+  const R = 6371, rad = d => d * Math.PI / 180;
+  const dLat = rad(lat2 - lat1), dLon = rad(lon2 - lon1);
+  const a = Math.sin(dLat/2)**2 +
+            Math.cos(rad(lat1)) * Math.cos(rad(lat2)) * Math.sin(dLon/2)**2;
+  return 2 * R * Math.asin(Math.min(1, Math.sqrt(a)));
+}
+
 function updateTrackingMap(data) {
   const status   = data.status;
   const dest     = data.dest || {};
   const driver   = data.driver_pos;
-  const wrap     = document.getElementById("trackMapWrap");
   const empty    = document.getElementById("trackMapEmpty");
   const mapDiv   = document.getElementById("trackMap");
+  const badge    = document.getElementById("trackLiveBadge");
 
   // Pas de coords destination ou pas en delivering → empty
   if (!dest.lat || !dest.lon || (status !== "delivering" && status !== "delivered")) {
     empty.style.display = "flex";
     mapDiv.style.display = "none";
+    if (badge) badge.style.display = "none";
+    cancelAnimationFrame(state._trackRaf);
     if (state._trackMap) {
       try { state._trackMap.remove(); } catch {}
       state._trackMap = null;
       state._trackDestMarker = null;
       state._trackDriverMarker = null;
       state._trackPolyline = null;
+      state._trackDriverAt = null;
+      state._trackDriverHeading = null;
+      state._trackFitted = false;
     }
     return;
   }
@@ -5018,33 +5129,53 @@ function updateTrackingMap(data) {
       iconAnchor: [20,36],
     });
     state._trackDestMarker = L.marker([dest.lat, dest.lon], { icon: destIcon }).addTo(state._trackMap);
+    state._trackFitted = false;
+    // Si le client déplace la carte, on arrête de la recadrer sous ses doigts.
+    state._trackMap.on("dragstart", () => { state._trackUserMoved = true; });
+  }
+
+  // Badge « en direct » vs position estimée
+  if (badge) {
+    badge.style.display = "flex";
+    badge.className = "track-live" + (data.live ? " on" : "");
+    const dist = data.distance_km != null
+      ? (data.distance_km < 1
+          ? ` · ${Math.round(data.distance_km * 1000)} m`
+          : ` · ${data.distance_km.toFixed(1)} km`)
+      : "";
+    badge.textContent = (data.live ? "● En direct" : "○ Position estimée") + dist;
   }
 
   // Marqueur livreur
   if (driver && driver.lat != null) {
-    const driverIcon = L.divIcon({
-      className: "leaflet-driver-icon",
-      html: `<span class="icon">${data.driver.vehicle_emoji || "🛵"}</span>`,
-      iconSize: [60,60],
-      iconAnchor: [30,30],
-    });
-    if (state._trackDriverMarker) {
-      state._trackDriverMarker.setLatLng([driver.lat, driver.lon]);
-    } else {
-      state._trackDriverMarker = L.marker([driver.lat, driver.lon], { icon: driverIcon }).addTo(state._trackMap);
+    if (!state._trackDriverMarker) {
+      const driverIcon = L.divIcon({
+        className: "leaflet-driver-icon",
+        html: `<span class="arrow">➤</span><span class="icon">${escHtml(data.driver?.vehicle_emoji || "🛵")}</span>`,
+        iconSize: [60,60],
+        iconAnchor: [30,30],
+      });
+      state._trackDriverMarker = L.marker([driver.lat, driver.lon], { icon: driverIcon })
+        .addTo(state._trackMap);
+      state._trackDriverAt = L.latLng(driver.lat, driver.lon);
     }
-    // Polyline animée dashed
-    if (state._trackPolyline) {
-      state._trackPolyline.setLatLngs([[driver.lat, driver.lon], [dest.lat, dest.lon]]);
-    } else {
+    if (!state._trackPolyline) {
       state._trackPolyline = L.polyline(
         [[driver.lat, driver.lon], [dest.lat, dest.lon]],
         { color: "#ff2d9b", weight: 4, opacity: 0.95, className: "route" }
       ).addTo(state._trackMap);
     }
-    // Ajuster zoom pour montrer les 2 marqueurs
+    animateDriverTo(driver.lat, driver.lon, driver.heading);
+
+    // Cadrage : une seule fois à l'ouverture, puis on suit doucement le livreur.
+    // Recadrer à chaque relevé donnerait une carte qui sursaute toutes les 8 s.
     const bounds = L.latLngBounds([[driver.lat, driver.lon], [dest.lat, dest.lon]]);
-    state._trackMap.fitBounds(bounds, { padding: [50, 50], maxZoom: 16 });
+    if (!state._trackFitted) {
+      state._trackMap.fitBounds(bounds, { padding: [50, 50], maxZoom: 16 });
+      state._trackFitted = true;
+    } else if (!state._trackUserMoved && !state._trackMap.getBounds().contains([driver.lat, driver.lon])) {
+      state._trackMap.panTo([driver.lat, driver.lon], { animate: true, duration: 1.2 });
+    }
   }
 }
 
@@ -5239,8 +5370,7 @@ async function confirmEta() {
     });
     const data = await r.json();
     if (data.ok) {
-      showToast(`🚚 Livraison démarrée (${minutes} min)`);
-      hapticSuccess();
+      _statusToast(data, `🚚 Livraison démarrée (${minutes} min)`);
       await loadOwnerData(false);
       renderOwnerOrders();
       // Refresh detail si ouvert
@@ -5595,8 +5725,9 @@ function showTextModal(title, initial = "", placeholder = "", multiline = true) 
 // Helper : diff humain lisible entre 2 timestamps
 function _diffHuman(t1, t2) {
   try {
-    const d1 = new Date(t1.replace(" ","T"));
-    const d2 = new Date(t2.replace(" ","T"));
+    const d1 = _parseServerDate(t1);
+    const d2 = _parseServerDate(t2);
+    if (!d1 || !d2) return "";
     const s = Math.max(0, Math.round((d2 - d1) / 1000));
     if (s < 60)   return `${s} s`;
     if (s < 3600) return `${Math.floor(s/60)} min`;
@@ -5943,12 +6074,12 @@ applyI18n();
 updateCartBar();
 
 // Splash de démarrage : on le masque en fondu une fois la page prête
-// (min ~1,4 s pour laisser voir le logo, puis fade-out).
+// (min ~5,5 s pour laisser voir le logo animé, puis fade-out).
 (function dismissSplash() {
   const splash = document.getElementById("splash");
   if (!splash) return;
   const start = Date.now();
-  const MIN_MS = 1400;
+  const MIN_MS = 5500;
   function hide() {
     const wait = Math.max(0, MIN_MS - (Date.now() - start));
     setTimeout(() => {
@@ -5958,13 +6089,14 @@ updateCartBar();
   }
   if (document.readyState === "complete") hide();
   else window.addEventListener("load", hide, { once: true });
-  // Filet de sécurité : ne jamais rester bloqué sur le splash
+  // Filet de sécurité : ne jamais rester bloqué sur le splash.
+  // Doit rester au-dessus de MIN_MS, sinon il coupe l'animation avant l'heure.
   setTimeout(() => {
     if (document.getElementById("splash")) {
       splash.classList.add("hide");
       setTimeout(() => { try { splash.remove(); } catch {} }, 650);
     }
-  }, 6000);
+  }, 9000);
 })();
 </script>
 </body>

@@ -76,7 +76,6 @@ WEBAPP_URL     = os.getenv("WEBAPP_URL", "")
 NGROK_TOKEN    = os.getenv("NGROK_AUTH_TOKEN", "")
 
 # ── Paiement — configurer dans .env ──────────────────────────────────────────
-BANK_IBAN    = os.getenv("BANK_IBAN",    "")
 PAYMENT_LINK = os.getenv("PAYMENT_LINK", "")
 CRYPTO_ETH   = os.getenv("CRYPTO_ETH",  "")
 CRYPTO_USDT  = os.getenv("CRYPTO_USDT", "")
@@ -190,7 +189,6 @@ def _generate_order_id() -> str:
     CONFIRMING_ORDER,
     ORDER_MANAGEMENT,
 ) = range(13)
-AWAITING_TRANSFER_PROOF = 13   # état supplémentaire hors range
 
 
 # ═════════════════════════════════════════════════════════════════════════════
@@ -371,13 +369,6 @@ async def _notify_owner(context: ContextTypes.DEFAULT_TYPE, user, ud: dict, orde
             except Exception:
                 pass
             ud.pop("selfie_bytes", None)
-        proof_fid = ud.get("transfer_proof_file_id")
-        if proof_fid:
-            await context.bot.send_photo(
-                chat_id=OWNER_CHAT_ID,
-                photo=proof_fid,
-                caption=f"🏦 Preuve de virement — {order_id}",
-            )
     except Exception as exc:
         logger.error("Échec envoi owner: %s", exc)
 
@@ -878,11 +869,10 @@ async def _show_payment(update: Update, context: ContextTypes.DEFAULT_TYPE) -> i
     query = update.callback_query
     keyboard = InlineKeyboardMarkup([
         [
-            InlineKeyboardButton(t("pay_btn_cash",     lang), callback_data="pay_method:cash"),
-            InlineKeyboardButton(t("pay_btn_virement", lang), callback_data="pay_method:virement"),
+            InlineKeyboardButton(t("pay_btn_cash", lang), callback_data="pay_method:cash"),
+            InlineKeyboardButton(t("pay_btn_link", lang), callback_data="pay_method:link"),
         ],
         [
-            InlineKeyboardButton(t("pay_btn_link",   lang), callback_data="pay_method:link"),
             InlineKeyboardButton(t("pay_btn_crypto", lang), callback_data="pay_method:crypto"),
         ],
         [InlineKeyboardButton(t("back_cart", lang), callback_data="back:cart")],
@@ -1030,25 +1020,7 @@ async def select_payment(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         return ENTERING_ADDRESS
 
     # ══════════════════════════════════════════════════════════════════════
-    # 2. VIREMENT BANCAIRE → attend capture d'écran (AWAITING_TRANSFER_PROOF)
-    # ══════════════════════════════════════════════════════════════════════
-    if data == "pay_method:virement":
-        await query.answer()
-        ud["payment_key"]   = "pay_btn_virement"
-        ud["payment_label"] = t("pay_btn_virement", lang)
-        iban_display = BANK_IBAN if BANK_IBAN else "⚠️ Non configuré"
-        back_kb = InlineKeyboardMarkup([
-            [InlineKeyboardButton(t("btn_pay_back", lang), callback_data="pay:back")],
-        ])
-        await query.edit_message_text(
-            t("pay_virement_info", lang, iban=iban_display),
-            reply_markup=back_kb,
-            parse_mode="Markdown",
-        )
-        return AWAITING_TRANSFER_PROOF
-
-    # ══════════════════════════════════════════════════════════════════════
-    # 3. LIEN DE PAIEMENT
+    # 2. LIEN DE PAIEMENT
     # ══════════════════════════════════════════════════════════════════════
     if data == "pay_method:link":
         if not PAYMENT_LINK:
@@ -1078,7 +1050,7 @@ async def select_payment(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         return ENTERING_ADDRESS
 
     # ══════════════════════════════════════════════════════════════════════
-    # 4. CRYPTO → sous-menu ETH / USDT
+    # 3. CRYPTO → sous-menu ETH / USDT
     # ══════════════════════════════════════════════════════════════════════
     if data == "pay_method:crypto":
         await query.answer()
@@ -1141,32 +1113,6 @@ async def select_payment(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     await query.answer(t("generic_error", lang), show_alert=True)
     logger.warning("select_payment: donnée inattendue — %s", data)
     return SELECTING_PAYMENT
-
-
-# ═════════════════════════════════════════════════════════════════════════════
-# Preuve de virement bancaire
-# ═════════════════════════════════════════════════════════════════════════════
-
-async def handle_transfer_proof(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    """Attend la capture d'écran du virement (AWAITING_TRANSFER_PROOF)."""
-    ud   = context.user_data
-    lang = _lang(ud)
-    _touch(ud)
-
-    if update.message.photo:
-        ud["transfer_proof_file_id"] = update.message.photo[-1].file_id
-        await update.message.reply_text(
-            t("pay_virement_received", lang),
-            parse_mode="Markdown",
-        )
-        return ENTERING_ADDRESS
-
-    # Pas une photo → demander à nouveau
-    await update.message.reply_text(
-        t("pay_virement_need_photo", lang),
-        parse_mode="Markdown",
-    )
-    return AWAITING_TRANSFER_PROOF
 
 
 # ═════════════════════════════════════════════════════════════════════════════
@@ -1580,11 +1526,10 @@ async def confirm_order(update: Update, context: ContextTypes.DEFAULT_TYPE) -> i
     # Envoyer le bon de commande au client depuis le compte @millesimecoffee
     await _send_order_receipt(context, update.effective_user, ud, order_id)
 
-    # H2: Libérer la mémoire selfie + preuve virement après envoi à l'owner
-    ud.pop("selfie_bytes",           None)
-    ud.pop("selfie_file_id",         None)
-    ud.pop("selfie_token",           None)
-    ud.pop("transfer_proof_file_id", None)
+    # H2: Libérer la mémoire selfie après envoi à l'owner
+    ud.pop("selfie_bytes",   None)
+    ud.pop("selfie_file_id", None)
+    ud.pop("selfie_token",   None)
 
     # Fenêtre d'annulation 2 min — message bot avec bouton
     try:
@@ -1980,7 +1925,7 @@ async def handle_miniapp_payment_choice(update: Update, context: ContextTypes.DE
         return ConversationHandler.END
 
     await query.answer()
-    parts  = query.data.split(":")            # mapay:cash | virement | link | crypto | cancel
+    parts  = query.data.split(":")            # mapay:cash | link | crypto | cancel
     action = parts[1] if len(parts) > 1 else ""
 
     user   = update.effective_user
@@ -2038,20 +1983,6 @@ async def handle_miniapp_payment_choice(update: Update, context: ContextTypes.DE
             parse_mode="Markdown",
         )
         return SELECTING_PAYMENT
-
-    if action == "virement":
-        ud["payment_key"]   = "pay_btn_virement"
-        ud["payment_label"] = t("pay_btn_virement", lang)
-        iban_display = BANK_IBAN if BANK_IBAN else "⚠️ Non configuré"
-        back_kb = InlineKeyboardMarkup([
-            [InlineKeyboardButton(t("btn_pay_back", lang), callback_data="pay:back")],
-        ])
-        await query.edit_message_text(
-            t("pay_virement_info", lang, iban=iban_display),
-            reply_markup=back_kb,
-            parse_mode="Markdown",
-        )
-        return AWAITING_TRANSFER_PROOF
 
     if action == "link":
         if not PAYMENT_LINK:
@@ -2197,11 +2128,10 @@ async def handle_miniapp_cart(update: Update, context: ContextTypes.DEFAULT_TYPE
     # _show_payment attend un callback_query → on appelle un helper équivalent
     keyboard = InlineKeyboardMarkup([
         [
-            InlineKeyboardButton(t("pay_btn_cash",     lang), callback_data="pay_method:cash"),
-            InlineKeyboardButton(t("pay_btn_virement", lang), callback_data="pay_method:virement"),
+            InlineKeyboardButton(t("pay_btn_cash", lang), callback_data="pay_method:cash"),
+            InlineKeyboardButton(t("pay_btn_link", lang), callback_data="pay_method:link"),
         ],
         [
-            InlineKeyboardButton(t("pay_btn_link",   lang), callback_data="pay_method:link"),
             InlineKeyboardButton(t("pay_btn_crypto", lang), callback_data="pay_method:crypto"),
         ],
     ])
@@ -2450,6 +2380,67 @@ async def cmd_version(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         f"Service : <code>{service}</code>\n"
         f"En pause : {is_paused}{pause_info}",
         parse_mode="HTML",
+    )
+
+
+# ═════════════════════════════════════════════════════════════════════════════
+# Position du livreur en direct (owner → carte de suivi client)
+# ═════════════════════════════════════════════════════════════════════════════
+
+async def handle_driver_location(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """L'owner partage sa position en direct : on la relaie à la carte de suivi.
+
+    Telegram envoie le premier point comme un message normal, puis chaque
+    rafraîchissement comme une *édition* de ce message — d'où les deux
+    enregistrements de ce handler côté `main()`.
+    """
+    msg = update.effective_message
+    if not msg or not msg.location or not _is_owner(update):
+        return
+
+    loc = msg.location
+    try:
+        from webapp import set_driver_position
+        set_driver_position(
+            loc.latitude,
+            loc.longitude,
+            heading=getattr(loc, "heading", None),
+        )
+    except Exception as exc:
+        logger.warning("position livreur ignorée : %s", exc)
+        return
+
+    # Accusé de réception sur le premier point seulement : Telegram édite le même
+    # message à chaque mise à jour, répondre à chaque fois inonderait le chat.
+    if update.edited_message is not None:
+        return
+    live_period = getattr(loc, "live_period", None) or getattr(msg, "live_period", None)
+    if live_period:
+        await msg.reply_text(
+            "📍 Position en direct activée — vos clients en livraison voient "
+            "votre position sur leur carte de suivi.\n"
+            "Arrêtez le partage dans Telegram, ou /gpsoff, pour revenir au suivi estimé."
+        )
+    else:
+        await msg.reply_text(
+            "📍 Position ponctuelle enregistrée.\n"
+            "Pour un suivi qui bouge, partagez plutôt une position *en direct* "
+            "(trombone → Position → Partager ma position en direct).",
+            parse_mode="Markdown",
+        )
+
+
+async def cmd_gpsoff(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Owner : arrête d'exposer la position réelle sur les cartes de suivi."""
+    if not _is_owner(update):
+        return
+    try:
+        from webapp import clear_driver_position
+        clear_driver_position()
+    except Exception as exc:
+        logger.warning("clear position livreur : %s", exc)
+    await update.message.reply_text(
+        "📍 Position en direct désactivée. Le suivi client repasse en mode estimé."
     )
 
 
@@ -3006,12 +2997,6 @@ def build_conv_handler() -> ConversationHandler:
             SELECTING_PAYMENT: [
                 CallbackQueryHandler(select_payment),
             ],
-            AWAITING_TRANSFER_PROOF: [
-                # Bouton « Retour » sur l'écran virement
-                CallbackQueryHandler(select_payment, pattern="^pay:back$"),
-                MessageHandler(filters.PHOTO, handle_transfer_proof),
-                MessageHandler(filters.TEXT & ~filters.COMMAND, handle_transfer_proof),
-            ],
             ENTERING_ADDRESS: [
                 MessageHandler(filters.TEXT & ~filters.COMMAND, handle_address),
             ],
@@ -3061,6 +3046,7 @@ async def _post_init(app: Application) -> None:
         BotCommand("reload",     "🔄 Recharger le catalogue"),
         BotCommand("export",     "📁 Exporter commandes CSV"),
         BotCommand("version",    "📦 Version du bot"),
+        BotCommand("gpsoff",     "📍 Couper la position en direct"),
         BotCommand("getid",      "🆔 Obtenir l'ID du chat"),
     ]
     try:
@@ -3164,6 +3150,14 @@ def main():
     app.add_handler(CommandHandler("pause",     cmd_pause))
     app.add_handler(CommandHandler("resume",    cmd_resume))
     app.add_handler(CommandHandler("version",   cmd_version))
+    app.add_handler(CommandHandler("gpsoff",    cmd_gpsoff))
+    # Position en direct de l'owner : premier point = message, rafraîchissements
+    # = éditions du même message. Enregistré hors du ConversationHandler pour ne
+    # pas perturber un parcours client en cours.
+    app.add_handler(MessageHandler(
+        filters.LOCATION & filters.UpdateType.MESSAGE, handle_driver_location))
+    app.add_handler(MessageHandler(
+        filters.LOCATION & filters.UpdateType.EDITED_MESSAGE, handle_driver_location))
     app.add_handler(CallbackQueryHandler(handle_rating,        pattern="^rate:"))
     app.add_handler(CallbackQueryHandler(handle_feedback,      pattern="^fb:"))
     app.add_handler(CallbackQueryHandler(handle_client_cancel, pattern="^client_cancel:"))

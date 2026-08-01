@@ -104,7 +104,13 @@ def _save(orders: list) -> None:
 
 def save_order(order: dict) -> None:
     """Ajoute une commande et met à jour l'index mémoire."""
-    order.setdefault("created_at", datetime.now().isoformat(timespec="seconds"))
+    # Horodatage *avec* décalage UTC : sans lui, le navigateur du panel owner
+    # interprète l'ISO comme de l'heure locale alors que le serveur est en UTC,
+    # et toute commande fraîche s'affiche « il y a 2 h ».
+    order.setdefault(
+        "created_at",
+        datetime.now().astimezone().isoformat(timespec="seconds"),
+    )
     with _lock:
         if _use_supabase():
             row = {

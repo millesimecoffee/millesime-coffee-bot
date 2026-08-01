@@ -16,10 +16,53 @@ from flask import Flask, jsonify, render_template, request
 logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
-app.config["MAX_CONTENT_LENGTH"] = 10 * 1024 * 1024  # 10 MB max (selfie + preuve virement)
+app.config["MAX_CONTENT_LENGTH"] = 10 * 1024 * 1024  # 10 MB max (selfie)
 
 # Cap dimensions image pour éviter les bombes décompression (50000x50000 → 7 GB RAM)
 _MAX_IMAGE_PIXELS = 5_000_000  # 5 MP — largement suffisant pour un selfie
+
+# Une commande peut être annulée par l'owner ou par le client dans sa fenêtre de
+# 2 min. Les deux statuts doivent être traités ensemble partout (CA, compteurs,
+# filtres), sinon les annulations client échappent au panel.
+_CANCELLED_STATUSES = ("cancelled", "cancelled_by_client")
+
+
+def _telegram_error(resp) -> str:
+    """Extrait la description d'erreur d'une réponse Bot API."""
+    try:
+        body = resp.json() or {}
+        return str(body.get("description") or body)[:200]
+    except Exception:
+        return f"HTTP {getattr(resp, 'status_code', '?')}"
+
+
+def _now_aware():
+    """Maintenant, toujours timezone-aware."""
+    from datetime import datetime as _dt
+    return _dt.now().astimezone()
+
+
+def _now_iso() -> str:
+    """Horodatage ISO *avec* décalage UTC. Un ISO naïf est relu comme de l'heure
+    locale par le navigateur alors que le serveur tourne en UTC : les durées
+    affichées dans le panel owner seraient décalées d'autant."""
+    return _now_aware().isoformat(timespec="seconds")
+
+
+def _parse_dt(iso_str):
+    """Relit un horodatage stocké, naïf (anciennes commandes) ou aware (récentes),
+    et renvoie toujours un datetime aware — sinon toute soustraction lève un
+    TypeError « can't subtract offset-naive and offset-aware datetimes »."""
+    if not iso_str:
+        return None
+    from datetime import datetime as _dt
+    try:
+        dt = _dt.fromisoformat(str(iso_str))
+    except (ValueError, TypeError):
+        return None
+    if dt.tzinfo is None:
+        dt = dt.astimezone()
+    return dt
 
 
 @app.after_request
@@ -375,7 +418,6 @@ def api_auth():
                 "user_id":  os.getenv("OWNER_USER_ID", "").strip(),
             },
             "payment_config": {
-                "bank_iban":    os.getenv("BANK_IBAN", ""),
                 "payment_link": os.getenv("PAYMENT_LINK", ""),
                 "crypto_eth":   os.getenv("CRYPTO_ETH", ""),
                 "crypto_usdt":  os.getenv("CRYPTO_USDT", ""),
@@ -567,12 +609,11 @@ def api_submit_cart():
     keyboard = {
         "inline_keyboard": [
             [
-                {"text": "💵 Cash",     "callback_data": "mapay:cash"},
-                {"text": "🏦 Virement", "callback_data": "mapay:virement"},
+                {"text": "💵 Cash",  "callback_data": "mapay:cash"},
+                {"text": "💳 Lien",  "callback_data": "mapay:link"},
             ],
             [
-                {"text": "💳 Lien",    "callback_data": "mapay:link"},
-                {"text": "₿ Crypto",   "callback_data": "mapay:crypto"},
+                {"text": "₿ Crypto", "callback_data": "mapay:crypto"},
             ],
             [
                 {"text": "❌ Annuler", "callback_data": "mapay:cancel"},
@@ -1311,9 +1352,12 @@ def api_admin_orders():
     # Trier du plus récent au plus ancien
     orders = sorted(orders, key=lambda o: o.get("created_at", ""), reverse=True)
 
-    # Filtrer + tronquer
+    # Filtrer + tronquer. « cancelled » regroupe les deux origines d'annulation
+    # (owner et client), sinon les commandes annulées par le client
+    # n'apparaissent dans aucun onglet.
     if sfilt:
-        orders = [o for o in orders if (o.get("status") or "pending") == sfilt]
+        wanted = _CANCELLED_STATUSES if sfilt == "cancelled" else (sfilt,)
+        orders = [o for o in orders if (o.get("status") or "pending") in wanted]
     orders = orders[:limit]
 
     # Construire une version allégée (sans les photos b64 — trop lourd pour la liste)
@@ -1338,7 +1382,8 @@ def api_admin_orders():
             "cart_count": sum((o.get("cart") or {}).values()) if isinstance(o.get("cart"), dict) else 0,
         })
 
-    # Stats utiles : counts par status + stats du jour + top produit + panier moyen
+    # Stats utiles : counts par status + stats du jour + top produit + panier moyen.
+    # Les annulations client tombent dans le même compteur que celles de l'owner.
     counts = {"pending": 0, "confirmed": 0, "delivering": 0, "delivered": 0, "cancelled": 0}
     today_ca    = 0.0
     today_count = 0
@@ -1355,10 +1400,12 @@ def api_admin_orders():
         all_orders = _load_all() or []
         for o in all_orders:
             s = o.get("status") or "pending"
-            if s in counts:
+            if s in _CANCELLED_STATUSES:
+                counts["cancelled"] += 1
+            elif s in counts:
                 counts[s] += 1
             day_key = (o.get("created_at") or "")[:10]
-            excluded = s in ("cancelled", "cancelled_by_client")
+            excluded = s in _CANCELLED_STATUSES
             if day_key in ca_by_day and not excluded:
                 ca_by_day[day_key] += float(o.get("total", 0) or 0)
             if day_key == today_str and not excluded:
@@ -1459,8 +1506,7 @@ def api_admin_set_status(order_id):
     try:
         upd = {"status": new_status}
         if new_status == "delivering":
-            from datetime import datetime as _dt
-            upd["_delivery_started_at"] = _dt.now().isoformat(timespec="seconds")
+            upd["_delivery_started_at"] = _now_iso()
             # Owner peut préciser un temps de livraison en minutes
             try:
                 eta_min = int(data.get("eta_minutes", 0))
@@ -1469,17 +1515,29 @@ def api_admin_set_status(order_id):
             except (ValueError, TypeError):
                 pass
         elif new_status == "delivered":
-            from datetime import datetime as _dt
-            upd["_delivered_at"] = _dt.now().isoformat(timespec="seconds")
-        update_order(order_id, upd)
+            upd["_delivered_at"] = _now_iso()
+        written = update_order(order_id, upd)
     except Exception as exc:
         logger.error("admin_set_status update: %s", exc)
         return jsonify({"ok": False, "error": "update_failed"}), 500
 
+    # update_order renvoie False si la commande n'a pas été retrouvée à
+    # l'écriture : sans ce contrôle, le panel afficherait « ✅ Confirmée »
+    # alors que rien n'a changé en base.
+    if not written:
+        logger.error("admin_set_status: écriture sans effet sur %s", order_id)
+        return jsonify({"ok": False, "error": "update_failed"}), 500
+
     # Notifier le client via Bot API
+    notified = False
+    notify_error = ""
     client_id = order.get("user_id")
     client_lang = order.get("lang", "fr") if order.get("lang") in ("fr","es","en") else "fr"
     bot_token = os.getenv("BOT_TOKEN", "")
+    if not client_id:
+        notify_error = "no_client_id"
+    elif not bot_token:
+        notify_error = "no_bot_token"
     if client_id and bot_token:
         msgs = {
             "fr": {
@@ -1517,32 +1575,60 @@ def api_admin_set_status(order_id):
                 text += _eta_line
         if text:
             import httpx
-            try:
-                payload = {
-                    "chat_id":    client_id,
-                    "text":       text,
-                    "parse_mode": "Markdown",
+            payload = {
+                "chat_id":    client_id,
+                "text":       text,
+                "parse_mode": "Markdown",
+            }
+            # Si livré : envoyer aussi les boutons de notation 1-5⭐
+            if new_status == "delivered":
+                payload["reply_markup"] = {
+                    "inline_keyboard": [[
+                        {"text": "⭐",     "callback_data": f"rate:1:{order_id}"},
+                        {"text": "⭐⭐",   "callback_data": f"rate:2:{order_id}"},
+                        {"text": "⭐⭐⭐", "callback_data": f"rate:3:{order_id}"},
+                        {"text": "⭐⭐⭐⭐",   "callback_data": f"rate:4:{order_id}"},
+                        {"text": "⭐⭐⭐⭐⭐", "callback_data": f"rate:5:{order_id}"},
+                    ]]
                 }
-                # Si livré : envoyer aussi les boutons de notation 1-5⭐
-                if new_status == "delivered":
-                    payload["reply_markup"] = {
-                        "inline_keyboard": [[
-                            {"text": "⭐",     "callback_data": f"rate:1:{order_id}"},
-                            {"text": "⭐⭐",   "callback_data": f"rate:2:{order_id}"},
-                            {"text": "⭐⭐⭐", "callback_data": f"rate:3:{order_id}"},
-                            {"text": "⭐⭐⭐⭐",   "callback_data": f"rate:4:{order_id}"},
-                            {"text": "⭐⭐⭐⭐⭐", "callback_data": f"rate:5:{order_id}"},
-                        ]]
-                    }
-                httpx.post(
+            try:
+                r = httpx.post(
                     f"https://api.telegram.org/bot{bot_token}/sendMessage",
                     json=payload,
                     timeout=10.0,
                 )
+                # httpx ne lève pas sur 4xx : sans cette lecture, un client qui a
+                # bloqué le bot ou un Markdown invalide passeraient inaperçus et
+                # l'owner croirait le client prévenu.
+                if r.status_code == 200 and (r.json() or {}).get("ok"):
+                    notified = True
+                else:
+                    notify_error = _telegram_error(r)
+                    logger.warning("admin_set_status notify %s: %s", order_id, notify_error)
+                    # Repli sans Markdown : la mise en forme ne doit pas coûter
+                    # la notification elle-même.
+                    if "parse" in (notify_error or "").lower():
+                        payload.pop("parse_mode", None)
+                        payload["text"] = text.replace("*", "").replace("`", "")
+                        r2 = httpx.post(
+                            f"https://api.telegram.org/bot{bot_token}/sendMessage",
+                            json=payload,
+                            timeout=10.0,
+                        )
+                        if r2.status_code == 200 and (r2.json() or {}).get("ok"):
+                            notified, notify_error = True, ""
             except Exception as exc:
+                notify_error = str(exc)
                 logger.warning("admin_set_status notify client: %s", exc)
 
-    return jsonify({"ok": True, "status": new_status})
+    # Le statut est bien enregistré même si le client n'a pas pu être prévenu :
+    # on le dit au panel plutôt que d'afficher un succès trompeur.
+    return jsonify({
+        "ok": True,
+        "status": new_status,
+        "notified": notified,
+        "notify_error": notify_error,
+    })
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -1571,6 +1657,107 @@ _VEHICLES = [
 
 # Durée totale "delivering" simulée (en secondes) : 15 min
 _DELIVERY_DURATION = 15 * 60
+
+# ── Position réelle du livreur ───────────────────────────────────────────────
+# Alimentée par le partage de position en direct de l'owner dans Telegram
+# (bot.py → set_driver_position). Le bot et Flask tournent dans le même
+# processus : un simple dict verrouillé suffit, pas besoin de passer par le
+# disque. Au-delà de _DRIVER_POS_TTL sans nouveau point, on considère que le
+# partage est terminé et on retombe sur la trajectoire simulée.
+_DRIVER_POS_TTL = 120          # secondes
+_MIN_SPEED_KMH  = 8.0          # plancher pour ne pas annoncer une ETA absurde
+_MAX_SPEED_KMH  = 90.0
+_DEFAULT_SPEED_KMH = 18.0      # scooter en ville
+
+_driver_pos: dict = {}
+_driver_pos_lock = threading.Lock()
+
+
+def _haversine_km(lat1, lon1, lat2, lon2) -> float:
+    """Distance en km entre deux points GPS."""
+    import math
+    r = 6371.0
+    p1, p2 = math.radians(lat1), math.radians(lat2)
+    dp = math.radians(lat2 - lat1)
+    dl = math.radians(lon2 - lon1)
+    a = math.sin(dp / 2) ** 2 + math.cos(p1) * math.cos(p2) * math.sin(dl / 2) ** 2
+    return 2 * r * math.asin(min(1.0, math.sqrt(a)))
+
+
+def _bearing_deg(lat1, lon1, lat2, lon2) -> float:
+    """Cap en degrés (0 = nord) du point 1 vers le point 2."""
+    import math
+    p1, p2 = math.radians(lat1), math.radians(lat2)
+    dl = math.radians(lon2 - lon1)
+    y = math.sin(dl) * math.cos(p2)
+    x = math.cos(p1) * math.sin(p2) - math.sin(p1) * math.cos(p2) * math.cos(dl)
+    return (math.degrees(math.atan2(y, x)) + 360.0) % 360.0
+
+
+def set_driver_position(lat: float, lon: float, heading=None) -> dict:
+    """Enregistre un point GPS du livreur. Appelé par bot.py à chaque mise à
+    jour de position en direct. Déduit la vitesse et le cap du point précédent
+    quand Telegram ne les fournit pas."""
+    now = _now_aware()
+    with _driver_pos_lock:
+        prev = dict(_driver_pos) if _driver_pos else None
+        speed_kmh = None
+        if prev and prev.get("lat") is not None:
+            dt_s = (now - prev["at"]).total_seconds()
+            dist = _haversine_km(prev["lat"], prev["lon"], lat, lon)
+            # En dessous de 15 m on considère que le livreur est à l'arrêt : le
+            # bruit GPS produirait un cap et une vitesse aberrants.
+            if dt_s > 0 and dist > 0.015:
+                speed_kmh = min(_MAX_SPEED_KMH, dist / (dt_s / 3600.0))
+                if heading is None:
+                    heading = _bearing_deg(prev["lat"], prev["lon"], lat, lon)
+            elif prev.get("heading") is not None and heading is None:
+                heading = prev["heading"]
+            if speed_kmh is None:
+                speed_kmh = prev.get("speed_kmh")
+        _driver_pos.clear()
+        _driver_pos.update({
+            "lat": float(lat),
+            "lon": float(lon),
+            "heading": float(heading) if heading is not None else None,
+            "speed_kmh": speed_kmh,
+            "at": now,
+        })
+        return dict(_driver_pos)
+
+
+def clear_driver_position() -> None:
+    """Fin du partage de position : on repasse en trajectoire simulée."""
+    with _driver_pos_lock:
+        _driver_pos.clear()
+
+
+_track_far: dict[str, float] = {}
+
+
+def _track_far_km(order_id: str, current_km: float) -> float:
+    """Mémorise la plus grande distance vue sur cette course. Sert de référence
+    à la barre de progression : sans elle, la progression repartirait à zéro à
+    chaque redémarrage du partage de position."""
+    with _driver_pos_lock:
+        far = _track_far.get(order_id, 0.0)
+        if current_km > far:
+            far = current_km
+            _track_far[order_id] = far
+        return far
+
+
+def get_driver_position() -> dict | None:
+    """Position du livreur si elle est encore fraîche, sinon None."""
+    with _driver_pos_lock:
+        if not _driver_pos:
+            return None
+        pos = dict(_driver_pos)
+    age = (_now_aware() - pos["at"]).total_seconds()
+    if age > _DRIVER_POS_TTL:
+        return None
+    pos["age_seconds"] = int(age)
+    return pos
 
 
 def _driver_for_order(order_id: str) -> dict:
@@ -1803,30 +1990,44 @@ def api_order_track():
         pass
 
     if status == "delivering":
-        from datetime import datetime as _dt
-        start_delivery = order.get("_delivery_started_at")
-        if start_delivery:
-            try:
-                start = _dt.fromisoformat(start_delivery)
-            except Exception:
-                start = _dt.now()
-        else:
-            start = _dt.now()
-        elapsed = (_dt.now() - start).total_seconds()
+        start   = _parse_dt(order.get("_delivery_started_at"))
+        elapsed = (_now_aware() - start).total_seconds() if start else 0.0
         progress = max(0.0, min(1.0, elapsed / duration_seconds))
         eta_seconds = max(0, int(duration_seconds - elapsed))
     elif status == "delivered":
         progress = 1.0
         eta_seconds = 0
 
-    # Position du livreur (interpolation entre point de départ fictif et destination)
-    # Point de départ fictif : 2.5 km à l'est de la destination (random selon order_id)
+    # Position du livreur : la vraie si l'owner partage sa position en direct,
+    # sinon la trajectoire simulée (comportement historique).
     driver_lat = driver_lon = None
-    if dest_lat and dest_lon and status in ("delivering", "delivered"):
-        # Offset déterministe par order_id (pour que ça paraisse cohérent)
+    driver_heading = None
+    is_live = False
+    distance_km = None
+
+    live = get_driver_position() if status == "delivering" else None
+    if live and dest_lat and dest_lon:
+        driver_lat = live["lat"]
+        driver_lon = live["lon"]
+        driver_heading = live.get("heading")
+        if driver_heading is None:
+            driver_heading = _bearing_deg(driver_lat, driver_lon, dest_lat, dest_lon)
+        is_live = True
+        distance_km = _haversine_km(driver_lat, driver_lon, dest_lat, dest_lon)
+        # ETA sur la distance restante réelle plutôt que sur un minuteur fixe.
+        # Majoration de 30 % : à vol d'oiseau on sous-estime toujours la route.
+        speed = live.get("speed_kmh") or _DEFAULT_SPEED_KMH
+        speed = max(_MIN_SPEED_KMH, min(_MAX_SPEED_KMH, speed))
+        eta_seconds = int((distance_km * 1.3) / speed * 3600)
+        # La barre de progression se cale sur la distance parcourue, en gardant
+        # en mémoire le point le plus lointain vu pour cette course.
+        far = _track_far_km(order_id, distance_km)
+        progress = max(0.0, min(1.0, 1.0 - (distance_km / far))) if far else 0.0
+
+    elif dest_lat and dest_lon and status in ("delivering", "delivered"):
+        # Trajectoire simulée : point de départ déterministe dérivé de l'order_id
         import hashlib
         h = int(hashlib.sha1(order_id.encode()).hexdigest(), 16)
-        angle = (h % 360) * 3.14159 / 180
         radius_km = 2.5
         # 1 deg lat ≈ 111 km
         start_lat = dest_lat + (radius_km / 111.0) * (1 if (h >> 4) % 2 else -1) * 0.5
@@ -1834,6 +2035,9 @@ def api_order_track():
         # Interpolation
         driver_lat = start_lat + (dest_lat - start_lat) * progress
         driver_lon = start_lon + (dest_lon - start_lon) * progress
+        driver_heading = _bearing_deg(driver_lat, driver_lon, dest_lat, dest_lon) \
+            if progress < 1.0 else None
+        distance_km = _haversine_km(driver_lat, driver_lon, dest_lat, dest_lon)
 
     # Étapes visuelles
     steps_status = {
@@ -1857,9 +2061,18 @@ def api_order_track():
             "address": order.get("address"),
         },
         "driver_pos": (
-            {"lat": driver_lat, "lon": driver_lon}
+            {
+                "lat": driver_lat,
+                "lon": driver_lon,
+                "heading": driver_heading,
+                "live": is_live,
+                "age_seconds": (live or {}).get("age_seconds") if is_live else None,
+            }
             if driver_lat is not None else None
         ),
+        # Le client doit savoir s'il regarde une position réelle ou une estimation.
+        "live":        is_live,
+        "distance_km": round(distance_km, 2) if distance_km is not None else None,
         "steps": steps_status,
         "city":  order.get("city"),
         "total": order.get("total"),
@@ -2016,7 +2229,7 @@ def api_admin_clients():
             clients[uid] = c
         s = o.get("status") or "pending"
         # Le total dépensé exclut les annulées
-        if s not in ("cancelled", "cancelled_by_client"):
+        if s not in _CANCELLED_STATUSES:
             c["total_spent"] += float(o.get("total", 0) or 0)
         c["orders"] += 1
         created = o.get("created_at") or ""
@@ -2099,7 +2312,7 @@ def _compute_client_segments():
             c = {"user_id": uid, "orders": 0, "total_spent": 0.0, "last_order": ""}
             clients[uid] = c
         s = o.get("status") or "pending"
-        if s not in ("cancelled", "cancelled_by_client"):
+        if s not in _CANCELLED_STATUSES:
             c["total_spent"] += float(o.get("total", 0) or 0)
         c["orders"] += 1
         created = o.get("created_at") or ""

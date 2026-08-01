@@ -178,9 +178,8 @@ T = {
         "es": "◀️ Volver a los pagos",
         "en": "◀️ Back to payments",
     },
-    # Boutons des 4 méthodes
+    # Boutons des 3 méthodes
     "pay_btn_cash":     {"fr": "💵 Cash",              "es": "💵 Efectivo",       "en": "💵 Cash"},
-    "pay_btn_virement": {"fr": "🏦 Virement bancaire", "es": "🏦 Transferencia",  "en": "🏦 Bank transfer"},
     "pay_btn_link":     {"fr": "🔗 Lien de paiement",  "es": "🔗 Enlace de pago", "en": "🔗 Payment link"},
     "pay_btn_crypto":   {"fr": "₿ Crypto",             "es": "₿ Cripto",          "en": "₿ Crypto"},
     # ── Cash → devise ─────────────────────────────────────────────────────
@@ -193,22 +192,6 @@ T = {
         "fr": "✅ Paiement *cash* en *{cur}* noté.\n\n📍 *Adresse de livraison* :\n_Rue + ville, code postal, ou nom d'un lieu (Tour Eiffel, Moulin Rouge…)_",
         "es": "✅ Pago *efectivo* en *{cur}* registrado.\n\n📍 *Dirección de entrega* :\n_Calle, código postal o nombre de un lugar (Sagrada Família…)_",
         "en": "✅ *Cash* in *{cur}* noted.\n\n📍 *Delivery address* :\n_Street, postcode, or landmark name (Eiffel Tower, Big Ben…)_",
-    },
-    # ── Virement ──────────────────────────────────────────────────────────
-    "pay_virement_info": {
-        "fr": "🏦 *Virement bancaire*\n\nEffectuez le virement du *montant exact* de votre commande vers le RIB suivant :\n\n```\n{iban}\n```\n\n_Une fois le virement effectué, envoyez une *capture d'écran* comme preuve._",
-        "es": "🏦 *Transferencia bancaria*\n\nRealiza la transferencia del *importe exacto* al siguiente IBAN:\n\n```\n{iban}\n```\n\n_Una vez hecha, envía una *captura de pantalla* como prueba._",
-        "en": "🏦 *Bank transfer*\n\nSend the *exact amount* of your order to:\n\n```\n{iban}\n```\n\n_Once done, send a *screenshot* of your transfer as proof._",
-    },
-    "pay_virement_need_photo": {
-        "fr": "📸 Veuillez envoyer une *photo* (capture d'écran du virement), pas du texte.",
-        "es": "📸 Por favor envía una *foto* (captura de la transferencia), no texto.",
-        "en": "📸 Please send a *photo* (transfer screenshot), not text.",
-    },
-    "pay_virement_received": {
-        "fr": "✅ *Capture reçue !* Virement en cours de vérification.\n\n📍 *Adresse de livraison* :\n_Rue + ville, code postal, ou nom d'un lieu (Tour Eiffel, Moulin Rouge…)_",
-        "es": "✅ *¡Captura recibida!* Verificando transferencia.\n\n📍 *Dirección de entrega* :\n_Calle, código postal o nombre de un lugar (Sagrada Família…)_",
-        "en": "✅ *Screenshot received!* Verifying transfer.\n\n📍 *Delivery address* :\n_Street, postcode, or landmark name (Eiffel Tower, Big Ben…)_",
     },
     # ── Lien de paiement ──────────────────────────────────────────────────
     "pay_link_info": {
