@@ -2017,10 +2017,9 @@
 
   .ct-scene {
     position: relative;
-    height: 134px;
+    height: 172px;
     overflow: hidden;
     background: linear-gradient(180deg, #1a0b2e 0%, #3a1259 38%, #14071f 100%);
-    filter: hue-rotate(var(--cityhue, 0deg));
   }
   /* Étoiles */
   .ct-stars {
@@ -2114,12 +2113,10 @@
     transition: transform 0.5s var(--ease-out);
   }
   .city-tile:hover .ct-photo { transform: scale(1.06); }
-  /* Voile néon + assombrissement bas pour lisibilité du nom */
+  /* Dégradé sombre en bas uniquement (lisibilité du nom) — photos propres */
   .ct-overlay {
     position: absolute; inset: 0; z-index: 3; pointer-events: none;
-    background:
-      linear-gradient(180deg, rgba(10,10,18,0.15) 0%, transparent 32%, rgba(8,6,16,0.86) 100%),
-      linear-gradient(120deg, rgba(255,45,155,0.22), transparent 42%, rgba(34,211,238,0.16));
+    background: linear-gradient(180deg, rgba(8,6,16,0) 48%, rgba(8,6,16,0.55) 78%, rgba(8,6,16,0.92) 100%);
   }
   /* Nom de ville en néon, posé sur la photo */
   .ct-city {
