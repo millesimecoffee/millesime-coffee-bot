@@ -57,17 +57,126 @@ def menu_page():
     return render_template("menu.html")
 
 
+# ── Photos de ville : fichiers commités + fetch auto Pexels si manquant ──
+_city_cache_dir_v = None
+_city_fetch_lock = threading.Lock()
+_city_fetching: set = set()
+
+
+def _city_cache_dir():
+    global _city_cache_dir_v
+    if _city_cache_dir_v is None:
+        import tempfile
+        base = os.getenv("DATA_DIR", os.path.dirname(os.path.abspath(__file__)))
+        d = os.path.join(base, "cityimg_cache")
+        try:
+            os.makedirs(d, exist_ok=True)
+        except Exception:
+            d = os.path.join(tempfile.gettempdir(), "mc_cityimg_cache")
+            os.makedirs(d, exist_ok=True)
+        _city_cache_dir_v = d
+    return _city_cache_dir_v
+
+
+def _slug_to_city_query(slug: str) -> str:
+    """Retrouve le nom de ville (+ pays) depuis le slug, via le catalogue."""
+    import unicodedata, re as _re
+    def _sl(s):
+        return _re.sub(r"[^a-z0-9]+", "", unicodedata.normalize("NFKD", s).encode("ascii", "ignore").decode().lower())
+    try:
+        import catalog as catalog_mod
+        importlib.reload(catalog_mod)
+        for country, cities in catalog_mod.CATALOG.items():
+            for city in cities:
+                if _sl(city) == slug:
+                    cc = country.split(" ", 1)[1].strip() if " " in country else country
+                    return f"{city} {cc}".strip()
+    except Exception:
+        pass
+    return slug
+
+
+def _fetch_city_pexels(slug: str, dest_path: str) -> bool:
+    """Télécharge une belle photo de la ville via Pexels, recadre 1200x675, sauvegarde."""
+    key = os.getenv("PEXELS_API_KEY", "").strip()
+    if not key:
+        return False
+    query = _slug_to_city_query(slug)
+    import httpx as _httpx
+    try:
+        with _httpx.Client(timeout=15.0) as c:
+            r = c.get(
+                "https://api.pexels.com/v1/search",
+                headers={"Authorization": key},
+                params={"query": query, "per_page": 6, "orientation": "landscape", "size": "large"},
+            )
+            if r.status_code != 200:
+                logger.warning("pexels search %s: HTTP %s", slug, r.status_code)
+                return False
+            photos = (r.json() or {}).get("photos", []) or []
+            for p in photos:
+                if int(p.get("width", 0)) < 1200:
+                    continue
+                src = (p.get("src") or {}).get("large2x") or (p.get("src") or {}).get("large")
+                if not src:
+                    continue
+                img_resp = c.get(src)  # CDN : pas d'en-tête d'auth
+                if img_resp.status_code != 200:
+                    continue
+                arr = np.frombuffer(img_resp.content, np.uint8)
+                img = cv2.imdecode(arr, cv2.IMREAD_COLOR)
+                if img is None or min(img.shape[:2]) < 400:
+                    continue
+                h, w = img.shape[:2]
+                W, H = 1200, 675
+                tar, cur = W / H, w / h
+                if cur > tar:
+                    nw = int(h * tar); x0 = (w - nw) // 2; img = img[:, x0:x0 + nw]
+                else:
+                    nh = int(w / tar); y0 = (h - nh) // 2; img = img[y0:y0 + nh, :]
+                img = cv2.resize(img, (W, H), interpolation=cv2.INTER_AREA)
+                tmp = dest_path + ".tmp"
+                if cv2.imwrite(tmp, img, [cv2.IMWRITE_JPEG_QUALITY, 88]):
+                    os.replace(tmp, dest_path)
+                    logger.info("pexels auto-photo OK: %s (%s)", slug, query)
+                    return True
+    except Exception as exc:
+        logger.warning("pexels fetch %s: %s", slug, exc)
+    return False
+
+
 @app.route("/cityimg/<slug>.jpg")
 def serve_city_image(slug):
-    """Sert une photo de ville (auto-hébergée) depuis cityimg/ via un chemin
-    absolu (fiable sur Render, contrairement au static Flask par défaut)."""
+    """Sert une photo de ville. 1) fichier commité, 2) cache runtime,
+    3) fetch auto Pexels (si PEXELS_API_KEY) puis cache. Sinon 404 (repli
+    synthwave côté client)."""
     import re as _re
     from flask import send_file
     if not _re.fullmatch(r"[a-z0-9]{1,40}", slug or ""):
         return ("bad request", 400)
-    path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "cityimg", slug + ".jpg")
-    if not os.path.exists(path):
-        return ("not found", 404)
+
+    committed = os.path.join(os.path.dirname(os.path.abspath(__file__)), "cityimg", slug + ".jpg")
+    if os.path.exists(committed):
+        path = committed
+    else:
+        cached = os.path.join(_city_cache_dir(), slug + ".jpg")
+        if not os.path.exists(cached):
+            # Éviter les fetch concurrents pour le même slug
+            with _city_fetch_lock:
+                busy = slug in _city_fetching
+                if not busy:
+                    _city_fetching.add(slug)
+            if busy:
+                return ("fetching", 404)
+            try:
+                ok = _fetch_city_pexels(slug, cached)
+            finally:
+                with _city_fetch_lock:
+                    _city_fetching.discard(slug)
+            if not ok:
+                return ("not found", 404)
+        path = cached
+
     resp = send_file(path, mimetype="image/jpeg")
     resp.headers["Cache-Control"] = "public, max-age=604800"
     return resp
@@ -1389,6 +1498,19 @@ def api_admin_set_status(order_id):
             },
         }
         text = (msgs.get(client_lang) or msgs["fr"]).get(new_status, "")
+        # Ajouter l'ETA au message "en livraison" si l'owner l'a précisé
+        if text and new_status == "delivering":
+            try:
+                _em = int(upd.get("_eta_minutes", 0))
+            except (ValueError, TypeError):
+                _em = 0
+            if _em:
+                _eta_line = {
+                    "fr": f"\n⏱️ Temps estimé : ~{_em} min.",
+                    "en": f"\n⏱️ Estimated time: ~{_em} min.",
+                    "es": f"\n⏱️ Tiempo estimado: ~{_em} min.",
+                }.get(client_lang, f"\n⏱️ ~{_em} min")
+                text += _eta_line
         if text:
             import httpx
             try:

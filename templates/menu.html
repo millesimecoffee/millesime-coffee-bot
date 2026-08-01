@@ -2419,8 +2419,17 @@
   <div class="container">
     <!-- Raccourcis client : commande en cours + historique (rendus dynamiquement) -->
     <div id="clientHomeShortcuts"></div>
-    <div class="section-title" data-i18n="select_country">Choisissez votre pays</div>
-    <div class="card-grid full" id="countryList"></div>
+    <!-- Recherche de ville (toutes villes, tous pays) -->
+    <div class="search-bar" id="citySearchBar" style="margin-bottom:14px;">
+      <span class="search-icon">🔍</span>
+      <input type="text" id="citySearchInput" data-i18n-ph="search_city_ph" placeholder="Rechercher une ville…" autocomplete="off" oninput="onCitySearch()">
+      <button class="clear-btn" onclick="clearCitySearch()">✕</button>
+    </div>
+    <div id="citySearchResults" style="display:none;"></div>
+    <div id="countryBrowse">
+      <div class="section-title" data-i18n="select_country">Choisissez votre pays</div>
+      <div class="card-grid full" id="countryList"></div>
+    </div>
   </div>
 </div>
 
@@ -3331,6 +3340,7 @@ function _flagThumb(emoji) {
 }
 
 function buildCountryScreen() {
+  clearCitySearch();   // repartir d'un accueil propre (pas de recherche résiduelle)
   const list = document.getElementById("countryList");
   list.innerHTML = "";
   Object.keys(state.catalog).forEach(country => {
@@ -3418,18 +3428,23 @@ function renderClientHomeShortcuts() {
   wrap.innerHTML = html;
 }
 
-function buildCityScreen() {
-  const list = document.getElementById("cityList");
-  list.innerHTML = "";
-  const cities = state.catalog[state.country] || {};
-  Object.keys(cities).forEach(city => {
-    const nProducts = Object.keys(cities[city]).length;
-    // Petit décalage de teinte par ville (±14°) pour varier sans quitter le néon
-    const hue = ((_hueFromText(city) % 28) - 14);
-    const div = document.createElement("div");
-    div.className = "city-tile";
-    div.style.setProperty("--cityhue", hue + "deg");
-    div.innerHTML = `
+// Sélectionne une ville (depuis n'importe quel pays) → menu produits
+function pickCity(country, city) {
+  if (!state.catalog[country] || !state.catalog[country][city]) return;
+  hapticSelect();
+  state.country = country;
+  state.city    = city;
+  setCountryCurrency(country);
+  buildMenuScreen();
+  setScreen("menu");
+}
+
+// HTML d'une carte-ville (photo + nom). subtitle = texte du pied.
+function cityTileHTML(country, city, subtitle) {
+  const cAttr = country.replace(/\\/g,"\\\\").replace(/'/g,"\\'");
+  const cyAttr = city.replace(/\\/g,"\\\\").replace(/'/g,"\\'");
+  return `
+    <div class="city-tile" onclick="pickCity('${cAttr}','${cyAttr}')">
       <div class="ct-scene">
         <div class="ct-stars"></div>
         <div class="ct-sun"></div>
@@ -3439,18 +3454,62 @@ function buildCityScreen() {
         <img class="ct-photo" src="/cityimg/${_citySlug(city)}.jpg?v=3" alt="" loading="lazy" onerror="this.remove()">
         <div class="ct-overlay"></div>
         <div class="ct-shine"></div>
-        <div class="ct-city">
-          <span class="ct-city-name">${escHtml(city)}</span>
-        </div>
+        <div class="ct-city"><span class="ct-city-name">${escHtml(city)}</span></div>
       </div>
       <div class="ct-footer">
-        <div class="ct-count">${nProducts} produit${nProducts>1?'s':''} disponible${nProducts>1?'s':''}</div>
+        <div class="ct-count">${escHtml(subtitle)}</div>
         <span class="ct-go">Commander ›</span>
       </div>
-    `;
-    div.onclick = () => { state.city = city; buildMenuScreen(); setScreen("menu"); };
-    list.appendChild(div);
+    </div>`;
+}
+
+function buildCityScreen() {
+  const list = document.getElementById("cityList");
+  const cities = state.catalog[state.country] || {};
+  list.innerHTML = Object.keys(cities).map(city => {
+    const n = Object.keys(cities[city]).length;
+    return cityTileHTML(state.country, city, `${n} produit${n>1?'s':''} disponible${n>1?'s':''}`);
+  }).join("");
+}
+
+// ─── Recherche de ville (toutes villes / tous pays) ─────────────────────
+let _citySearchTimer = null;
+function _normTxt(s){ return (s||"").normalize("NFKD").replace(/[^\x00-\x7F]/g,"").toLowerCase(); }
+function onCitySearch(){ clearTimeout(_citySearchTimer); _citySearchTimer = setTimeout(runCitySearch, 120); }
+
+function runCitySearch() {
+  const inp = document.getElementById("citySearchInput");
+  const q   = _normTxt((inp.value || "").trim());
+  const bar = document.getElementById("citySearchBar");
+  const res = document.getElementById("citySearchResults");
+  const browse = document.getElementById("countryBrowse");
+  if (bar) bar.classList.toggle("has-text", !!inp.value);
+  if (!q) { res.style.display="none"; res.innerHTML=""; if(browse) browse.style.display="block"; return; }
+  if (browse) browse.style.display = "none";
+  res.style.display = "block";
+  const matches = [];
+  Object.keys(state.catalog || {}).forEach(country => {
+    const cc = country.replace(/^\S+\s*/, "");
+    Object.keys(state.catalog[country]).forEach(city => {
+      if (_normTxt(city).includes(q) || _normTxt(cc).includes(q)) {
+        const n = Object.keys(state.catalog[country][city]).length;
+        matches.push(cityTileHTML(country, city, `${cc} · ${n} produit${n>1?'s':''}`));
+      }
+    });
   });
+  res.innerHTML = matches.length
+    ? `<div class="section-title" style="margin:4px 0 12px;">🔍 ${matches.length} résultat${matches.length>1?'s':''}</div>` + matches.slice(0,25).join("")
+    : `<div class="empty" style="padding:24px;"><div class="emoji">🔍</div><div class="text">Aucune ville trouvée</div></div>`;
+}
+
+function clearCitySearch() {
+  const inp = document.getElementById("citySearchInput");
+  if (inp) inp.value = "";
+  document.getElementById("citySearchBar")?.classList.remove("has-text");
+  const res = document.getElementById("citySearchResults");
+  if (res){ res.style.display="none"; res.innerHTML=""; }
+  const browse = document.getElementById("countryBrowse");
+  if (browse) browse.style.display = "block";
 }
 
 // Map nom de produit → index numérique (les emojis cassent btoa, on utilise un index)

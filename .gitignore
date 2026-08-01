@@ -123,3 +123,6 @@ whatsapp_session/
 backups/
 .claude/
 messages.json
+
+# Cache runtime des photos de ville (fetch auto Pexels)
+cityimg_cache/
