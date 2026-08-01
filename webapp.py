@@ -135,8 +135,12 @@ def _fetch_city_pexels(slug: str, dest_path: str) -> bool:
                 else:
                     nh = int(w / tar); y0 = (h - nh) // 2; img = img[y0:y0 + nh, :]
                 img = cv2.resize(img, (W, H), interpolation=cv2.INTER_AREA)
-                tmp = dest_path + ".tmp"
-                if cv2.imwrite(tmp, img, [cv2.IMWRITE_JPEG_QUALITY, 88]):
+                # NB : cv2.imwrite refuse l'extension ".tmp" → on encode puis on écrit
+                ok_enc, buf = cv2.imencode(".jpg", img, [cv2.IMWRITE_JPEG_QUALITY, 88])
+                if ok_enc:
+                    tmp = dest_path + ".tmp"
+                    with open(tmp, "wb") as f:
+                        f.write(buf.tobytes())
                     os.replace(tmp, dest_path)
                     logger.info("pexels auto-photo OK: %s (%s)", slug, query)
                     return True
