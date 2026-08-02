@@ -344,6 +344,20 @@ def _notify_owner_client_entry(parsed_init: dict) -> None:
             f"   <i>ID:</i> <code>{uid}</code>"
             + (f"  ·  🌐 {lang_code}" if lang_code else "")
         )
+
+        # Même événement sur Pushover. Priorité basse : une entrée n'est pas une
+        # commande, elle ne doit pas déclencher la même alerte.
+        try:
+            import pushover
+            qui = f"@{username}" if username else (first_name or f"id {uid}")
+            pushover.envoyer(
+                message=qui + (f" · {lang_code}" if lang_code else ""),
+                titre="Entrée dans le catalogue",
+                priorite=-1,
+            )
+        except Exception as exc:
+            logger.warning("Pushover (entree) ignore : %s", exc)
+
         import httpx as _httpx
         with _httpx.Client(timeout=8.0) as c:
             c.post(
@@ -358,6 +372,97 @@ def _notify_owner_client_entry(parsed_init: dict) -> None:
             )
     except Exception as exc:
         logger.warning("notify owner entry: %s", exc)
+
+
+# Anti-répétition des notifications de ville : une seule par couple
+# (client, ville) sur la fenêtre. Mémoriser seulement la *dernière* ville ne
+# suffirait pas — un client qui fait des allers-retours entre deux villes
+# déclencherait une notification à chaque bascule.
+_VILLE_COOLDOWN = 180   # 3 min
+
+
+@app.route("/api/notify/city", methods=["POST"])
+def api_notify_city():
+    """Signale à l'owner qu'un client vient de choisir un pays et une ville.
+    POST {initData, country, city}
+
+    Le couple pays/ville est validé contre le catalogue avant tout envoi :
+    sans ce contrôle, n'importe qui pourrait faire arriver le texte de son
+    choix dans les notifications de l'owner.
+    """
+    bot_token = os.getenv("BOT_TOKEN", "")
+    try:
+        data = request.get_json(force=True, silent=True) or {}
+    except Exception:
+        data = {}
+
+    parsed = _verify_init_data(data.get("initData", ""), bot_token)
+    if not parsed:
+        return jsonify({"ok": False, "error": "auth_failed"}), 401
+
+    import json as _json
+    try:
+        user_obj = _json.loads(parsed.get("user", "{}"))
+        uid = int(user_obj.get("id", 0))
+    except Exception:
+        return jsonify({"ok": False, "error": "no_user"}), 400
+    if not uid:
+        return jsonify({"ok": False, "error": "no_user"}), 400
+
+    # L'owner qui navigue dans sa propre boutique ne se notifie pas lui-même
+    owner_uid = os.getenv("OWNER_USER_ID", "").strip()
+    if owner_uid and str(uid) == owner_uid:
+        return jsonify({"ok": True, "skipped": "owner"})
+
+    country = (data.get("country") or "").strip()
+    city    = (data.get("city") or "").strip()
+    try:
+        import catalog as catalog_mod
+        importlib.reload(catalog_mod)
+        if country not in catalog_mod.CATALOG or city not in catalog_mod.CATALOG[country]:
+            return jsonify({"ok": False, "error": "unknown_city"}), 400
+    except Exception:
+        return jsonify({"ok": False, "error": "catalog_failed"}), 500
+
+    # Anti-répétition : les allers-retours entre écrans ne doivent pas spammer.
+    # _rate_limited gère déjà la fenêtre glissante et le nettoyage mémoire.
+    if _rate_limited(f"ville:{uid}:{city}", 1, _VILLE_COOLDOWN):
+        return jsonify({"ok": True, "skipped": "throttled"})
+
+    username   = (user_obj.get("username") or "").strip()
+    first_name = (user_obj.get("first_name") or "").strip()
+    qui = f"@{username}" if username else (first_name or f"id {uid}")
+    pays_propre = country.split(" ", 1)[1].strip() if " " in country else country
+
+    try:
+        import pushover
+        pushover.envoyer(
+            message=f"{qui}\n{city} ({pays_propre})",
+            titre="Ville choisie",
+            priorite=0,
+        )
+    except Exception as exc:
+        logger.warning("Pushover (ville) ignore : %s", exc)
+
+    owner_chat = os.getenv("OWNER_CHAT_ID", "")
+    if bot_token and owner_chat:
+        try:
+            import httpx as _httpx
+            _httpx.post(
+                f"https://api.telegram.org/bot{bot_token}/sendMessage",
+                json={
+                    "chat_id": owner_chat,
+                    "text": (f"🗺️ <b>{_html_escape(qui)}</b> regarde "
+                             f"<b>{_html_escape(city)}</b> ({_html_escape(pays_propre)})"),
+                    "parse_mode": "HTML",
+                    "disable_web_page_preview": True,
+                },
+                timeout=8.0,
+            )
+        except Exception as exc:
+            logger.warning("notif ville Telegram : %s", exc)
+
+    return jsonify({"ok": True})
 
 
 @app.route("/api/auth", methods=["POST"])

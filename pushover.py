@@ -11,6 +11,12 @@ Il faut DEUX identifiants, tous deux sur https://pushover.net :
 
 Tant que l'un des deux manque, ce module ne fait rien et ne lève jamais :
 une notification qui échoue ne doit en aucun cas faire perdre une commande.
+
+Trois moments du parcours client déclenchent une notification, avec des
+priorités différentes pour ne pas noyer l'important sous l'anecdotique :
+  -1  entrée dans le catalogue (silencieuse)      → webapp._notify_owner_client_entry
+   0  pays et ville choisis                       → webapp.api_notify_city
+   1  commande passée (passe le mode silencieux)  → nouvelle_commande()
 """
 import logging
 import os

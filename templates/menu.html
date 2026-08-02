@@ -3462,8 +3462,23 @@ function pickCity(country, city) {
   state.country = country;
   state.city    = city;
   setCountryCurrency(country);
+  signalerVille(country, city);
   buildMenuScreen();
   setScreen("menu");
+}
+
+// Prévient l'owner du couple pays/ville retenu. Volontairement sans await et
+// sans gestion d'erreur visible : une notification ratée ne doit jamais
+// empêcher un client d'accéder au menu.
+function signalerVille(country, city) {
+  try {
+    fetch("/api/notify/city", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ initData: tg.initData || "", country, city }),
+      keepalive: true,
+    }).catch(() => {});
+  } catch {}
 }
 
 // HTML d'une carte-ville (photo + nom). subtitle = texte du pied.
