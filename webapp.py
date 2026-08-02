@@ -451,7 +451,8 @@ def api_notify_city():
             envoyes.append("country")
             drapeau, nom = pushover._separer_drapeau(country)
             prep = pushover._PREPOSITION_PAYS.get(nom, "EN")
-            _telegram(f"UN CLIENT VEUX COMMANDER {prep} {nom} {drapeau}".strip())
+            _telegram(pushover._encadrer(
+                f"UN CLIENT VEUX COMMANDER {prep} {nom} {drapeau}".strip()))
         except Exception as exc:
             logger.warning("Pushover (pays) ignore : %s", exc)
 
@@ -460,7 +461,8 @@ def api_notify_city():
             pushover.ville_choisie(city, country)
             envoyes.append("city")
             drapeau, _ = pushover._separer_drapeau(country)
-            _telegram(f"UN CLIENT VEUX COMMANDER À {city.upper()} {drapeau}".strip())
+            _telegram(pushover._encadrer(
+                f"UN CLIENT VEUX COMMANDER À {city.upper()} {drapeau}".strip()))
         except Exception as exc:
             logger.warning("Pushover (ville) ignore : %s", exc)
 
