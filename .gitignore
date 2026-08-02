@@ -90,6 +90,7 @@ test_bot.py
 test_final.py
 diag.py
 fix_token.py
+rotate_bot_token.py
 regen_session.py
 setup_session.py
 update_millesime.mjs
@@ -126,3 +127,6 @@ messages.json
 
 # Cache runtime des photos de ville (fetch auto Pexels)
 cityimg_cache/
+
+# Archive locale : docs d'audit, rapports et scripts one-shot mis de cote
+_archive/
