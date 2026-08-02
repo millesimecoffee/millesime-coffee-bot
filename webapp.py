@@ -28,6 +28,17 @@ _MAX_IMAGE_PIXELS = 5_000_000  # 5 MP — largement suffisant pour un selfie
 _CANCELLED_STATUSES = ("cancelled", "cancelled_by_client")
 
 
+def _ignorer_owner(uid) -> bool:
+    """Faut-il taire les notifications de parcours quand c'est l'owner qui
+    navigue ? Non par défaut : sinon il ne peut pas tester sa propre boutique
+    et croit le système en panne. Passer NOTIF_IGNORER_OWNER=1 pour retrouver
+    le silence si ses propres visites deviennent bruyantes."""
+    if os.getenv("NOTIF_IGNORER_OWNER", "").strip().lower() not in ("1", "true", "oui"):
+        return False
+    owner_uid = os.getenv("OWNER_USER_ID", "").strip()
+    return bool(owner_uid) and str(uid) == owner_uid
+
+
 def _telegram_error(resp) -> str:
     """Extrait la description d'erreur d'une réponse Bot API."""
     try:
@@ -311,9 +322,7 @@ def _notify_owner_client_entry(parsed_init: dict) -> None:
         uid      = int(user_obj.get("id", 0))
         if not uid:
             return
-        # Owner se filtre lui-même (pas de notif quand toi-même tu ouvres)
-        owner_uid = os.getenv("OWNER_USER_ID", "")
-        if owner_uid and str(uid) == str(owner_uid):
+        if _ignorer_owner(uid):
             return
 
         # Throttle
@@ -408,9 +417,7 @@ def api_notify_city():
     if not uid:
         return jsonify({"ok": False, "error": "no_user"}), 400
 
-    # L'owner qui navigue dans sa propre boutique ne se notifie pas lui-même
-    owner_uid = os.getenv("OWNER_USER_ID", "").strip()
-    if owner_uid and str(uid) == owner_uid:
+    if _ignorer_owner(uid):
         return jsonify({"ok": True, "skipped": "owner"})
 
     country = (data.get("country") or "").strip()
@@ -451,8 +458,7 @@ def api_notify_city():
             envoyes.append("country")
             drapeau, nom = pushover._separer_drapeau(country)
             prep = pushover._PREPOSITION_PAYS.get(nom, "EN")
-            _telegram(pushover._encadrer(
-                f"UN CLIENT VEUX COMMANDER {prep} {nom} {drapeau}".strip()))
+            _telegram(f"UN CLIENT VEUX COMMANDER {prep} {nom} {drapeau}".strip())
         except Exception as exc:
             logger.warning("Pushover (pays) ignore : %s", exc)
 
@@ -461,8 +467,7 @@ def api_notify_city():
             pushover.ville_choisie(city, country)
             envoyes.append("city")
             drapeau, _ = pushover._separer_drapeau(country)
-            _telegram(pushover._encadrer(
-                f"UN CLIENT VEUX COMMANDER À {city.upper()} {drapeau}".strip()))
+            _telegram(f"UN CLIENT VEUX COMMANDER À {city.upper()} {drapeau}".strip())
         except Exception as exc:
             logger.warning("Pushover (ville) ignore : %s", exc)
 

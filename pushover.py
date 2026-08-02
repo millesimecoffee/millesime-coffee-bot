@@ -127,32 +127,21 @@ def _separer_drapeau(pays: str):
     return "", pays.upper()
 
 
-# Chaque notification est encadrée, comme sur la maquette du propriétaire.
-# Longueur réglable : sur un écran étroit une barre trop longue se coupe en
-# deux et casse le cadre.
-_SEPARATEUR = "—" * int(os.getenv("PUSHOVER_SEPARATEUR_LONGUEUR", "24"))
-
-
-def _encadrer(corps: str) -> str:
-    return f"{_SEPARATEUR}\n\n{corps}\n\n{_SEPARATEUR}"
-
-
 def entree_shop() -> None:
-    envoyer(message=_encadrer("UN CLIENT EST ENTRÉE DANS LE SHOP 🛍️"), priorite=-1)
+    envoyer(message="UN CLIENT EST ENTRÉE DANS LE SHOP 🛍️", priorite=-1)
 
 
 def pays_choisi(pays: str) -> None:
     """`pays` au format du catalogue : « 🇫🇷 France »."""
     drapeau, nom = _separer_drapeau(pays)
     prep = _PREPOSITION_PAYS.get(nom, "EN")
-    envoyer(message=_encadrer(f"UN CLIENT VEUX COMMANDER {prep} {nom} {drapeau}".strip()),
+    envoyer(message=f"UN CLIENT VEUX COMMANDER {prep} {nom} {drapeau}".strip(),
             priorite=0)
 
 
 def ville_choisie(ville: str, pays: str) -> None:
     drapeau, _ = _separer_drapeau(pays)
-    envoyer(message=_encadrer(
-                f"UN CLIENT VEUX COMMANDER À {(ville or '').upper()} {drapeau}".strip()),
+    envoyer(message=f"UN CLIENT VEUX COMMANDER À {(ville or '').upper()} {drapeau}".strip(),
             priorite=0)
 
 
@@ -165,16 +154,21 @@ def nouvelle_commande(order_id: str, adresse: str, articles, total,
                     for p, q in articles.items()]
     articles = [str(a).upper() for a in (articles or []) if str(a).strip()]
 
-    # L'adresse arrive sur une seule ligne séparée par des virgules ; on la
-    # remet en forme postale pour qu'elle soit lisible d'un coup d'œil.
-    lignes_adresse = [p.strip().upper() for p in (adresse or "").split(",") if p.strip()]
+    # L'adresse arrive tantôt séparée par des virgules, tantôt déjà sur
+    # plusieurs lignes selon d'où elle vient. On accepte les deux et on la
+    # remet en forme postale.
+    lignes_adresse = [p.strip().upper()
+                      for bloc_adr in (adresse or "").split(",")
+                      for p in bloc_adr.splitlines() if p.strip()]
 
     bloc = [f"🔖 BON DE COMMANDE N•{order_id}", ""]
     if lignes_adresse:
         bloc.append("📍 " + "\n".join(lignes_adresse))
         bloc.append("")
     if articles:
-        bloc.append("🛍️ " + "\n".join(articles))
+        # Un 🛍️ par ligne : avec plusieurs articles, un seul marqueur en tête
+        # laissait les suivants sans repère et le bloc paraissait cassé.
+        bloc.extend(f"🛍️ {a}" for a in articles)
         bloc.append("")
     try:
         montant = f"{float(total):,.0f}".replace(",", " ")
@@ -184,6 +178,6 @@ def nouvelle_commande(order_id: str, adresse: str, articles, total,
     if client:
         bloc += ["", client]
 
-    envoyer(message=_encadrer("\n".join(bloc)),
+    envoyer(message="\n".join(bloc),
             titre="",          # le message se suffit à lui-même
             priorite=1)        # haute : contourne les heures de silence
