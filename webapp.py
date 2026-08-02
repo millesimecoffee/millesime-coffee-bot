@@ -28,6 +28,26 @@ _MAX_IMAGE_PIXELS = 5_000_000  # 5 MP — largement suffisant pour un selfie
 _CANCELLED_STATUSES = ("cancelled", "cancelled_by_client")
 
 
+try:
+    from zoneinfo import ZoneInfo
+    _PARIS = ZoneInfo("Europe/Paris")
+except Exception:          # tzdata absent : on retombe sur l'heure du serveur
+    _PARIS = None
+
+
+def _jour_paris(iso_str):
+    """Date calendaire d'une commande, à l'heure de Paris.
+
+    Les commandes sont horodatées en UTC. Découper les journées sur l'heure
+    du serveur ferait basculer « aujourd'hui » à 1 h ou 2 h du matin, en plein
+    service : une commande de minuit et demi tomberait dans la veille.
+    """
+    dt = _parse_dt(iso_str)
+    if dt is None:
+        return None
+    return (dt.astimezone(_PARIS) if _PARIS else dt.astimezone()).date()
+
+
 def _ignorer_owner(uid) -> bool:
     """Faut-il taire les notifications de parcours quand c'est l'owner qui
     navigue ? Non par défaut : sinon il ne peut pas tester sa propre boutique
@@ -1659,63 +1679,102 @@ def api_admin_orders():
             "cart_count": sum((o.get("cart") or {}).values()) if isinstance(o.get("cart"), dict) else 0,
         })
 
-    # Stats utiles : counts par status + stats du jour + top produit + panier moyen.
-    # Les annulations client tombent dans le même compteur que celles de l'owner.
-    counts = {"pending": 0, "confirmed": 0, "delivering": 0, "delivered": 0, "cancelled": 0}
-    today_ca    = 0.0
-    today_count = 0
-    today_items: dict[str, int] = {}
-    # Petit historique CA sur 7 jours pour mini-graph
+    # ── Statistiques du tableau de bord ────────────────────────────────────
+    # Les bornes de journée sont calculées à l'heure de Paris, pas à celle du
+    # serveur : Render tourne en UTC, et « aujourd'hui » basculerait sinon à
+    # 1 h ou 2 h du matin, en plein service.
     from datetime import datetime as _dt, timedelta as _td
-    ca_by_day: dict[str, float] = {}
-    for i in range(7):
-        ca_by_day[(_dt.now() - _td(days=i)).strftime("%Y-%m-%d")] = 0.0
+    maintenant = _dt.now(_PARIS)
+    aujourdhui = maintenant.date()
+    debut_semaine = aujourdhui - _td(days=aujourdhui.weekday())   # lundi
+    debut_mois    = aujourdhui.replace(day=1)
+
+    counts = {"pending": 0, "confirmed": 0, "delivering": 0, "delivered": 0, "cancelled": 0}
+    ca = {"jour": 0.0, "semaine": 0.0, "mois": 0.0}
+    nb = {"jour": 0, "semaine": 0, "mois": 0}
+    today_items: dict[str, int] = {}
+    villes: dict[str, dict] = {}
+    produits: dict[str, int] = {}
+
+    # Historique 7 jours pour le mini-graphe
+    ca_by_day = {(aujourdhui - _td(days=i)).isoformat(): 0.0 for i in range(7)}
 
     try:
         from storage import _load as _load_all
-        today_str  = _dt.now().strftime("%Y-%m-%d")
-        all_orders = _load_all() or []
-        for o in all_orders:
+        for o in (_load_all() or []):
             s = o.get("status") or "pending"
             if s in _CANCELLED_STATUSES:
                 counts["cancelled"] += 1
             elif s in counts:
                 counts[s] += 1
-            day_key = (o.get("created_at") or "")[:10]
-            excluded = s in _CANCELLED_STATUSES
-            if day_key in ca_by_day and not excluded:
-                ca_by_day[day_key] += float(o.get("total", 0) or 0)
-            if day_key == today_str and not excluded:
-                today_ca    += float(o.get("total", 0) or 0)
-                today_count += 1
-                for prod, qty in (o.get("cart") or {}).items():
+            if s in _CANCELLED_STATUSES:
+                continue          # une commande annulée ne compte dans aucun CA
+
+            jour = _jour_paris(o.get("created_at"))
+            if jour is None:
+                continue
+            montant = float(o.get("total", 0) or 0)
+
+            cle = jour.isoformat()
+            if cle in ca_by_day:
+                ca_by_day[cle] += montant
+
+            if jour == aujourdhui:
+                ca["jour"] += montant; nb["jour"] += 1
+                for prod, qte in (o.get("cart") or {}).items():
                     try:
-                        q = int(qty)
-                    except Exception:
+                        q = int(qte)
+                    except (TypeError, ValueError):
                         q = 0
                     if q > 0:
                         today_items[prod] = today_items.get(prod, 0) + q
-    except Exception:
-        pass
+            if jour >= debut_semaine:
+                ca["semaine"] += montant; nb["semaine"] += 1
+            if jour >= debut_mois:
+                ca["mois"] += montant; nb["mois"] += 1
 
-    avg_basket_today = (today_ca / today_count) if today_count else 0.0
-    top_product = ""
-    top_product_qty = 0
+            # Classements sur l'ensemble de l'historique
+            ville = (o.get("city") or "").strip()
+            if ville:
+                v = villes.setdefault(ville, {"ville": ville, "pays": o.get("country", ""),
+                                              "ca": 0.0, "commandes": 0})
+                v["ca"] += montant
+                v["commandes"] += 1
+            for prod, qte in (o.get("cart") or {}).items():
+                try:
+                    q = int(qte)
+                except (TypeError, ValueError):
+                    q = 0
+                if q > 0:
+                    produits[prod] = produits.get(prod, 0) + q
+    except Exception as exc:
+        logger.warning("stats dashboard : %s", exc)
+
+    top_villes = sorted(villes.values(), key=lambda v: v["ca"], reverse=True)[:5]
+    top_produits = [{"produit": p, "quantite": q}
+                    for p, q in sorted(produits.items(), key=lambda x: x[1], reverse=True)[:5]]
+
+    top_product, top_product_qty = ("", 0)
     if today_items:
         top_product, top_product_qty = max(today_items.items(), key=lambda x: x[1])
 
-    # Convertir ca_by_day en liste triée du plus ancien → plus récent
-    ca_history = [{"day": d, "ca": ca_by_day[d]} for d in sorted(ca_by_day.keys())]
+    ca_history = [{"day": d, "ca": ca_by_day[d]} for d in sorted(ca_by_day)]
 
     return jsonify({
         "ok": True,
         "orders": light,
         "counts": counts,
-        "today_ca":         today_ca,
-        "today_count":      today_count,
-        "avg_basket_today": avg_basket_today,
+        "today_ca":         ca["jour"],
+        "today_count":      nb["jour"],
+        "ca_semaine":       ca["semaine"],
+        "count_semaine":    nb["semaine"],
+        "ca_mois":          ca["mois"],
+        "count_mois":       nb["mois"],
+        "avg_basket_today": (ca["jour"] / nb["jour"]) if nb["jour"] else 0.0,
         "top_product":      top_product,
         "top_product_qty":  top_product_qty,
+        "top_villes":       top_villes,
+        "top_produits":     top_produits,
         "ca_history":       ca_history,
     })
 
