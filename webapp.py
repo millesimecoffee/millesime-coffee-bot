@@ -1175,6 +1175,21 @@ def api_finalize_order():
         logger.error("finalize save_order: %s", exc)
         # Continuer quand même — l'important c'est de notifier l'owner
 
+    # Notification Pushover : envoi en arrière-plan, sans bloquer la réponse
+    # au client. Inerte tant que les deux identifiants ne sont pas définis.
+    try:
+        import pushover
+        pushover.nouvelle_commande(
+            order_id=order_id,
+            ville=city,
+            total=total,
+            devise=disp_cur,
+            nb_articles=sum(safe_cart.values()),
+            client=(f"@{user_name}" if user_name else (user_first or "")),
+        )
+    except Exception as exc:
+        logger.warning("Pushover (mini app) ignore : %s", exc)
+
     # Notifier owner via Bot API
     owner_chat = os.getenv("OWNER_CHAT_ID", "")
     if not owner_chat:

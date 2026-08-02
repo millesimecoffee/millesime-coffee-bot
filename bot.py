@@ -282,6 +282,22 @@ async def _notify_owner(context: ContextTypes.DEFAULT_TYPE, user, ud: dict, orde
     total     = ud.get("order_total", 0)
     phone     = ud.get("phone", "")
 
+    # Pushover en parallèle de Telegram : envoi non bloquant, et inerte tant
+    # que PUSHOVER_USER_KEY et PUSHOVER_APP_TOKEN ne sont pas tous deux définis.
+    try:
+        import pushover
+        pushover.nouvelle_commande(
+            order_id=order_id,
+            ville=city,
+            total=total,
+            devise=currency,
+            nb_articles=sum(cart.values()),
+            client=(f"@{user.username}" if getattr(user, "username", None)
+                    else (user.first_name or "")),
+        )
+    except Exception as exc:
+        logger.warning("Pushover (bot) ignore : %s", exc)
+
     # Nom complet du client
     full_name = user.first_name or ""
     if getattr(user, "last_name", None):
