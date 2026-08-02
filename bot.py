@@ -288,10 +288,10 @@ async def _notify_owner(context: ContextTypes.DEFAULT_TYPE, user, ud: dict, orde
         import pushover
         pushover.nouvelle_commande(
             order_id=order_id,
-            ville=city,
+            adresse=address,
+            articles=cart,
             total=total,
             devise=currency,
-            nb_articles=sum(cart.values()),
             client=(f"@{user.username}" if getattr(user, "username", None)
                     else (user.first_name or "")),
         )

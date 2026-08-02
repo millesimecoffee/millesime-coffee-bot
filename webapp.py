@@ -349,12 +349,7 @@ def _notify_owner_client_entry(parsed_init: dict) -> None:
         # commande, elle ne doit pas déclencher la même alerte.
         try:
             import pushover
-            qui = f"@{username}" if username else (first_name or f"id {uid}")
-            pushover.envoyer(
-                message=qui + (f" · {lang_code}" if lang_code else ""),
-                titre="Entrée dans le catalogue",
-                priorite=-1,
-            )
+            pushover.entree_shop()
         except Exception as exc:
             logger.warning("Pushover (entree) ignore : %s", exc)
 
@@ -383,8 +378,12 @@ _VILLE_COOLDOWN = 180   # 3 min
 
 @app.route("/api/notify/city", methods=["POST"])
 def api_notify_city():
-    """Signale à l'owner qu'un client vient de choisir un pays et une ville.
-    POST {initData, country, city}
+    """Signale à l'owner le pays, puis la ville, retenus par un client.
+    POST {initData, country, city?}
+
+    Deux notifications distinctes, car un client peut s'arrêter au pays. Le
+    serveur décide laquelle envoyer : la recherche de ville court-circuite
+    l'écran des pays, et sans cette logique le pays ne serait jamais annoncé.
 
     Le couple pays/ville est validé contre le catalogue avant tout envoi :
     sans ce contrôle, n'importe qui pourrait faire arriver le texte de son
@@ -419,50 +418,53 @@ def api_notify_city():
     try:
         import catalog as catalog_mod
         importlib.reload(catalog_mod)
-        if country not in catalog_mod.CATALOG or city not in catalog_mod.CATALOG[country]:
+        if country not in catalog_mod.CATALOG:
+            return jsonify({"ok": False, "error": "unknown_country"}), 400
+        if city and city not in catalog_mod.CATALOG[country]:
             return jsonify({"ok": False, "error": "unknown_city"}), 400
     except Exception:
         return jsonify({"ok": False, "error": "catalog_failed"}), 500
 
-    # Anti-répétition : les allers-retours entre écrans ne doivent pas spammer.
-    # _rate_limited gère déjà la fenêtre glissante et le nettoyage mémoire.
-    if _rate_limited(f"ville:{uid}:{city}", 1, _VILLE_COOLDOWN):
-        return jsonify({"ok": True, "skipped": "throttled"})
-
-    username   = (user_obj.get("username") or "").strip()
-    first_name = (user_obj.get("first_name") or "").strip()
-    qui = f"@{username}" if username else (first_name or f"id {uid}")
-    pays_propre = country.split(" ", 1)[1].strip() if " " in country else country
-
-    try:
-        import pushover
-        pushover.envoyer(
-            message=f"{qui}\n{city} ({pays_propre})",
-            titre="Ville choisie",
-            priorite=0,
-        )
-    except Exception as exc:
-        logger.warning("Pushover (ville) ignore : %s", exc)
-
+    import pushover
+    envoyes = []
     owner_chat = os.getenv("OWNER_CHAT_ID", "")
-    if bot_token and owner_chat:
+
+    def _telegram(texte: str) -> None:
+        if not (bot_token and owner_chat):
+            return
         try:
             import httpx as _httpx
             _httpx.post(
                 f"https://api.telegram.org/bot{bot_token}/sendMessage",
-                json={
-                    "chat_id": owner_chat,
-                    "text": (f"🗺️ <b>{_html_escape(qui)}</b> regarde "
-                             f"<b>{_html_escape(city)}</b> ({_html_escape(pays_propre)})"),
-                    "parse_mode": "HTML",
-                    "disable_web_page_preview": True,
-                },
+                json={"chat_id": owner_chat, "text": texte,
+                      "disable_web_page_preview": True},
                 timeout=8.0,
             )
         except Exception as exc:
-            logger.warning("notif ville Telegram : %s", exc)
+            logger.warning("notif parcours Telegram : %s", exc)
 
-    return jsonify({"ok": True})
+    # Anti-répétition : les allers-retours entre écrans ne doivent pas spammer.
+    # _rate_limited gère déjà la fenêtre glissante et le nettoyage mémoire.
+    if not _rate_limited(f"pays:{uid}:{country}", 1, _VILLE_COOLDOWN):
+        try:
+            pushover.pays_choisi(country)
+            envoyes.append("country")
+            drapeau, nom = pushover._separer_drapeau(country)
+            prep = pushover._PREPOSITION_PAYS.get(nom, "EN")
+            _telegram(f"UN CLIENT VEUX COMMANDER {prep} {nom} {drapeau}".strip())
+        except Exception as exc:
+            logger.warning("Pushover (pays) ignore : %s", exc)
+
+    if city and not _rate_limited(f"ville:{uid}:{city}", 1, _VILLE_COOLDOWN):
+        try:
+            pushover.ville_choisie(city, country)
+            envoyes.append("city")
+            drapeau, _ = pushover._separer_drapeau(country)
+            _telegram(f"UN CLIENT VEUX COMMANDER À {city.upper()} {drapeau}".strip())
+        except Exception as exc:
+            logger.warning("Pushover (ville) ignore : %s", exc)
+
+    return jsonify({"ok": True, "sent": envoyes})
 
 
 @app.route("/api/auth", methods=["POST"])
@@ -1286,10 +1288,11 @@ def api_finalize_order():
         import pushover
         pushover.nouvelle_commande(
             order_id=order_id,
-            ville=city,
+            adresse=(address.get("short") or address.get("formatted")
+                     or address.get("text") or ""),
+            articles=safe_cart,
             total=total,
             devise=disp_cur,
-            nb_articles=sum(safe_cart.values()),
             client=(f"@{user_name}" if user_name else (user_first or "")),
         )
     except Exception as exc:

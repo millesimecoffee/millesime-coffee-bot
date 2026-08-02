@@ -101,16 +101,78 @@ def envoyer(message: str, titre: str = "", priorite: int = 0,
     ).start()
 
 
-def nouvelle_commande(order_id: str, ville: str, total, devise: str,
-                      nb_articles: int, client: str = "") -> None:
-    """Notification type pour une commande qui vient d'arriver."""
-    lignes = [f"{total:,.0f} {devise} · {nb_articles} article(s)".replace(",", " ")]
-    if ville:
-        lignes.append(f"Ville : {ville}")
+# ── Messages du parcours client ─────────────────────────────────────────────
+# Formulations fixées par le propriétaire de la boutique : ne pas reformuler
+# sans lui demander.
+
+# En français la préposition devant un pays dépend de son genre et de son
+# nombre. « EN PORTUGAL » ou « EN PAYS-BAS » seraient fautifs, d'où cette
+# table. Tout pays absent prend « EN », qui couvre les féminins (la France,
+# l'Italie, la Grèce…), largement majoritaires dans le catalogue.
+_PREPOSITION_PAYS = {
+    "PORTUGAL":    "AU",
+    "MAROC":       "AU",
+    "PAYS-BAS":    "AUX",
+    "ÉTATS-UNIS":  "AUX",
+    "ETATS-UNIS":  "AUX",
+}
+
+
+def _separer_drapeau(pays: str):
+    """Découpe « 🇫🇷 France » en ('🇫🇷', 'FRANCE')."""
+    pays = (pays or "").strip()
+    if " " in pays:
+        drapeau, nom = pays.split(" ", 1)
+        return drapeau.strip(), nom.strip().upper()
+    return "", pays.upper()
+
+
+def entree_shop() -> None:
+    envoyer(message="UN CLIENT EST ENTRÉE DANS LE SHOP 🛍️", priorite=-1)
+
+
+def pays_choisi(pays: str) -> None:
+    """`pays` au format du catalogue : « 🇫🇷 France »."""
+    drapeau, nom = _separer_drapeau(pays)
+    prep = _PREPOSITION_PAYS.get(nom, "EN")
+    envoyer(message=f"UN CLIENT VEUX COMMANDER {prep} {nom} {drapeau}".strip(),
+            priorite=0)
+
+
+def ville_choisie(ville: str, pays: str) -> None:
+    drapeau, _ = _separer_drapeau(pays)
+    envoyer(message=f"UN CLIENT VEUX COMMANDER À {(ville or '').upper()} {drapeau}".strip(),
+            priorite=0)
+
+
+def nouvelle_commande(order_id: str, adresse: str, articles, total,
+                      devise: str = "€", client: str = "") -> None:
+    """Bon de commande. `articles` : liste de libellés déjà mis en forme
+    (« 1G COCA × 2 »), ou dict {produit: quantité}."""
+    if isinstance(articles, dict):
+        articles = [f"{p} × {q}" if q and int(q) > 1 else str(p)
+                    for p, q in articles.items()]
+    articles = [str(a).upper() for a in (articles or []) if str(a).strip()]
+
+    # L'adresse arrive sur une seule ligne séparée par des virgules ; on la
+    # remet en forme postale pour qu'elle soit lisible d'un coup d'œil.
+    lignes_adresse = [p.strip().upper() for p in (adresse or "").split(",") if p.strip()]
+
+    bloc = [f"🔖 BON DE COMMANDE N•{order_id}", ""]
+    if lignes_adresse:
+        bloc.append("📍 " + "\n".join(lignes_adresse))
+        bloc.append("")
+    if articles:
+        bloc.append("🛍️ " + "\n".join(articles))
+        bloc.append("")
+    try:
+        montant = f"{float(total):,.0f}".replace(",", " ")
+    except (TypeError, ValueError):
+        montant = str(total)
+    bloc.append(f"💰 {montant}{devise}")
     if client:
-        lignes.append(f"Client : {client}")
-    envoyer(
-        message="\n".join(lignes),
-        titre=f"Nouvelle commande {order_id}",
-        priorite=1,   # haute : contourne les heures de silence
-    )
+        bloc += ["", client]
+
+    envoyer(message="\n".join(bloc),
+            titre="",          # le message se suffit à lui-même
+            priorite=1)        # haute : contourne les heures de silence

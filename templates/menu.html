@@ -3384,7 +3384,13 @@ function buildCountryScreen() {
       </div>
       <span class="rc-arrow">›</span>
     `;
-    div.onclick = () => { state.country = country; setCountryCurrency(country); buildCityScreen(); setScreen("city"); };
+    div.onclick = () => {
+      state.country = country;
+      setCountryCurrency(country);
+      signalerParcours(country);   // pays seul : la ville suivra
+      buildCityScreen();
+      setScreen("city");
+    };
     list.appendChild(div);
   });
   // Raccourcis "commande en cours" + "mes commandes" en haut de l'accueil
@@ -3462,20 +3468,21 @@ function pickCity(country, city) {
   state.country = country;
   state.city    = city;
   setCountryCurrency(country);
-  signalerVille(country, city);
+  signalerParcours(country, city);
   buildMenuScreen();
   setScreen("menu");
 }
 
-// Prévient l'owner du couple pays/ville retenu. Volontairement sans await et
-// sans gestion d'erreur visible : une notification ratée ne doit jamais
-// empêcher un client d'accéder au menu.
-function signalerVille(country, city) {
+// Prévient l'owner de l'étape franchie. `city` est facultatif : un client peut
+// s'arrêter au choix du pays. Volontairement sans await et sans gestion
+// d'erreur visible — une notification ratée ne doit jamais empêcher un client
+// d'accéder au menu.
+function signalerParcours(country, city) {
   try {
     fetch("/api/notify/city", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ initData: tg.initData || "", country, city }),
+      body: JSON.stringify({ initData: tg.initData || "", country, city: city || "" }),
       keepalive: true,
     }).catch(() => {});
   } catch {}
