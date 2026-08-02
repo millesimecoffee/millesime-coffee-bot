@@ -1363,6 +1363,18 @@ def _admin_password() -> str:
     return os.getenv("ADMIN_PANEL_PASSWORD", "").strip()
 
 
+def _normalise_mdp(s: str) -> str:
+    """Compare à la casse près et sans se soucier des espaces superflus.
+
+    Un mot de passe en toutes lettres se tape mal sur un clavier de téléphone
+    (le champ désactive la majuscule automatique), et une majuscule oubliée
+    coûterait un essai sur les cinq autorisés. La solidité du verrou ne repose
+    de toute façon pas sur la casse : il faut déjà être connecté au compte
+    Telegram de l'owner, et cinq erreurs bloquent l'accès un quart d'heure.
+    """
+    return " ".join((s or "").split()).casefold()
+
+
 def _admin_is_unlocked(uid) -> bool:
     with _admin_lock:
         exp = _admin_unlocked.get(str(uid), 0)
@@ -1427,11 +1439,11 @@ def api_admin_unlock():
         data = request.get_json(force=True, silent=True) or {}
     except Exception:
         data = {}
-    fourni = (data.get("password") or "").strip()
+    fourni = data.get("password") or ""
 
     # compare_digest : temps constant, pour ne pas laisser deviner le mot de
     # passe caractère par caractère en mesurant le temps de réponse.
-    if not hmac.compare_digest(fourni, attendu):
+    if not hmac.compare_digest(_normalise_mdp(fourni), _normalise_mdp(attendu)):
         logger.warning("panel admin : mot de passe refuse pour %s", uid)
         return jsonify({"ok": False, "error": "wrong_password"}), 403
 
