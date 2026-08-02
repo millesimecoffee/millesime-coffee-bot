@@ -2405,6 +2405,26 @@
   </div>
 </div>
 
+<!-- ÉCRAN MOT DE PASSE ADMIN : 2e barrière avant le panneau owner -->
+<div class="screen" id="screen-admin-pwd">
+  <div class="welcome">
+    <div class="logo">🛡️</div>
+    <h1>Panneau administrateur</h1>
+    <p>Entrez le mot de passe du panneau.</p>
+  </div>
+  <div class="pwd-screen">
+    <input type="password" id="adminPwdInput" class="pwd-input" autocomplete="off"
+           inputmode="text" autocapitalize="none" autocorrect="off" spellcheck="false"
+           onkeydown="if(event.key==='Enter')unlockAdmin()">
+    <div id="adminPwdError" class="banner" style="display:none;"></div>
+    <button class="pwd-btn" id="adminPwdBtn" onclick="unlockAdmin()">
+      <span>Déverrouiller</span>
+    </button>
+    <button class="next-btn" style="background:#444; box-shadow:none; margin-top:12px;"
+            onclick="quitterAdmin()">Continuer comme client</button>
+  </div>
+</div>
+
 <!-- ÉCRAN CLIENT HOME : historique + commande en cours -->
 <div class="screen" id="screen-client-home">
   <div class="welcome">
@@ -2707,6 +2727,14 @@
       <div class="info">
         <div class="name">Passer une commande</div>
         <div class="meta">Mode client</div>
+      </div>
+      <span class="arrow">›</span>
+    </div>
+    <div class="card" id="adminLockCard" onclick="lockAdmin()" style="margin-top:8px; display:none;">
+      <span class="emoji">🛡️</span>
+      <div class="info">
+        <div class="name">Verrouiller le panneau</div>
+        <div class="meta">Redemande le mot de passe</div>
       </div>
       <span class="arrow">›</span>
     </div>
@@ -3227,18 +3255,26 @@ async function checkPassword() {
       state.countryCurrencies = data.country_currencies || {};
       state.support = data.support || {};
       state.payment_config = data.payment_config || {};
-      // Check owner
+      // Owner ? Et si oui, le panneau est-il verrouillé par mot de passe ?
+      // /api/admin/status reste joignable même verrouillé : c'est ce qui
+      // permet d'afficher l'écran de saisie au lieu d'un refus sec.
+      let panelVerrouille = false;
       try {
-        const ownerCheck = await fetch("/api/admin/orders", {
+        const ownerCheck = await fetch("/api/admin/status", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ initData: tg.initData || "", limit: 1 })
+          body: JSON.stringify({ initData: tg.initData || "" })
         });
         if (ownerCheck.status === 200) {
-          state.is_owner = true;
+          const st = await ownerCheck.json();
+          state.is_owner  = !!st.is_owner;
+          panelVerrouille = !!st.locked;
+          state._adminPasswordSet = !!st.password_set;
         }
       } catch {}
-      if (state.is_owner) {
+      if (state.is_owner && panelVerrouille) {
+        showAdminPwd();
+      } else if (state.is_owner) {
         showOwnerHome();
       } else {
         // Précharger les commandes du client (en cours + passées) pour
@@ -4107,10 +4143,108 @@ state.ownerData = null;          // {counts: {...}, orders: [...], today_ca, tod
 state.currentStatusFilter = "";  // pour le filtre courant
 state._ownerRefreshTimer = null; // setInterval id pour auto-refresh
 
+// ═══════════════════════════════════════════════════════════════════════════
+// VERROU DU PANNEAU ADMIN
+// ═══════════════════════════════════════════════════════════════════════════
+
+function showAdminPwd() {
+  const err = document.getElementById("adminPwdError");
+  const inp = document.getElementById("adminPwdInput");
+  if (err) err.style.display = "none";
+  if (inp) inp.value = "";
+  stopOwnerAutoRefresh();
+  setScreen("admin-pwd", false);
+  state.history = [];
+}
+
+async function unlockAdmin() {
+  const inp = document.getElementById("adminPwdInput");
+  const err = document.getElementById("adminPwdError");
+  const btn = document.getElementById("adminPwdBtn");
+  const mdp = (inp.value || "").trim();
+  if (!mdp) return;
+  btn.disabled = true;
+  const orig = btn.innerHTML;
+  btn.innerHTML = '<span class="loader"></span>';
+  try {
+    const r = await fetch("/api/admin/unlock", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ initData: tg.initData || "", password: mdp })
+    });
+    const data = await r.json();
+    if (data.ok) {
+      inp.value = "";            // ne pas laisser le mot de passe dans le DOM
+      err.style.display = "none";
+      hapticSuccess();
+      showOwnerHome();
+    } else if (data.error === "too_many_attempts") {
+      const min = Math.ceil((data.retry_after || 900) / 60);
+      err.textContent = `🚫 Trop d'essais. Réessayez dans ${min} min.`;
+      err.style.display = "block";
+      hapticError();
+    } else {
+      err.textContent = "❌ Mot de passe incorrect.";
+      err.style.display = "block";
+      inp.value = "";
+      hapticError();
+    }
+  } catch {
+    err.textContent = t("err_network");
+    err.style.display = "block";
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = orig;
+  }
+}
+
+// L'owner peut renoncer au panel et commander comme n'importe quel client.
+function quitterAdmin() {
+  state.is_owner  = false;
+  state.was_owner = true;
+  const inp = document.getElementById("adminPwdInput");
+  if (inp) inp.value = "";
+  // Le catalogue est normalement déjà chargé (on ne passe ici qu'après l'écran
+  // mot de passe du catalogue), mais on ne veut pas d'écran blanc si ce n'est
+  // pas le cas : on renvoie alors vers la saisie du mot de passe catalogue.
+  if (!state.catalog) { setScreen("pwd", false); state.history = []; return; }
+  buildCountryScreen();
+  setScreen("country", false);
+  state.history = [];
+}
+
+async function lockAdmin() {
+  stopOwnerAutoRefresh();
+  try {
+    await fetch("/api/admin/lock", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ initData: tg.initData || "" })
+    });
+  } catch {}
+  showToast("🛡️ Panneau verrouillé");
+  showAdminPwd();
+}
+
+// Un 403 « admin_locked » peut survenir en pleine session si le délai expire :
+// on renvoie alors vers la saisie du mot de passe au lieu de laisser un écran
+// figé sur des données périmées.
+function _adminSessionExpiree(data) {
+  if (data && data.error === "admin_locked") {
+    showToast("🛡️ Session admin expirée", true);
+    showAdminPwd();
+    return true;
+  }
+  return false;
+}
+
 function showOwnerHome() {
   loadOwnerData(false);
   setScreen("owner-home", false);  // ne pas pousser dans history (c'est la home owner)
   state.history = [];               // reset history
+  // Bouton de verrouillage : inutile tant qu'aucun mot de passe n'est configuré
+  const lockCard = document.getElementById("adminLockCard");
+  if (lockCard) lockCard.style.display = state._adminPasswordSet ? "" : "none";
   startOwnerAutoRefresh();
 }
 
@@ -4145,14 +4279,24 @@ async function loadOwnerData(showToastFlag) {
       body: JSON.stringify({ initData: tg.initData || "", limit: 100 })
     });
     if (r.status === 403) {
-      state.is_owner = false;
+      // Deux 403 très différents : session admin expirée (on redemande le
+      // mot de passe) ou compte non-owner (on bascule en vue client).
+      let corps = {};
+      try { corps = await r.json(); } catch {}
       stopOwnerAutoRefresh();
-      buildCountryScreen();
-      setScreen("country");
+      if (corps.error === "admin_locked") {
+        showToast("🛡️ Session admin expirée", true);
+        showAdminPwd();
+      } else {
+        state.is_owner = false;
+        buildCountryScreen();
+        setScreen("country");
+      }
       return;
     }
     const data = await r.json();
     if (!data.ok) {
+      if (_adminSessionExpiree(data)) return;
       if (showToastFlag) showToast(data.error || "Erreur", true);
       return;
     }
@@ -5185,6 +5329,11 @@ updateHeader = function(name) {
   if (name === "tracking") {
     document.getElementById("headerTitle").textContent    = "📦 Suivi de commande";
     document.getElementById("headerSubtitle").textContent = "N° " + (state._trackOrderId || "");
+  } else if (name === "admin-pwd") {
+    // Écran de garde : pas d'en-tête ni de bouton retour, comme l'écran
+    // mot de passe du catalogue.
+    document.getElementById("header").style.display = "none";
+    try { tg.BackButton.hide(); } catch {}
   } else if (name === "client-home") {
     document.getElementById("header").style.display = "none";
   } else if (name === "client-history") {

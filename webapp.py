@@ -3,6 +3,7 @@ Serveur Flask — Mini App Telegram (catalogue + selfie + détection visage Open
 Tourne dans un thread en parallèle du bot Telegram.
 """
 import base64
+import hmac
 import importlib
 import logging
 import os
@@ -279,6 +280,15 @@ def _rate_limited(key: str, max_hits: int, window: float) -> bool:
                 if not any(now - t < window for t in _rate_store[k]):
                     del _rate_store[k]
         return len(recent) > max_hits
+
+
+def _rate_reset(key: str) -> None:
+    """Efface le compteur d'une clé. Sert après une authentification réussie :
+    sans ça, les déverrouillages légitimes s'accumulent avec les échecs et
+    l'owner finit par se bloquer lui-même en rouvrant l'app."""
+    with _rate_lock:
+        _rate_store.pop(key, None)
+
 
 # Throttle des notifications "client entre dans le catalogue" :
 # évite de spammer l'owner si l'user ouvre/ferme plusieurs fois.
@@ -1327,13 +1337,134 @@ def _check_owner(req) -> int | None:
     return _is_owner_init(parsed)
 
 
+# ═══════════════════════════════════════════════════════════════════════════
+# Verrou du panneau admin — 2e barrière après l'identité Telegram
+# ═══════════════════════════════════════════════════════════════════════════
+# _check_owner prouve « ce compte Telegram est celui de l'owner ». Ça ne
+# protège pas d'un téléphone déverrouillé laissé sans surveillance : le mot de
+# passe ci-dessous ajoute quelque chose que l'on sait, en plus de quelque chose
+# que l'on possède.
+#
+# Si ADMIN_PANEL_PASSWORD n'est pas défini, le verrou est inactif et le panel
+# se comporte exactement comme avant — on ne se retrouve jamais enfermé dehors
+# à cause d'une variable oubliée au déploiement.
+
+_ADMIN_SESSION_TTL   = int(os.getenv("ADMIN_SESSION_TTL", "28800"))  # 8 h
+_ADMIN_MAX_ATTEMPTS  = 5
+_ADMIN_LOCKOUT       = 900   # 15 min de blocage après trop d'essais
+
+_admin_unlocked: dict[str, float] = {}   # {user_id: expiration}
+_admin_lock = threading.Lock()
+
+
+def _admin_password() -> str:
+    """Relu à chaque appel : changer la variable d'env ne demande pas de
+    redéploiement complet sur les plateformes qui rechargent le process."""
+    return os.getenv("ADMIN_PANEL_PASSWORD", "").strip()
+
+
+def _admin_is_unlocked(uid) -> bool:
+    with _admin_lock:
+        exp = _admin_unlocked.get(str(uid), 0)
+        if exp and exp > time.time():
+            return True
+        _admin_unlocked.pop(str(uid), None)
+        return False
+
+
+def _guard_admin(req):
+    """Renvoie None si l'accès au panel est autorisé, sinon la réponse d'erreur.
+    À appeler en tête de chaque endpoint /api/admin/*."""
+    uid = _check_owner(req)
+    if uid is None:
+        return jsonify({"ok": False, "error": "not_owner"}), 403
+    if _admin_password() and not _admin_is_unlocked(uid):
+        return jsonify({"ok": False, "error": "admin_locked"}), 403
+    return None
+
+
+@app.route("/api/admin/status", methods=["POST"])
+def api_admin_status():
+    """Dit à la Mini App si l'utilisateur est owner et si le panel est verrouillé.
+    Volontairement accessible sans déverrouillage : c'est ce qui permet
+    d'afficher l'écran de mot de passe plutôt qu'un refus sec.
+    POST {initData}
+    """
+    uid = _check_owner(request)
+    if uid is None:
+        return jsonify({"ok": True, "is_owner": False, "locked": False})
+    verrou = bool(_admin_password())
+    return jsonify({
+        "ok": True,
+        "is_owner": True,
+        "locked": verrou and not _admin_is_unlocked(uid),
+        "password_set": verrou,
+    })
+
+
+@app.route("/api/admin/unlock", methods=["POST"])
+def api_admin_unlock():
+    """Déverrouille le panel pour la durée de la session.
+    POST {initData, password}
+    """
+    uid = _check_owner(request)
+    if uid is None:
+        return jsonify({"ok": False, "error": "not_owner"}), 403
+
+    attendu = _admin_password()
+    if not attendu:
+        return jsonify({"ok": True, "no_password": True})
+
+    # Anti-force-brute : la clé combine l'IP et l'user_id pour qu'un changement
+    # de réseau ne remette pas le compteur à zéro.
+    cle = f"adminpwd:{_client_ip(request)}:{uid}"
+    if _rate_limited(cle, _ADMIN_MAX_ATTEMPTS, _ADMIN_LOCKOUT):
+        logger.warning("panel admin : trop d'essais pour %s", uid)
+        return jsonify({"ok": False, "error": "too_many_attempts",
+                        "retry_after": _ADMIN_LOCKOUT}), 429
+
+    try:
+        data = request.get_json(force=True, silent=True) or {}
+    except Exception:
+        data = {}
+    fourni = (data.get("password") or "").strip()
+
+    # compare_digest : temps constant, pour ne pas laisser deviner le mot de
+    # passe caractère par caractère en mesurant le temps de réponse.
+    if not hmac.compare_digest(fourni, attendu):
+        logger.warning("panel admin : mot de passe refuse pour %s", uid)
+        return jsonify({"ok": False, "error": "wrong_password"}), 403
+
+    # Succès : on repart d'un compteur vierge pour ne pas pénaliser un owner
+    # qui rouvre le panel plusieurs fois dans la même fenêtre.
+    _rate_reset(cle)
+    with _admin_lock:
+        _admin_unlocked[str(uid)] = time.time() + _ADMIN_SESSION_TTL
+    logger.info("panel admin deverrouille pour %s", uid)
+    return jsonify({"ok": True, "expires_in": _ADMIN_SESSION_TTL})
+
+
+@app.route("/api/admin/lock", methods=["POST"])
+def api_admin_lock():
+    """Reverrouille immédiatement (bouton « Verrouiller » du panel).
+    POST {initData}
+    """
+    uid = _check_owner(request)
+    if uid is None:
+        return jsonify({"ok": False, "error": "not_owner"}), 403
+    with _admin_lock:
+        _admin_unlocked.pop(str(uid), None)
+    return jsonify({"ok": True})
+
+
 @app.route("/api/admin/orders", methods=["POST"])
 def api_admin_orders():
     """Retourne la liste des commandes pour le panel owner.
     POST {initData, limit?, status_filter?}
     """
-    if _check_owner(request) is None:
-        return jsonify({"ok": False, "error": "not_owner"}), 403
+    _refus = _guard_admin(request)
+    if _refus:
+        return _refus
 
     try:
         data = request.get_json(force=True, silent=True) or {}
@@ -1448,8 +1579,9 @@ def api_admin_order_detail(order_id):
     """Détail complet d'une commande (avec photos b64).
     POST {initData}
     """
-    if _check_owner(request) is None:
-        return jsonify({"ok": False, "error": "not_owner"}), 403
+    _refus = _guard_admin(request)
+    if _refus:
+        return _refus
 
     try:
         from storage import get_order
@@ -1477,8 +1609,9 @@ def api_admin_set_status(order_id):
     """Modifie le statut d'une commande + notifie le client.
     POST {initData, status: "confirmed"|"delivering"|"delivered"|"cancelled"}
     """
-    if _check_owner(request) is None:
-        return jsonify({"ok": False, "error": "not_owner"}), 403
+    _refus = _guard_admin(request)
+    if _refus:
+        return _refus
 
     try:
         data = request.get_json(force=True, silent=True) or {}
@@ -2143,8 +2276,9 @@ def api_admin_client_note():
     """GET la note ou POST/PUT/DELETE.
     POST {initData, user_id, action: 'get'|'set'|'delete', note?}
     """
-    if _check_owner(request) is None:
-        return jsonify({"ok": False, "error": "not_owner"}), 403
+    _refus = _guard_admin(request)
+    if _refus:
+        return _refus
     try:
         data = request.get_json(force=True, silent=True) or {}
     except Exception:
@@ -2186,8 +2320,9 @@ def api_admin_clients():
     POST {initData, segment?}
     segment : "all" (default), "active", "dormant", "vip"
     """
-    if _check_owner(request) is None:
-        return jsonify({"ok": False, "error": "not_owner"}), 403
+    _refus = _guard_admin(request)
+    if _refus:
+        return _refus
 
     try:
         data = request.get_json(force=True, silent=True) or {}
@@ -2411,8 +2546,9 @@ def api_admin_broadcast():
     POST {initData, text, segment?}
     Retourne {ok, job_id, total} — utiliser /api/admin/broadcast/status/<job_id> pour poll.
     """
-    if _check_owner(request) is None:
-        return jsonify({"ok": False, "error": "not_owner"}), 403
+    _refus = _guard_admin(request)
+    if _refus:
+        return _refus
 
     try:
         data = request.get_json(force=True, silent=True) or {}
@@ -2475,8 +2611,9 @@ def api_admin_broadcast():
 @app.route("/api/admin/broadcast/status/<job_id>", methods=["POST"])
 def api_admin_broadcast_status(job_id):
     """Retourne le statut d'un broadcast en cours."""
-    if _check_owner(request) is None:
-        return jsonify({"ok": False, "error": "not_owner"}), 403
+    _refus = _guard_admin(request)
+    if _refus:
+        return _refus
     with _broadcast_lock:
         job = _broadcast_jobs.get(job_id)
         if not job:
@@ -2487,8 +2624,9 @@ def api_admin_broadcast_status(job_id):
 @app.route("/api/admin/broadcast/cancel/<job_id>", methods=["POST"])
 def api_admin_broadcast_cancel(job_id):
     """Annule un broadcast en cours."""
-    if _check_owner(request) is None:
-        return jsonify({"ok": False, "error": "not_owner"}), 403
+    _refus = _guard_admin(request)
+    if _refus:
+        return _refus
     with _broadcast_lock:
         job = _broadcast_jobs.get(job_id)
         if not job:
@@ -2502,8 +2640,9 @@ def api_admin_send_message():
     """L'owner envoie un message libre à un client via le bot.
     POST {initData, user_id, text}
     """
-    if _check_owner(request) is None:
-        return jsonify({"ok": False, "error": "not_owner"}), 403
+    _refus = _guard_admin(request)
+    if _refus:
+        return _refus
     try:
         data = request.get_json(force=True, silent=True) or {}
     except Exception:
@@ -2548,8 +2687,14 @@ def api_admin_photo(order_id, kind):
     """Sert une photo (selfie ou proof) de la commande en JPEG.
     Auth via initData en query string : ?initData=...
     """
-    if _check_owner(request) is None:
+    # Cette route sert les selfies clients : elle doit suivre le même verrou
+    # que le reste du panel, sinon les photos resteraient accessibles alors
+    # que l'admin est verrouillé.
+    uid = _check_owner(request)
+    if uid is None:
         return ("Forbidden", 403)
+    if _admin_password() and not _admin_is_unlocked(uid):
+        return ("Locked", 403)
     if kind not in ("selfie", "proof"):
         return ("Bad kind", 400)
     try:
