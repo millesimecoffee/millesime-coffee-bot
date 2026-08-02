@@ -23,8 +23,6 @@ bot_err*.txt
 bot_run*.log
 bot2_*.txt
 bot_live*.txt
-casino_out.txt
-casino_err.txt
 clean_out.txt
 clean_err.txt
 debug_out.txt
@@ -72,18 +70,6 @@ start_*.bat
 install_autostart.ps1
 uninstall_autostart.ps1
 
-# Casino (projet séparé, ne doit pas polluer bot)
-casino.db
-casino.env.example
-casino_bot.py
-casino_config.py
-casino_crypto.py
-casino_db.py
-casino_games.py
-casino_server.py
-casino_webapp/
-START_CASINO_FIX.py
-
 # Fichiers de test one-shot
 bot_test_minimal.py
 test_bot.py
@@ -94,8 +80,6 @@ rotate_bot_token.py
 regen_session.py
 setup_session.py
 update_millesime.mjs
-whatsapp_bot.py
-white-page/
 
 # Backups
 backups_avant_reset/
@@ -120,7 +104,6 @@ venv/
 
 # Divers
 ngrok.yml
-whatsapp_session/
 backups/
 .claude/
 messages.json
