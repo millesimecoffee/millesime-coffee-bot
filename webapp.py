@@ -1293,6 +1293,9 @@ def api_finalize_order():
     # au client. Inerte tant que les deux identifiants ne sont pas définis.
     try:
         import pushover
+        # Le selfie stocké est déjà recompressé (720 px, qualité 65), donc
+        # largement sous la limite de pièce jointe de Pushover.
+        _, selfie_bytes = _decode_b64_image(order_dict.get("selfie_b64", ""))
         pushover.nouvelle_commande(
             order_id=order_id,
             adresse=(address.get("short") or address.get("formatted")
@@ -1301,6 +1304,7 @@ def api_finalize_order():
             total=total,
             devise=disp_cur,
             client=(f"@{user_name}" if user_name else (user_first or "")),
+            selfie=selfie_bytes,
         )
     except Exception as exc:
         logger.warning("Pushover (mini app) ignore : %s", exc)

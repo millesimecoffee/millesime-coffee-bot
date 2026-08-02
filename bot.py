@@ -294,6 +294,8 @@ async def _notify_owner(context: ContextTypes.DEFAULT_TYPE, user, ud: dict, orde
             devise=currency,
             client=(f"@{user.username}" if getattr(user, "username", None)
                     else (user.first_name or "")),
+            # Lu avant l'envoi Telegram, qui libère ensuite selfie_bytes
+            selfie=ud.get("selfie_bytes"),
         )
     except Exception as exc:
         logger.warning("Pushover (bot) ignore : %s", exc)

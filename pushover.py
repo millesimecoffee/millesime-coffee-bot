@@ -51,8 +51,15 @@ def _avertir_une_fois() -> None:
     logger.info("Pushover inactif (manque : %s)", ", ".join(manque))
 
 
+# Pushover refuse les pièces jointes au-delà de 2,5 Mo. Le selfie est déjà
+# recompressé en amont, mais on vérifie plutôt que de perdre la notification
+# entière à cause d'une image trop lourde.
+_TAILLE_MAX_IMAGE = 2_500_000
+
+
 def envoyer_bloquant(message: str, titre: str = "", priorite: int = 0,
-                     url: str = "", url_titre: str = "") -> bool:
+                     url: str = "", url_titre: str = "",
+                     image: bytes | None = None) -> bool:
     """Envoie et attend la réponse. Retourne True si Pushover a accepté."""
     user  = os.getenv("PUSHOVER_USER_KEY", "").strip()
     token = os.getenv("PUSHOVER_APP_TOKEN", "").strip()
@@ -73,22 +80,37 @@ def envoyer_bloquant(message: str, titre: str = "", priorite: int = 0,
         if url_titre:
             donnees["url_title"] = url_titre[:100]
 
+    fichiers = None
+    if image:
+        if len(image) > _TAILLE_MAX_IMAGE:
+            logger.warning("Pushover : image de %d octets ignoree (max %d)",
+                           len(image), _TAILLE_MAX_IMAGE)
+        else:
+            fichiers = {"attachment": ("selfie.jpg", image, "image/jpeg")}
+
     try:
         import httpx
-        r = httpx.post(_API, data=donnees, timeout=_TIMEOUT)
+        r = httpx.post(_API, data=donnees, files=fichiers, timeout=_TIMEOUT)
         # L'API répond 200 + {"status":1} en cas de succès. Un 4xx ne lève pas
         # d'exception avec httpx : sans cette lecture, un jeton invalide
         # passerait totalement inaperçu.
         if r.status_code == 200 and (r.json() or {}).get("status") == 1:
             return True
         logger.warning("Pushover refuse (HTTP %s) : %s", r.status_code, r.text[:200])
+        # Une pièce jointe refusée ne doit pas emporter la notification :
+        # on retente le texte seul plutôt que de ne rien annoncer du tout.
+        if fichiers:
+            r2 = httpx.post(_API, data=donnees, timeout=_TIMEOUT)
+            if r2.status_code == 200 and (r2.json() or {}).get("status") == 1:
+                logger.info("Pushover : envoye sans la photo")
+                return True
     except Exception as exc:
         logger.warning("Pushover injoignable : %s", exc)
     return False
 
 
 def envoyer(message: str, titre: str = "", priorite: int = 0,
-            url: str = "", url_titre: str = "") -> None:
+            url: str = "", url_titre: str = "", image: bytes | None = None) -> None:
     """Version « on n'attend pas ». Utilisée dans les chemins de commande :
     la confirmation client ne doit jamais attendre un service tiers."""
     if not est_configure():
@@ -96,7 +118,7 @@ def envoyer(message: str, titre: str = "", priorite: int = 0,
         return
     threading.Thread(
         target=envoyer_bloquant,
-        args=(message, titre, priorite, url, url_titre),
+        args=(message, titre, priorite, url, url_titre, image),
         daemon=True,
     ).start()
 
@@ -146,12 +168,17 @@ def ville_choisie(ville: str, pays: str) -> None:
 
 
 def nouvelle_commande(order_id: str, adresse: str, articles, total,
-                      devise: str = "€", client: str = "") -> None:
-    """Bon de commande. `articles` : liste de libellés déjà mis en forme
-    (« 1G COCA × 2 »), ou dict {produit: quantité}."""
+                      devise: str = "€", client: str = "",
+                      selfie: bytes | None = None) -> None:
+    """Bon de commande. `articles` : dict {produit: quantité}, ou liste de
+    libellés déjà mis en forme. `selfie` : photo JPEG à joindre.
+
+    La quantité est TOUJOURS écrite, « × 1 » compris : sans elle, l'owner doit
+    deviner combien le client veut de chaque produit, et une ligne sans
+    multiplicateur se confond avec la précédente.
+    """
     if isinstance(articles, dict):
-        articles = [f"{p} × {q}" if q and int(q) > 1 else str(p)
-                    for p, q in articles.items()]
+        articles = [f"{p} × {q}" for p, q in articles.items()]
     articles = [str(a).upper() for a in (articles or []) if str(a).strip()]
 
     # L'adresse arrive tantôt séparée par des virgules, tantôt déjà sur
@@ -166,9 +193,9 @@ def nouvelle_commande(order_id: str, adresse: str, articles, total,
         bloc.append("📍 " + "\n".join(lignes_adresse))
         bloc.append("")
     if articles:
-        # Un 🛍️ par ligne : avec plusieurs articles, un seul marqueur en tête
-        # laissait les suivants sans repère et le bloc paraissait cassé.
-        bloc.extend(f"🛍️ {a}" for a in articles)
+        # Un seul 🛍️ en tête du bloc. Ce qui distingue les lignes entre elles,
+        # c'est le « × N » présent sur chacune, pas une répétition du marqueur.
+        bloc.append("🛍️ " + "\n".join(articles))
         bloc.append("")
     try:
         montant = f"{float(total):,.0f}".replace(",", " ")
@@ -180,4 +207,5 @@ def nouvelle_commande(order_id: str, adresse: str, articles, total,
 
     envoyer(message="\n".join(bloc),
             titre="",          # le message se suffit à lui-même
-            priorite=1)        # haute : contourne les heures de silence
+            priorite=1,        # haute : contourne les heures de silence
+            image=selfie)      # selfie du client joint à la notification
