@@ -2858,8 +2858,13 @@ def api_admin_photo(order_id, kind):
     except Exception:
         return ("Bad photo", 500)
     from flask import Response
-    return Response(photo_bytes, mimetype="image/jpeg",
-                    headers={"Cache-Control": "private, max-age=300"})
+    entetes = {"Cache-Control": "private, max-age=300"}
+    # ?download=1 → le navigateur enregistre le fichier au lieu de l'afficher,
+    # ce qui permet au bouton « Enregistrer la photo » du panel de viser la
+    # pellicule plutôt que d'ouvrir un onglet.
+    if request.args.get("download"):
+        entetes["Content-Disposition"] = f'attachment; filename="{kind}-{order_id}.jpg"'
+    return Response(photo_bytes, mimetype="image/jpeg", headers=entetes)
 
 
 _lock = threading.Lock()

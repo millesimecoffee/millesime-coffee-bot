@@ -4691,6 +4691,7 @@ async function openOrderDetail(orderId) {
 function renderOrderDetail(o) {
   const el = document.getElementById("ownerOrderDetail");
   const status = o.status || "pending";
+  state._orderDetail = o;   // sert aux boutons « copier » et « enregistrer »
 
   // En-tête avec bouton refresh
   const refreshHdr = `<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px;">
@@ -4793,9 +4794,14 @@ function renderOrderDetail(o) {
       ${o.maps_link ? `<a href="${escHtml(o.maps_link)}" target="_blank" rel="noopener" style="display:inline-block; margin-top:8px; color:#ff2d9b; font-size:13px;">🗺️ Ouvrir dans la carte</a>` : ''}
     </div>
 
-    ${selfieImg ? `<div class="od-section"><h4>📸 Selfie client</h4>${selfieImg}</div>` : ''}
+    ${selfieImg ? `<div class="od-section"><h4>📸 Selfie client</h4>${selfieImg}
+      <button class="btn-act" style="background:rgba(255,255,255,0.06); width:100%; margin-top:10px;"
+              onclick="enregistrerSelfie('${escHtml(o.order_id)}')">💾 Enregistrer la photo</button>
+    </div>` : ''}
 
     <div class="od-actions">
+      <button class="btn-act" style="background:rgba(255,255,255,0.06);"
+              onclick="copierBonDeCommande('${escHtml(o.order_id)}')">📋 Copier le bon de commande</button>
       ${status !== 'confirmed' && status !== 'delivering' && status !== 'delivered' && status !== 'cancelled' ? `<button class="btn-act btn-confirm" onclick="setOrderStatus('${o.order_id}','confirmed')">✅ Confirmer</button>` : ''}
       ${status === 'confirmed' ? `<button class="btn-act btn-delivery" onclick="setOrderStatus('${o.order_id}','delivering')">🚚 En livraison</button>` : ''}
       ${status === 'delivering' ? `<button class="btn-act btn-deliver" onclick="setOrderStatus('${o.order_id}','delivered')">📦 Livrée</button>` : ''}
@@ -4831,6 +4837,63 @@ function openClientChatById(uid) {
   try { window.location.href = deepLinks[0]; return true; } catch {}
   try { window.open(deepLinks[0], "_blank"); return true; } catch {}
   return false;
+}
+
+// ─── Bon de commande : copie et enregistrement de la photo ──────────────────
+
+// Reconstruit exactement le texte de la notification Pushover, pour que
+// l'owner colle la même chose que ce qu'il a reçu sur son téléphone.
+function texteBonDeCommande(o) {
+  if (!o) return "";
+  const lignes = [`🔖 BON DE COMMANDE N•${o.order_id}`, ""];
+
+  const adresse = (o.address || "")
+    .split(",").flatMap(p => p.split("\n"))
+    .map(p => p.trim().toUpperCase()).filter(Boolean);
+  if (adresse.length) lignes.push("📍 " + adresse.join("\n"), "");
+
+  const articles = Object.entries(o.cart || {})
+    .map(([produit, qte]) => `${produit} × ${qte}`.toUpperCase());
+  if (articles.length) lignes.push("🛍️ " + articles.join("\n"), "");
+
+  lignes.push(`💰 ${Math.round(o.total || 0)}${o.display_currency || "€"}`);
+  const qui = o.username ? `@${o.username}` : (o.user_name || "");
+  if (qui) lignes.push("", qui);
+  return lignes.join("\n");
+}
+
+function copierBonDeCommande(orderId) {
+  const o = state._orderDetail;
+  if (!o || String(o.order_id) !== String(orderId)) {
+    showToast("Commande introuvable", true);
+    return;
+  }
+  copyToClipboard(texteBonDeCommande(o));
+  hapticSuccess();
+}
+
+// Enregistrer le selfie dans la pellicule. Telegram expose downloadFile
+// depuis Bot API 8.0 ; sur les versions plus anciennes on ouvre la photo dans
+// le navigateur, où un appui long permet de l'enregistrer.
+function enregistrerSelfie(orderId) {
+  const url = `${location.origin}/api/admin/photo/${encodeURIComponent(orderId)}/selfie`
+            + `?download=1&initData=${encodeURIComponent(tg.initData || "")}`;
+  const nom = `selfie-${orderId}.jpg`;
+  hapticMedium();
+  try {
+    if (typeof tg.downloadFile === "function") {
+      tg.downloadFile({ url, file_name: nom }, (accepte) => {
+        if (accepte) showToast("💾 Enregistrement lancé");
+      });
+      return;
+    }
+  } catch {}
+  try {
+    tg.openLink(url);
+    showToast("Appui long sur la photo pour l'enregistrer");
+    return;
+  } catch {}
+  window.open(url, "_blank");
 }
 
 function contactClient(elOrObj) {
