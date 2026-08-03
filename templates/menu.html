@@ -2711,12 +2711,12 @@
 
     <div class="card-grid" style="grid-template-columns:1fr 1fr; margin-bottom: 14px;">
       <div class="stat-mini">
-        <div class="lbl">Hebdomadaire</div>
+        <div class="lbl">7 derniers jours</div>
         <div class="val grad" id="caSemaine">— €</div>
         <div class="sous" id="nbSemaine">—</div>
       </div>
       <div class="stat-mini">
-        <div class="lbl">Mensuel</div>
+        <div class="lbl">Ce mois-ci</div>
         <div class="val grad" id="caMois">— €</div>
         <div class="sous" id="nbMois">—</div>
       </div>
@@ -3306,6 +3306,10 @@ async function checkPassword() {
       // quand c'est celui du panneau, depuis n'importe quel compte Telegram.
       if (data.admin) {
         state.is_owner = true;
+        // Sans ça, la carte « Verrouiller le panneau » resterait cachée :
+        // elle ne s'affiche que si un mot de passe admin est configuré, et
+        // ce chemin court-circuite l'appel à /api/admin/status qui le disait.
+        state._adminPasswordSet = true;
         showOwnerHome();
         return;
       }

@@ -65,12 +65,28 @@ def _invalidate_cache() -> None:
     _ALL_CACHE["ts"]   = 0.0
 
 
+# Cache de lecture du fichier, invalidé par la signature du fichier lui-même.
+# Le panel owner se rafraîchit toutes les 3 s et orders.json est à ~97 % des
+# selfies en base64 : sans cache, on ré-analyserait plusieurs mégaoctets de
+# JSON en continu pour des données inchangées.
+_FILE_CACHE: dict = {"cle": None, "data": None}
+
+
 def _load_from_file() -> list:
     if not _ORDERS_FILE.exists():
         return []
     try:
+        st = _ORDERS_FILE.stat()
+        cle = (st.st_mtime_ns, st.st_size)
+        if _FILE_CACHE["cle"] == cle and _FILE_CACHE["data"] is not None:
+            # Copie de surface : un appelant qui ajoute ou retire une commande
+            # ne doit pas modifier le cache par effet de bord.
+            return list(_FILE_CACHE["data"])
         with _ORDERS_FILE.open("r", encoding="utf-8") as f:
-            return json.load(f)
+            data = json.load(f)
+        _FILE_CACHE["cle"] = cle
+        _FILE_CACHE["data"] = data
+        return list(data)
     except (json.JSONDecodeError, OSError) as exc:
         logger.error("Lecture orders.json : %s", exc)
         return []

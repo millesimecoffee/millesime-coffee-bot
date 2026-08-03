@@ -1489,27 +1489,12 @@ def _is_owner_init(parsed_init: dict | None) -> int | None:
     return None
 
 
-def _check_owner(req) -> int | None:
-    """Lit initData depuis le body JSON (POST) ou la query string (GET)
-    et vérifie que c'est bien le owner. Retourne user_id ou None.
-    """
-    bot_token = os.getenv("BOT_TOKEN", "")
-    if req.method == "POST":
-        try:
-            data = req.get_json(force=True, silent=True) or {}
-        except Exception:
-            data = {}
-        init_data = data.get("initData", "")
-    else:
-        init_data = req.args.get("initData", "")
-    parsed = _verify_init_data(init_data, bot_token)
-    return _is_owner_init(parsed)
 
 
 # ═══════════════════════════════════════════════════════════════════════════
 # Verrou du panneau admin — 2e barrière après l'identité Telegram
 # ═══════════════════════════════════════════════════════════════════════════
-# _check_owner prouve « ce compte Telegram est celui de l'owner ». Ça ne
+# L'identité Telegram seule prouve « ce compte est celui de l'owner ». Ça ne
 # protège pas d'un téléphone déverrouillé laissé sans surveillance : le mot de
 # passe ci-dessous ajoute quelque chose que l'on sait, en plus de quelque chose
 # que l'on possède.
@@ -1556,7 +1541,8 @@ def _admin_is_unlocked(uid) -> bool:
 def _uid_authentifie(req) -> int | None:
     """user_id d'une session Telegram valide, quel que soit le compte.
 
-    Distinct de _check_owner, qui exige en plus que ce soit OWNER_USER_ID.
+    Ne présume pas que la session est celle de l'owner : c'est le mot de
+    passe qui donne le droit d'entrer, pas le compte.
     Depuis que le mot de passe admin ouvre le panel depuis n'importe quel
     téléphone, il faut pouvoir identifier une session sans présumer de qui
     elle est : c'est le mot de passe qui donne le droit, pas le compte.
@@ -1747,7 +1733,11 @@ def api_admin_orders():
     from datetime import datetime as _dt, timedelta as _td
     maintenant = _dt.now(_PARIS)
     aujourdhui = maintenant.date()
-    debut_semaine = aujourdhui - _td(days=aujourdhui.weekday())   # lundi
+    # 7 jours glissants plutôt que la semaine calendaire : sur un lundi matin,
+    # « depuis lundi » vaut zéro et fait disparaître le week-end, alors que
+    # c'est justement là que le chiffre se fait. Le mois reste calendaire,
+    # c'est le sens comptable de « mensuel ».
+    debut_semaine = aujourdhui - _td(days=6)
     debut_mois    = aujourdhui.replace(day=1)
 
     counts = {"pending": 0, "confirmed": 0, "delivering": 0, "delivered": 0, "cancelled": 0}
