@@ -538,12 +538,24 @@ def api_auth():
 
     pwd = str(data.get("password", "")).strip()
 
-    if not pwd or pwd != expected:
+    # Une seule porte d'entrée, deux mots de passe. Le mot de passe admin est
+    # testé en premier : il ouvre le panel depuis n'importe quel compte et
+    # n'importe quel téléphone, c'est lui qui donne le droit, pas l'identité.
+    mdp_admin = _admin_password()
+    est_admin = bool(mdp_admin) and hmac.compare_digest(
+        _normalise_mdp(pwd), _normalise_mdp(mdp_admin))
+
+    if not est_admin and (not pwd or _normalise_mdp(pwd) != _normalise_mdp(expected)):
         with _pwd_lock:
             for k in keys:
                 _pwd_attempts.setdefault(k, []).append(now)
         time.sleep(0.5)  # léger throttle pour ralentir le brute force
         return jsonify({"ok": False, "error": "wrong_password"})
+
+    if est_admin and uid:
+        with _admin_lock:
+            _admin_unlocked[uid] = time.time() + _ADMIN_SESSION_TTL
+        logger.info("panel admin ouvert par mot de passe pour %s", uid)
 
     # OK — recharger le catalogue (au cas où on l'aurait modifié)
     try:
@@ -551,6 +563,7 @@ def api_auth():
         importlib.reload(catalog_mod)
         resp = {
             "ok":         True,
+            "admin":      est_admin,   # la Mini App bascule direct sur le panel
             "catalog":    catalog_mod.CATALOG,
             "min_orders": catalog_mod.MIN_ORDER,
             "currencies": catalog_mod.CURRENCIES,
@@ -571,7 +584,9 @@ def api_auth():
         bot_token = os.getenv("BOT_TOKEN", "")
         init_data = (data or {}).get("initData", "") if isinstance(data, dict) else ""
         parsed = _verify_init_data(init_data, bot_token) if init_data else None
-        if parsed:
+        # Une entrée par le mot de passe admin n'est pas une visite client :
+        # elle ne doit pas déclencher « UN CLIENT EST ENTRÉE DANS LE SHOP ».
+        if parsed and not est_admin:
             try:
                 _notify_owner_client_entry(parsed)
             except Exception:
@@ -1538,13 +1553,54 @@ def _admin_is_unlocked(uid) -> bool:
         return False
 
 
+def _uid_authentifie(req) -> int | None:
+    """user_id d'une session Telegram valide, quel que soit le compte.
+
+    Distinct de _check_owner, qui exige en plus que ce soit OWNER_USER_ID.
+    Depuis que le mot de passe admin ouvre le panel depuis n'importe quel
+    téléphone, il faut pouvoir identifier une session sans présumer de qui
+    elle est : c'est le mot de passe qui donne le droit, pas le compte.
+    """
+    bot_token = os.getenv("BOT_TOKEN", "")
+    if req.method == "POST":
+        try:
+            data = req.get_json(force=True, silent=True) or {}
+        except Exception:
+            data = {}
+        init_data = data.get("initData", "")
+    else:
+        init_data = req.args.get("initData", "")
+    parsed = _verify_init_data(init_data, bot_token)
+    if not parsed:
+        return None
+    import json as _json
+    try:
+        return int(_json.loads(parsed.get("user", "{}")).get("id", 0)) or None
+    except Exception:
+        return None
+
+
+def _a_acces_admin(uid) -> bool:
+    """Le panel est ouvert à qui a saisi le mot de passe admin. Si aucun mot de
+    passe n'est configuré, on retombe sur l'ancien comportement : seul le
+    compte owner entre — pour ne jamais laisser le panel grand ouvert."""
+    if uid is None:
+        return False
+    if _admin_is_unlocked(uid):
+        return True
+    if not _admin_password():
+        owner_id = os.getenv("OWNER_USER_ID", "").strip()
+        return bool(owner_id) and str(uid) == owner_id
+    return False
+
+
 def _guard_admin(req):
     """Renvoie None si l'accès au panel est autorisé, sinon la réponse d'erreur.
     À appeler en tête de chaque endpoint /api/admin/*."""
-    uid = _check_owner(req)
+    uid = _uid_authentifie(req)
     if uid is None:
-        return jsonify({"ok": False, "error": "not_owner"}), 403
-    if _admin_password() and not _admin_is_unlocked(uid):
+        return jsonify({"ok": False, "error": "auth_failed"}), 401
+    if not _a_acces_admin(uid):
         return jsonify({"ok": False, "error": "admin_locked"}), 403
     return None
 
@@ -1556,14 +1612,19 @@ def api_admin_status():
     d'afficher l'écran de mot de passe plutôt qu'un refus sec.
     POST {initData}
     """
-    uid = _check_owner(request)
+    uid = _uid_authentifie(request)
     if uid is None:
         return jsonify({"ok": True, "is_owner": False, "locked": False})
     verrou = bool(_admin_password())
+    acces = _a_acces_admin(uid)
+    owner_id = os.getenv("OWNER_USER_ID", "").strip()
     return jsonify({
         "ok": True,
-        "is_owner": True,
-        "locked": verrou and not _admin_is_unlocked(uid),
+        # « is_owner » = a le droit d'ouvrir le panel maintenant. Ce n'est plus
+        # une question d'identité mais de mot de passe saisi.
+        "is_owner": acces,
+        "compte_owner": bool(owner_id) and str(uid) == owner_id,
+        "locked": verrou and not acces,
         "password_set": verrou,
     })
 
@@ -1573,9 +1634,9 @@ def api_admin_unlock():
     """Déverrouille le panel pour la durée de la session.
     POST {initData, password}
     """
-    uid = _check_owner(request)
+    uid = _uid_authentifie(request)
     if uid is None:
-        return jsonify({"ok": False, "error": "not_owner"}), 403
+        return jsonify({"ok": False, "error": "auth_failed"}), 401
 
     attendu = _admin_password()
     if not attendu:
@@ -1615,9 +1676,9 @@ def api_admin_lock():
     """Reverrouille immédiatement (bouton « Verrouiller » du panel).
     POST {initData}
     """
-    uid = _check_owner(request)
+    uid = _uid_authentifie(request)
     if uid is None:
-        return jsonify({"ok": False, "error": "not_owner"}), 403
+        return jsonify({"ok": False, "error": "auth_failed"}), 401
     with _admin_lock:
         _admin_unlocked.pop(str(uid), None)
     return jsonify({"ok": True})
@@ -2895,10 +2956,10 @@ def api_admin_photo(order_id, kind):
     # Cette route sert les selfies clients : elle doit suivre le même verrou
     # que le reste du panel, sinon les photos resteraient accessibles alors
     # que l'admin est verrouillé.
-    uid = _check_owner(request)
+    uid = _uid_authentifie(request)
     if uid is None:
         return ("Forbidden", 403)
-    if _admin_password() and not _admin_is_unlocked(uid):
+    if not _a_acces_admin(uid):
         return ("Locked", 403)
     if kind not in ("selfie", "proof"):
         return ("Bad kind", 400)

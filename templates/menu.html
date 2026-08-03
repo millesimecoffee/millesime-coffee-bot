@@ -3302,9 +3302,15 @@ async function checkPassword() {
       state.countryCurrencies = data.country_currencies || {};
       state.support = data.support || {};
       state.payment_config = data.payment_config || {};
-      // Owner ? Et si oui, le panneau est-il verrouillé par mot de passe ?
-      // /api/admin/status reste joignable même verrouillé : c'est ce qui
-      // permet d'afficher l'écran de saisie au lieu d'un refus sec.
+      // Le mot de passe saisi décide du mode : le serveur répond admin=true
+      // quand c'est celui du panneau, depuis n'importe quel compte Telegram.
+      if (data.admin) {
+        state.is_owner = true;
+        showOwnerHome();
+        return;
+      }
+      // Sinon on demande au serveur si cette session a déjà un accès ouvert
+      // (mot de passe saisi plus tôt, session encore valide).
       let panelVerrouille = false;
       try {
         const ownerCheck = await fetch("/api/admin/status", {
@@ -4317,20 +4323,24 @@ function showOwnerHome() {
   startOwnerAutoRefresh();
 }
 
+const OWNER_REFRESH_MS = 3000;
+
 function startOwnerAutoRefresh() {
   stopOwnerAutoRefresh();
-  // Refresh toutes les 20s tant qu'on est dans un écran owner
   state._ownerRefreshTimer = setInterval(() => {
     const cur = document.querySelector(".screen.active")?.id || "";
-    if (cur.startsWith("screen-owner-")) {
-      loadOwnerData(false).then(() => {
-        // Si on est sur la liste, rafraîchir aussi le rendu
-        if (cur === "screen-owner-orders") renderOwnerOrders();
-      });
-    } else {
-      stopOwnerAutoRefresh();
-    }
-  }, 20000);
+    if (!cur.startsWith("screen-owner-")) { stopOwnerAutoRefresh(); return; }
+    // Onglet en arrière-plan : inutile de consommer réseau et batterie pour
+    // un écran que personne ne regarde. La reprise est immédiate au retour.
+    if (document.hidden) return;
+    // Un cycle de 3 s est plus court qu'une requête lente : sans ce verrou,
+    // les appels s'empileraient et se doubleraient les uns les autres.
+    if (state._ownerRefreshEnCours) return;
+    state._ownerRefreshEnCours = true;
+    loadOwnerData(false)
+      .then(() => { if (cur === "screen-owner-orders") renderOwnerOrders(); })
+      .finally(() => { state._ownerRefreshEnCours = false; });
+  }, OWNER_REFRESH_MS);
 }
 
 function stopOwnerAutoRefresh() {
