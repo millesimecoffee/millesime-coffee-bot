@@ -2403,7 +2403,7 @@
   /* Le conteneur générique impose ses marges : on les reprend ici. */
   #screen-owner-detail > .container { padding: 0 !important; }
 
-  .od2 { padding: 0 18px calc(180px + env(safe-area-inset-bottom, 0px)); }
+  .od2 { padding: 0 18px calc(150px + env(safe-area-inset-bottom, 0px)); }
 
   /* ── Barre de navigation ─────────────────────────────────────────── */
   .od2-nav {
@@ -2443,14 +2443,14 @@
     background: var(--od2-carte);
     border: 0.5px solid var(--od2-trait);
     border-radius: 22px;
-    padding: 18px;
-    margin-bottom: 14px;
+    padding: 16px;
+    margin-bottom: 11px;
     box-shadow: 0 1px 2px rgba(0,0,0,0.4);
   }
   .od2-titre {
     font-size: 12px; font-weight: 600; letter-spacing: 0.6px;
     text-transform: uppercase; color: var(--od2-txt-3);
-    margin: 0 0 14px 2px;
+    margin: 0 0 12px 2px;
   }
 
   /* ── En-tête de commande ─────────────────────────────────────────── */
@@ -2478,10 +2478,10 @@
   /* ── Résumé en 4 chiffres ────────────────────────────────────────── */
   .od2-resume {
     display: grid; grid-template-columns: 1fr 1fr; gap: 1px;
-    margin-top: 18px; border-radius: 16px; overflow: hidden;
+    margin-top: 15px; border-radius: 16px; overflow: hidden;
     background: var(--od2-trait);
   }
-  .od2-resume > div { background: var(--od2-carte-2); padding: 14px 16px; }
+  .od2-resume > div { background: var(--od2-carte-2); padding: 11px 13px; }
   .od2-resume .v {
     font-size: 19px; font-weight: 700; color: var(--od2-txt);
     letter-spacing: -0.4px; font-variant-numeric: tabular-nums;
@@ -2522,7 +2522,7 @@
   /* ── Ligne générique (client, paiement) ──────────────────────────── */
   .od2-ligne {
     display: flex; align-items: center; gap: 14px;
-    padding: 12px 0; border-top: 0.5px solid var(--od2-trait);
+    padding: 10px 0; border-top: 0.5px solid var(--od2-trait);
   }
   .od2-ligne:first-of-type { border-top: none; padding-top: 0; }
   .od2-ligne .k { font-size: 15px; color: var(--od2-txt-2); flex: 1; }
@@ -2535,11 +2535,47 @@
   /* ── Client ──────────────────────────────────────────────────────── */
   .od2-client { display: flex; align-items: center; gap: 14px; }
   .od2-avatar {
-    width: 52px; height: 52px; border-radius: 50%; flex: 0 0 52px;
+    width: 56px; height: 56px; border-radius: 50%; flex: 0 0 56px;
     display: flex; align-items: center; justify-content: center;
-    font-size: 21px; font-weight: 600; color: #fff;
+    font-size: 22px; font-weight: 600; color: #fff; overflow: hidden;
     background: linear-gradient(140deg, #7C5CFF, #B45CFF);
+    border: 2px solid rgba(124,92,255,0.45); position: relative;
   }
+  /* Le selfie sert de photo de profil : la grande carte photo disparaît,
+     l'écran raccourcit d'autant. Un appui l'agrandit. */
+  .od2-avatar.photo { cursor: pointer; background: var(--od2-carte-2); }
+  .od2-avatar img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .od2-avatar.photo::after {
+    content: "⤢"; position: absolute; right: -1px; bottom: -1px;
+    width: 19px; height: 19px; border-radius: 50%;
+    background: var(--od2-violet); color: #fff;
+    font-size: 10px; display: flex; align-items: center; justify-content: center;
+    border: 2px solid var(--od2-carte);
+  }
+
+  /* Agrandissement du selfie */
+  .od2-loupe {
+    position: fixed; inset: 0; z-index: 9999;
+    display: flex; align-items: center; justify-content: center;
+    padding: 24px; background: rgba(0,0,0,0.92);
+    backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+  }
+  .od2-loupe img { max-width: 100%; max-height: 80vh; border-radius: 18px; }
+  .od2-loupe .fermer {
+    position: absolute; top: calc(16px + env(safe-area-inset-top, 0px)); right: 18px;
+    width: 40px; height: 40px; border-radius: 50%; border: none;
+    background: rgba(255,255,255,0.14); color: #fff; font-size: 19px; cursor: pointer;
+  }
+
+  /* En-tête pays / ville */
+  .od2-lieu {
+    display: flex; align-items: center; gap: 10px;
+    padding: 11px 13px; margin-bottom: 13px;
+    border-radius: 14px; background: var(--od2-carte-2);
+  }
+  .od2-lieu .drapeau { font-size: 24px; line-height: 1; }
+  .od2-lieu .ville { font-size: 16px; font-weight: 600; color: var(--od2-txt); letter-spacing: -0.3px; }
+  .od2-lieu .pays  { font-size: 12px; color: var(--od2-txt-2); margin-top: 1px; }
   .od2-client .nom { font-size: 17px; font-weight: 600; color: var(--od2-txt); letter-spacing: -0.3px; }
   .od2-client .sous { font-size: 14px; color: var(--od2-txt-2); margin-top: 2px; }
   .od2-msg {
@@ -2575,7 +2611,7 @@
   .od2-maps:active { transform: scale(0.985); background: rgba(10,132,255,0.24); }
 
   /* ── Panier ──────────────────────────────────────────────────────── */
-  .od2-art { display: flex; align-items: center; gap: 13px; padding: 11px 0; }
+  .od2-art { display: flex; align-items: center; gap: 13px; padding: 9px 0; }
   .od2-art + .od2-art { border-top: 0.5px solid var(--od2-trait); }
   .od2-art .ic {
     width: 40px; height: 40px; flex: 0 0 40px; border-radius: 12px;
@@ -5084,6 +5120,20 @@ function _dateLongue(iso) {
   return `${d.getDate()} ${_MOIS_FR[d.getMonth()]} ${d.getFullYear()} à ${p(d.getHours())}:${p(d.getMinutes())}`;
 }
 
+// Agrandissement du selfie : le selfie sert de photo de profil, il n'y a donc
+// plus de grande carte photo. Un appui sur l'avatar l'ouvre en plein écran.
+function ouvrirSelfie(orderId) {
+  const url = `/api/admin/photo/${encodeURIComponent(orderId)}/selfie`
+            + `?initData=${encodeURIComponent(tg.initData || "")}`;
+  const fond = document.createElement("div");
+  fond.className = "od2-loupe";
+  fond.innerHTML = `<button class="fermer" aria-label="Fermer">✕</button><img src="${url}" alt="">`;
+  const fermer = () => fond.remove();
+  fond.addEventListener("click", fermer);
+  document.body.appendChild(fond);
+  hapticSelect();
+}
+
 function renderOrderDetail(o) {
   const el = document.getElementById("ownerOrderDetail");
   const status = o.status || "pending";
@@ -5093,44 +5143,48 @@ function renderOrderDetail(o) {
   const dev = escHtml(o.display_currency || "€");
   const nb  = (n) => Number(n || 0).toLocaleString("fr-FR");
 
-  // ── Statut : libellé, teinte, position dans la progression ──────────────
+  // ── Pays / ville ────────────────────────────────────────────────────────
+  // Le catalogue stocke le pays sous la forme « 🇫🇷 France » : le drapeau est
+  // le premier jeton. Sans lui, l'adresse seule ne dit pas où livrer.
+  const pays     = String(o.country || "").trim();
+  const drapeau  = pays.split(" ")[0] || "🌍";
+  const paysNom  = pays.includes(" ") ? pays.slice(pays.indexOf(" ") + 1).trim() : pays;
+  const ville    = o.city || "—";
+
+  // ── Statut ──────────────────────────────────────────────────────────────
   const STATUTS = {
-    pending:             { txt: "En attente",   cls: "attente",   etape: 0 },
-    confirmed:           { txt: "Confirmée",    cls: "confirmee", etape: 1 },
-    delivering:          { txt: "En livraison", cls: "livraison", etape: 2 },
-    // etape 4 = au-delà de la dernière : les 4 étapes passent en « faite »,
-    // une commande terminée ne doit plus rien montrer d'orange.
-    delivered:           { txt: "Terminée",     cls: "terminee",  etape: 4 },
-    cancelled:           { txt: "Annulée",      cls: "annulee",   etape: -1 },
-    cancelled_by_client: { txt: "Annulée client", cls: "annulee", etape: -1 },
+    pending:             { txt: "En attente",     cls: "attente",   etape: 0 },
+    confirmed:           { txt: "Confirmée",      cls: "confirmee", etape: 1 },
+    delivering:          { txt: "En livraison",   cls: "livraison", etape: 2 },
+    delivered:           { txt: "Terminée",       cls: "terminee",  etape: 4 },
+    cancelled:           { txt: "Annulée",        cls: "annulee",   etape: -1 },
+    cancelled_by_client: { txt: "Annulée client", cls: "annulee",   etape: -1 },
   };
   const st = STATUTS[status] || STATUTS.pending;
   const annulee = st.etape < 0;
+  const teinte = { attente: "orange", confirmee: "bleu", livraison: "violet",
+                   terminee: "vert", annulee: "rouge" }[st.cls];
 
   // ── Progression ─────────────────────────────────────────────────────────
   const ETAPES = ["Reçue", "Confirmée", "En livraison", "Terminée"];
   const progression = `<div class="od2-etapes">${ETAPES.map((nom, i) => {
     let cls = "";
-    if (annulee)            cls = i === 0 ? "annul" : "";
-    else if (i <  st.etape) cls = "faite";
+    if (annulee)             cls = i === 0 ? "annul" : "";
+    else if (i <  st.etape)  cls = "faite";
     else if (i === st.etape) cls = "active";
     const marque = (!annulee && i < st.etape) ? "✓" : (i + 1);
     return `<div class="od2-etape ${cls}">
-      <div class="od2-pastille">${marque}</div>
-      <div class="nom">${nom}</div>
+      <div class="od2-pastille">${marque}</div><div class="nom">${nom}</div>
     </div>`;
   }).join("")}</div>`;
 
-  // ── Panier : prix unitaires pris dans le catalogue si la ville existe ────
-  // Le catalogue peut avoir changé depuis la commande ; sans prix on affiche
-  // la quantité seule plutôt qu'un montant faux.
+  // ── Panier : prix unitaires depuis le catalogue si la ville existe encore ─
   const cart = o.cart || {};
   const tarifs = (state.catalog && state.catalog[o.country] && state.catalog[o.country][o.city]) || {};
   const articles = Object.entries(cart).map(([nom, qte]) => {
     const q = Number(qte) || 0;
     const pu = Number(tarifs[nom]);
     const ligne = isFinite(pu) ? pu * q : null;
-    // Le premier caractère du produit est son emoji dans le catalogue.
     const emoji = [...String(nom)][0] || "•";
     const libelle = String(nom).replace(/^\S+\s*/, "") || String(nom);
     return `<div class="od2-art">
@@ -5139,8 +5193,7 @@ function renderOrderDetail(o) {
       <div class="prix">${ligne !== null ? nb(ligne) + " " + dev : "—"}</div>
     </div>`;
   }).join("");
-  // « 3 articles » = 3 produits distincts, pas 4 unités : c'est le nombre de
-  // lignes que l'owner doit préparer qui compte, pas le cumul des quantités.
+  // Nombre de lignes à préparer, pas le cumul des quantités.
   const nbArticles = Object.keys(cart).length;
 
   // ── Client ──────────────────────────────────────────────────────────────
@@ -5151,52 +5204,34 @@ function renderOrderDetail(o) {
   const dataChat  = `data-user-id="${uidSafe}" `
                   + `data-username="${escHtml(o.username || "")}" `
                   + `data-user-name="${escHtml(nomClient)}"`;
+  const qs = "?initData=" + encodeURIComponent(tg.initData || "");
+  const avatar = o.selfie_b64
+    ? `<div class="od2-avatar photo" onclick="ouvrirSelfie('${oid}')" role="button"
+            aria-label="Agrandir le selfie"><img src="/api/admin/photo/${oid}/selfie${qs}" alt=""></div>`
+    : `<div class="od2-avatar">${initiale}</div>`;
 
   // ── Adresse ─────────────────────────────────────────────────────────────
   const lignesAdr = String(o.address || "")
     .split(",").flatMap(p => p.split("\n"))
     .map(p => p.trim()).filter(Boolean);
-  // Localité pour la tuile de résumé : premier segment après la rue qui
-  // contient des lettres, donc ni le numéro de rue ni le code postal.
-  const localite = lignesAdr.slice(1).find(l => /[a-zA-ZÀ-ÿ]/.test(l)) || o.city || "—";
   const mapsJs = o.maps_link ? String(o.maps_link).replace(/\\/g, "\\\\").replace(/'/g, "\\'") : "";
-
-  // ── Photos ──────────────────────────────────────────────────────────────
-  const qs = "?initData=" + encodeURIComponent(tg.initData || "");
-  const selfie = o.selfie_b64
-    ? `<div class="od2-carte">
-         <div class="od2-titre">Selfie client</div>
-         <img class="od2-photo" src="/api/admin/photo/${oid}/selfie${qs}" alt="">
-         <button class="od2-btn secondaire" style="width:100%; margin-top:14px;"
-                 onclick="enregistrerSelfie('${oid}')"><span class="ic">⬇︎</span> Enregistrer la photo</button>
-       </div>` : "";
-  const preuve = o.proof_b64
-    ? `<div class="od2-carte">
-         <div class="od2-titre">Preuve de paiement</div>
-         <img class="od2-photo" src="/api/admin/photo/${oid}/proof${qs}" alt="">
-       </div>` : "";
 
   // ── Note privée ─────────────────────────────────────────────────────────
   const note = o._client_note || "";
   const noteHtml = note
     ? `<div class="od2-note" onclick="editClientNote(${uidSafe})">
-         <span>📝</span><div>${escHtml(note).replace(/\n/g, "<br>")}</div>
-       </div>`
-    : `<div class="od2-note vide" onclick="editClientNote(${uidSafe})">
-         ＋ Ajouter une note privée sur ce client
-       </div>`;
+         <span>📝</span><div>${escHtml(note).replace(/\n/g, "<br>")}</div></div>`
+    : `<div class="od2-note vide" onclick="editClientNote(${uidSafe})">＋ Note privée sur ce client</div>`;
 
   // ── Actions : une seule action principale, celle de l'étape suivante ────
   const SUITE = {
-    pending:    { s: "confirmed",  txt: "Confirmer",   ic: "✓" },
+    pending:    { s: "confirmed",  txt: "Confirmer",    ic: "✓" },
     confirmed:  { s: "delivering", txt: "En livraison", ic: "🛵" },
-    delivering: { s: "delivered",  txt: "Terminer",    ic: "📦" },
-  };
-  const suite = SUITE[status];
-  const principal = suite
-    ? `<button class="od2-btn principal" onclick="setOrderStatus('${oid}','${suite.s}')">
-         <span class="ic">${suite.ic}</span> ${suite.txt}</button>`
-    : "";
+    delivering: { s: "delivered",  txt: "Terminer",     ic: "📦" },
+  }[status];
+  const principal = SUITE
+    ? `<button class="od2-btn principal" onclick="setOrderStatus('${oid}','${SUITE.s}')">
+         <span class="ic">${SUITE.ic}</span> ${SUITE.txt}</button>` : "";
   const annulable = status !== "delivered" && !annulee;
 
   el.innerHTML = `
@@ -5216,42 +5251,43 @@ function renderOrderDetail(o) {
         </div>
         <span class="od2-badge ${st.cls}">${st.txt}</span>
       </div>
-
       <div class="od2-resume">
         <div><div class="v">${nb(o.total)} ${dev}</div><div class="k">Montant total</div></div>
         <div><div class="v">${nbArticles}</div><div class="k">Article${nbArticles > 1 ? "s" : ""}</div></div>
-        <div><div class="v">${escHtml(localite)}</div><div class="k">Adresse</div></div>
-        <div><div class="v" style="color:var(--od2-${st.cls === "attente" ? "orange" : st.cls === "terminee" ? "vert" : st.cls === "annulee" ? "rouge" : "violet"});">${st.txt}</div><div class="k">Statut</div></div>
+        <div><div class="v">${drapeau} ${escHtml(ville)}</div><div class="k">Ville</div></div>
+        <div><div class="v" style="color:var(--od2-${teinte});">${st.txt}</div><div class="k">Statut</div></div>
       </div>
-    </div>
-
-    <div class="od2-carte">
-      <div class="od2-titre">Progression</div>
-      ${progression}
-      ${o.rating ? `<div class="od2-ligne" style="margin-top:16px;"><span class="k">Note du client</span><span class="v">${"⭐".repeat(o.rating)}</span></div>` : ""}
+      <div style="margin-top:16px; padding-top:15px; border-top:0.5px solid var(--od2-trait);">
+        ${progression}
+      </div>
+      ${o.rating ? `<div class="od2-ligne"><span class="k">Note du client</span><span class="v">${"⭐".repeat(o.rating)}</span></div>` : ""}
     </div>
 
     <div class="od2-carte">
       <div class="od2-titre">Client</div>
       <div class="od2-client">
-        <div class="od2-avatar">${initiale}</div>
+        ${avatar}
         <div style="flex:1; min-width:0;">
           <div class="nom">${escHtml(nomClient)}</div>
           <div class="sous">${o.username ? "@" + escHtml(o.username) : "sans pseudo"}</div>
+          <div class="sous" style="font-size:12px; opacity:.75;">
+            ${escHtml(langues[o.lang] || (o.lang || "fr").toUpperCase())} · ${escHtml(o.user_id)}
+          </div>
         </div>
         <div class="od2-msg" role="button" aria-label="Envoyer un message via le bot"
              onclick="askAndSendMessageToClient({user_id:'${uidSafe}', user_name:'${escHtml(nomClient).replace(/'/g, "\\'")}'})">💬</div>
       </div>
-      <div style="margin-top:16px;">
-        <div class="od2-ligne"><span class="k">Langue</span><span class="v">${escHtml(langues[o.lang] || (o.lang || "fr").toUpperCase())}</span></div>
-        <div class="od2-ligne"><span class="k">Identifiant</span><span class="v mono">${escHtml(o.user_id)}</span></div>
-        ${o.phone ? `<div class="od2-ligne"><span class="k">Téléphone</span><span class="v mono">${escHtml(o.phone)}</span></div>` : ""}
-      </div>
-      <div style="margin-top:14px;">${noteHtml}</div>
+      ${o.selfie_b64 ? `<button class="od2-btn secondaire" style="width:100%; margin-top:12px;"
+              onclick="enregistrerSelfie('${oid}')"><span class="ic">⬇︎</span> Enregistrer la photo</button>` : ""}
+      <div style="margin-top:12px;">${noteHtml}</div>
     </div>
 
     <div class="od2-carte">
-      <div class="od2-titre">Adresse</div>
+      <div class="od2-titre">Livraison</div>
+      <div class="od2-lieu">
+        <span class="drapeau">${drapeau}</span>
+        <div><div class="ville">${escHtml(ville)}</div><div class="pays">${escHtml(paysNom || "—")}</div></div>
+      </div>
       <div class="od2-adresse"${mapsJs ? ` onclick="openExternal('${mapsJs}')" style="cursor:pointer;"` : ""}>
         <div class="od2-pin">📍</div>
         <div class="txt">${lignesAdr.length ? lignesAdr.map(escHtml).join("<br>") : "—"}</div>
@@ -5267,17 +5303,19 @@ function renderOrderDetail(o) {
         <span class="k">Total</span>
         <span class="v">${nb(o.total)} ${dev}</span>
       </div>
+      <div class="od2-ligne" style="margin-top:4px;">
+        <span class="k">💳 Paiement</span>
+        <span class="v">${escHtml(o.payment || "—")}${o.payment_crypto ? " · " + escHtml(o.payment_crypto) : ""}</span>
+      </div>
+      <button class="od2-btn secondaire" style="width:100%; margin-top:13px;"
+              onclick="copierBonDeCommande('${oid}')">
+        <span class="ic">📋</span> Copier le bon pour le livreur</button>
     </div>
 
-    <div class="od2-carte">
-      <div class="od2-titre">Paiement</div>
-      <div class="od2-ligne"><span class="k">💳 Mode</span><span class="v">${escHtml(o.payment || "—")}</span></div>
-      ${o.payment_currency ? `<div class="od2-ligne"><span class="k">Devise</span><span class="v">${escHtml(o.payment_currency)}</span></div>` : ""}
-      ${o.payment_crypto ? `<div class="od2-ligne"><span class="k">Crypto</span><span class="v">${escHtml(o.payment_crypto)}</span></div>` : ""}
-    </div>
-
-    ${selfie}
-    ${preuve}
+    ${o.proof_b64 ? `<div class="od2-carte">
+      <div class="od2-titre">Preuve de paiement</div>
+      <img class="od2-photo" src="/api/admin/photo/${oid}/proof${qs}" alt="">
+    </div>` : ""}
 
     <div class="od2-actions">
       <div class="od2-rangee">
@@ -5320,6 +5358,14 @@ function openClientChatById(uid) {
 function texteBonDeCommande(o) {
   if (!o) return "";
   const lignes = [`🔖 BON DE COMMANDE N•${o.order_id}`, ""];
+
+  // Ville et pays en tête de l'adresse : le livreur doit savoir où il va
+  // avant de lire le nom de rue.
+  const drapeau = (o.country || "").trim().split(" ")[0] || "";
+  const paysNom = (o.country || "").includes(" ")
+    ? o.country.slice(o.country.indexOf(" ") + 1).trim() : (o.country || "");
+  const lieu = [o.city, paysNom].filter(Boolean).join(", ").toUpperCase();
+  if (lieu) lignes.push(`${drapeau} ${lieu}`.trim(), "");
 
   const adresse = (o.address || "")
     .split(",").flatMap(p => p.split("\n"))
