@@ -2377,6 +2377,284 @@
     transition: transform .1s;
   }
   .eta-preset:active { transform: scale(0.94); background: rgba(255,45,155,0.3); }
+
+  /* ══════════════════════════════════════════════════════════════════════
+     DÉTAIL DE COMMANDE — refonte iOS sombre
+     Préfixe `od2-` : le reste de l'app garde ses styles, aucun conflit.
+     ══════════════════════════════════════════════════════════════════════ */
+  #screen-owner-detail {
+    --od2-bg:        #0A0A0F;   /* noir bleuté, fond d'écran */
+    --od2-carte:     #16161E;   /* carte, un cran au-dessus du fond */
+    --od2-carte-2:   #1E1E28;   /* élément dans une carte */
+    --od2-trait:     rgba(255,255,255,0.07);
+    --od2-txt:       #FFFFFF;
+    --od2-txt-2:     #9A9AA5;   /* libellés secondaires */
+    --od2-txt-3:     #6E6E78;   /* métadonnées */
+    --od2-violet:    #7C5CFF;   /* accent principal */
+    --od2-bleu:      #0A84FF;   /* actions secondaires */
+    --od2-orange:    #FF9F0A;   /* en attente */
+    --od2-vert:      #30D158;   /* validé */
+    --od2-rouge:     #FF453A;   /* annulation, et rien d'autre */
+    background: var(--od2-bg);
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display",
+                 "Inter", system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  /* Le conteneur générique impose ses marges : on les reprend ici. */
+  #screen-owner-detail > .container { padding: 0 !important; }
+
+  .od2 { padding: 0 18px calc(180px + env(safe-area-inset-bottom, 0px)); }
+
+  /* ── Barre de navigation ─────────────────────────────────────────── */
+  .od2-nav {
+    position: sticky; top: 0; z-index: 20;
+    display: grid; grid-template-columns: 44px 1fr 44px; align-items: center;
+    /* La barre est hors du bloc `.od2` : elle ne doit donc PAS compenser
+       ses 18 px de padding par une marge négative, sinon elle déborde. */
+    height: 52px; margin: 0 0 8px; padding: 0 10px;
+    background: rgba(10,10,15,0.82);
+    backdrop-filter: saturate(180%) blur(20px);
+    -webkit-backdrop-filter: saturate(180%) blur(20px);
+    border-bottom: 0.5px solid var(--od2-trait);
+  }
+  .od2-nav-titre {
+    text-align: center; font-size: 17px; font-weight: 600;
+    letter-spacing: -0.4px; color: var(--od2-txt);
+  }
+  .od2-nav-btn {
+    width: 44px; height: 44px; border: none; background: none;
+    display: flex; align-items: center; justify-content: center;
+    color: var(--od2-violet); font-size: 22px; cursor: pointer;
+    transition: opacity .15s;
+  }
+  .od2-nav-btn:active { opacity: 0.4; }
+  /* Le bouton « ••• » reste dans sa colonne de 44 px : la pastille visible
+     fait 32 px, la zone tactile en fait 44. */
+  .od2-nav-btn.rond { position: relative; }
+  .od2-nav-btn.rond::before {
+    content: ""; position: absolute; top: 50%; left: 50%;
+    width: 32px; height: 32px; transform: translate(-50%, -50%);
+    border-radius: 50%; background: var(--od2-carte-2);
+  }
+  .od2-nav-btn.rond > * , .od2-nav-btn.rond { color: var(--od2-txt); font-size: 15px; }
+
+  /* ── Carte générique ─────────────────────────────────────────────── */
+  .od2-carte {
+    background: var(--od2-carte);
+    border: 0.5px solid var(--od2-trait);
+    border-radius: 22px;
+    padding: 18px;
+    margin-bottom: 14px;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.4);
+  }
+  .od2-titre {
+    font-size: 12px; font-weight: 600; letter-spacing: 0.6px;
+    text-transform: uppercase; color: var(--od2-txt-3);
+    margin: 0 0 14px 2px;
+  }
+
+  /* ── En-tête de commande ─────────────────────────────────────────── */
+  .od2-tete { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
+  .od2-tete .lbl { font-size: 13px; color: var(--od2-txt-2); margin-bottom: 2px; }
+  .od2-num {
+    font-size: 28px; font-weight: 700; letter-spacing: -0.8px;
+    color: var(--od2-txt); line-height: 1.1;
+    font-variant-numeric: tabular-nums;
+  }
+  .od2-date { font-size: 13px; color: var(--od2-txt-3); margin-top: 6px; }
+
+  .od2-badge {
+    display: inline-flex; align-items: center; gap: 5px;
+    padding: 6px 12px; border-radius: 999px;
+    font-size: 11px; font-weight: 700; letter-spacing: 0.5px;
+    text-transform: uppercase; white-space: nowrap;
+  }
+  .od2-badge.attente    { background: rgba(255,159,10,0.16);  color: var(--od2-orange); }
+  .od2-badge.confirmee  { background: rgba(10,132,255,0.16);  color: var(--od2-bleu); }
+  .od2-badge.livraison  { background: rgba(124,92,255,0.18);  color: var(--od2-violet); }
+  .od2-badge.terminee   { background: rgba(48,209,88,0.16);   color: var(--od2-vert); }
+  .od2-badge.annulee    { background: rgba(255,69,58,0.16);   color: var(--od2-rouge); }
+
+  /* ── Résumé en 4 chiffres ────────────────────────────────────────── */
+  .od2-resume {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 1px;
+    margin-top: 18px; border-radius: 16px; overflow: hidden;
+    background: var(--od2-trait);
+  }
+  .od2-resume > div { background: var(--od2-carte-2); padding: 14px 16px; }
+  .od2-resume .v {
+    font-size: 19px; font-weight: 700; color: var(--od2-txt);
+    letter-spacing: -0.4px; font-variant-numeric: tabular-nums;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .od2-resume .k { font-size: 11px; color: var(--od2-txt-3); margin-top: 3px; }
+
+  /* ── Progression ─────────────────────────────────────────────────── */
+  .od2-etapes { display: flex; align-items: flex-start; }
+  .od2-etape { flex: 1; text-align: center; position: relative; }
+  .od2-pastille {
+    width: 30px; height: 30px; border-radius: 50%; margin: 0 auto 8px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 13px; font-weight: 700;
+    background: var(--od2-carte-2); color: var(--od2-txt-3);
+    border: 2px solid transparent; position: relative; z-index: 2;
+    transition: background .25s, color .25s;
+  }
+  .od2-etape .nom { font-size: 11px; color: var(--od2-txt-3); line-height: 1.3; }
+  /* Le trait relie les pastilles : il part du centre de l'étape courante
+     vers celui de la suivante, d'où le décalage de 50 %. */
+  .od2-etape::before {
+    content: ""; position: absolute; top: 14px; left: 50%; width: 100%;
+    height: 2px; background: var(--od2-carte-2); z-index: 1;
+  }
+  .od2-etape:last-child::before { display: none; }
+  .od2-etape.faite .od2-pastille { background: var(--od2-vert); color: #04210E; }
+  .od2-etape.faite::before       { background: var(--od2-vert); }
+  .od2-etape.faite .nom          { color: var(--od2-txt-2); }
+  .od2-etape.active .od2-pastille {
+    background: var(--od2-orange); color: #2B1800;
+    box-shadow: 0 0 0 4px rgba(255,159,10,0.16);
+  }
+  .od2-etape.active .nom { color: var(--od2-orange); font-weight: 600; }
+  .od2-etape.annul .od2-pastille { background: var(--od2-rouge); color: #2B0704; }
+  .od2-etape.annul .nom { color: var(--od2-rouge); }
+
+  /* ── Ligne générique (client, paiement) ──────────────────────────── */
+  .od2-ligne {
+    display: flex; align-items: center; gap: 14px;
+    padding: 12px 0; border-top: 0.5px solid var(--od2-trait);
+  }
+  .od2-ligne:first-of-type { border-top: none; padding-top: 0; }
+  .od2-ligne .k { font-size: 15px; color: var(--od2-txt-2); flex: 1; }
+  .od2-ligne .v {
+    font-size: 15px; color: var(--od2-txt); font-weight: 500;
+    text-align: right; word-break: break-word;
+  }
+  .od2-ligne .v.mono { font-variant-numeric: tabular-nums; letter-spacing: 0.2px; }
+
+  /* ── Client ──────────────────────────────────────────────────────── */
+  .od2-client { display: flex; align-items: center; gap: 14px; }
+  .od2-avatar {
+    width: 52px; height: 52px; border-radius: 50%; flex: 0 0 52px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 21px; font-weight: 600; color: #fff;
+    background: linear-gradient(140deg, #7C5CFF, #B45CFF);
+  }
+  .od2-client .nom { font-size: 17px; font-weight: 600; color: var(--od2-txt); letter-spacing: -0.3px; }
+  .od2-client .sous { font-size: 14px; color: var(--od2-txt-2); margin-top: 2px; }
+  .od2-msg {
+    width: 44px; height: 44px; flex: 0 0 44px; border-radius: 14px;
+    display: flex; align-items: center; justify-content: center;
+    background: rgba(124,92,255,0.12);
+    border: 1px solid rgba(124,92,255,0.34);
+    color: var(--od2-violet); font-size: 18px; cursor: pointer;
+    transition: transform .12s, background .15s;
+  }
+  .od2-msg:active { transform: scale(0.92); background: rgba(124,92,255,0.24); }
+
+  /* ── Adresse ─────────────────────────────────────────────────────── */
+  .od2-adresse { display: flex; align-items: flex-start; gap: 14px; }
+  .od2-pin {
+    width: 38px; height: 38px; flex: 0 0 38px; border-radius: 12px;
+    display: flex; align-items: center; justify-content: center;
+    background: rgba(124,92,255,0.14); font-size: 17px;
+  }
+  .od2-adresse .txt {
+    flex: 1; font-size: 15px; line-height: 1.45; color: var(--od2-txt);
+    text-transform: uppercase; letter-spacing: 0.2px;
+  }
+  .od2-chevron { color: var(--od2-txt-3); font-size: 17px; align-self: center; }
+  .od2-maps {
+    display: flex; align-items: center; justify-content: center; gap: 7px;
+    width: 100%; min-height: 44px; margin-top: 14px;
+    border-radius: 14px; border: none; cursor: pointer;
+    background: rgba(10,132,255,0.14); color: var(--od2-bleu);
+    font-size: 15px; font-weight: 600; font-family: inherit;
+    transition: transform .12s, background .15s;
+  }
+  .od2-maps:active { transform: scale(0.985); background: rgba(10,132,255,0.24); }
+
+  /* ── Panier ──────────────────────────────────────────────────────── */
+  .od2-art { display: flex; align-items: center; gap: 13px; padding: 11px 0; }
+  .od2-art + .od2-art { border-top: 0.5px solid var(--od2-trait); }
+  .od2-art .ic {
+    width: 40px; height: 40px; flex: 0 0 40px; border-radius: 12px;
+    display: flex; align-items: center; justify-content: center;
+    background: var(--od2-carte-2); font-size: 19px;
+  }
+  .od2-art .nom { flex: 1; font-size: 15px; color: var(--od2-txt); font-weight: 500; }
+  .od2-qte {
+    display: inline-block; margin-top: 3px; padding: 2px 8px;
+    border-radius: 7px; background: var(--od2-carte-2);
+    font-size: 11px; font-weight: 700; color: var(--od2-txt-2);
+    font-variant-numeric: tabular-nums;
+  }
+  .od2-art .prix {
+    font-size: 15px; font-weight: 600; color: var(--od2-txt);
+    font-variant-numeric: tabular-nums; white-space: nowrap;
+  }
+  .od2-total {
+    display: flex; justify-content: space-between; align-items: baseline;
+    margin-top: 14px; padding-top: 14px;
+    border-top: 0.5px solid var(--od2-trait);
+  }
+  .od2-total .k { font-size: 15px; color: var(--od2-txt-2); }
+  .od2-total .v {
+    font-size: 26px; font-weight: 700; color: var(--od2-violet);
+    letter-spacing: -0.6px; font-variant-numeric: tabular-nums;
+  }
+
+  /* ── Photo ───────────────────────────────────────────────────────── */
+  .od2-photo {
+    width: 100%; border-radius: 16px; display: block;
+    border: 0.5px solid var(--od2-trait);
+  }
+
+  /* ── Note privée ─────────────────────────────────────────────────── */
+  .od2-note {
+    display: flex; gap: 12px; align-items: flex-start;
+    padding: 14px; border-radius: 16px; cursor: pointer;
+    background: rgba(255,159,10,0.08);
+    border: 1px solid rgba(255,159,10,0.2);
+    font-size: 14px; color: var(--od2-txt); line-height: 1.45;
+  }
+  .od2-note.vide { color: var(--od2-txt-2); justify-content: center; }
+
+  /* ── Barre d'actions ─────────────────────────────────────────────── */
+  .od2-actions {
+    position: sticky; bottom: 0; z-index: 15;
+    margin: 18px -18px 0;
+    padding: 14px 18px calc(16px + env(safe-area-inset-bottom, 0px));
+    background: linear-gradient(to top, rgba(10,10,15,0.98) 72%, rgba(10,10,15,0));
+    backdrop-filter: blur(18px); -webkit-backdrop-filter: blur(18px);
+  }
+  .od2-rangee { display: flex; gap: 10px; }
+  .od2-rangee + .od2-rangee { margin-top: 10px; }
+  .od2-btn {
+    flex: 1; min-height: 50px; border-radius: 16px; border: none;
+    display: flex; align-items: center; justify-content: center; gap: 7px;
+    font-family: inherit; font-size: 15px; font-weight: 600;
+    letter-spacing: -0.2px; cursor: pointer; padding: 0 12px;
+    transition: transform .12s, opacity .15s, background .15s;
+  }
+  .od2-btn:active { transform: scale(0.97); }
+  .od2-btn:disabled { opacity: 0.45; cursor: default; transform: none; }
+  .od2-btn.principal {
+    background: var(--od2-violet); color: #fff;
+    box-shadow: 0 6px 18px rgba(124,92,255,0.32);
+  }
+  .od2-btn.secondaire {
+    background: var(--od2-carte-2); color: var(--od2-txt);
+    border: 0.5px solid var(--od2-trait);
+  }
+  .od2-btn.secondaire:active { background: #262633; }
+  .od2-btn.danger { background: rgba(255,69,58,0.13); color: var(--od2-rouge); }
+  .od2-btn.danger:active { background: rgba(255,69,58,0.24); }
+  .od2-btn .ic { font-size: 16px; }
+
+  @media (prefers-reduced-motion: reduce) {
+    .od2-btn, .od2-msg, .od2-maps, .od2-pastille { transition: none; }
+  }
 </style>
 
 <!-- HEADER (caché sur screen langue) -->
@@ -4794,134 +5072,224 @@ async function openOrderDetail(orderId) {
   }
 }
 
+// Date longue à la française : « 2 août 2026 à 18:04 ». Le format court de
+// _fmtDateTime convient aux listes ; sur l'en-tête d'un bon de commande, on
+// veut une date qui se lit sans effort.
+const _MOIS_FR = ["janvier","février","mars","avril","mai","juin",
+                  "juillet","août","septembre","octobre","novembre","décembre"];
+function _dateLongue(iso) {
+  const d = _parseServerDate(iso);
+  if (!d) return "—";
+  const p = n => String(n).padStart(2, "0");
+  return `${d.getDate()} ${_MOIS_FR[d.getMonth()]} ${d.getFullYear()} à ${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+
 function renderOrderDetail(o) {
   const el = document.getElementById("ownerOrderDetail");
   const status = o.status || "pending";
   state._orderDetail = o;   // sert aux boutons « copier » et « enregistrer »
 
-  // En-tête avec bouton refresh
-  const refreshHdr = `<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px;">
-    <div class="section-title" style="margin:0;">Commande</div>
-    <span style="cursor:pointer; font-size:18px; opacity:0.7;" onclick="openOrderDetail('${escHtml(o.order_id)}')">🔄</span>
-  </div>`;
-  const statusLabels = {
-    pending:"⏳ En attente", confirmed:"✅ Confirmée",
-    delivering:"🚚 Livraison", delivered:"📦 Livrée",
-    cancelled:"❌ Annulée", cancelled_by_client:"❌ Annulé client",
+  const oid = escHtml(o.order_id);
+  const dev = escHtml(o.display_currency || "€");
+  const nb  = (n) => Number(n || 0).toLocaleString("fr-FR");
+
+  // ── Statut : libellé, teinte, position dans la progression ──────────────
+  const STATUTS = {
+    pending:             { txt: "En attente",   cls: "attente",   etape: 0 },
+    confirmed:           { txt: "Confirmée",    cls: "confirmee", etape: 1 },
+    delivering:          { txt: "En livraison", cls: "livraison", etape: 2 },
+    // etape 4 = au-delà de la dernière : les 4 étapes passent en « faite »,
+    // une commande terminée ne doit plus rien montrer d'orange.
+    delivered:           { txt: "Terminée",     cls: "terminee",  etape: 4 },
+    cancelled:           { txt: "Annulée",      cls: "annulee",   etape: -1 },
+    cancelled_by_client: { txt: "Annulée client", cls: "annulee", etape: -1 },
   };
-  const date = _fmtDateTime(o.created_at);
-  const cart = o.cart || {};
-  const cartHtml = Object.entries(cart).map(([name, qty]) =>
-    `<div class="od-row"><span class="lbl">${escHtml(name)} × ${escHtml(qty)}</span></div>`
-  ).join("");
+  const st = STATUTS[status] || STATUTS.pending;
+  const annulee = st.etape < 0;
 
-  const initDataQS = "?initData=" + encodeURIComponent(tg.initData || "");
-  const selfieImg = o.selfie_b64 ? `<img class="od-photo" src="/api/admin/photo/${o.order_id}/selfie${initDataQS}">` : "";
-  const proofImg  = o.proof_b64  ? `<img class="od-photo" src="/api/admin/photo/${o.order_id}/proof${initDataQS}">`  : "";
-
-  // Contacter le client : via tg.openTelegramLink() pour ouvrir le chat
-  // (les <a href="tg://"> ne marchent pas dans Mini App).
-  // Si pas de username, on ne peut pas générer de lien direct.
-  const phoneTel = o.phone ? `tel:${o.phone.replace(/\s/g,'')}` : "";
-
-  // Timeline events depuis les timestamps
-  const evts = [];
-  if (o.created_at) evts.push({ label: "Reçue", time: o.created_at, prev: null });
-  // Confirmation : on a pas de timestamp exact, mais si status ≥ confirmed on l'ajoute
-  if (["confirmed","delivering","delivered"].includes(status)) {
-    evts.push({ label: "Confirmée", time: null, prev: o.created_at });
-  }
-  if (o._delivery_started_at) {
-    evts.push({ label: "🛵 Livraison démarrée", time: o._delivery_started_at, prev: o.created_at,
-                eta: o._eta_minutes ? `${o._eta_minutes} min` : null });
-  }
-  if (o._delivered_at) {
-    evts.push({ label: "📦 Livrée", time: o._delivered_at, prev: o._delivery_started_at || o.created_at });
-  }
-  const timelineHtml = evts.length ? `<div class="tl">${evts.map((e, i) => {
-    const dur = (e.time && e.prev) ? _diffHuman(e.prev, e.time) : "";
-    const timeStr = e.time ? _fmtDateTime(e.time) : "";
-    return `<div class="tl-event done">
-      <span class="label">${e.label}</span>${e.eta ? ` <span class="dur">ETA ${e.eta}</span>` : ""}${dur ? ` <span class="dur">+${dur}</span>` : ""}
-      ${timeStr ? `<span class="time">${timeStr}</span>` : ""}
+  // ── Progression ─────────────────────────────────────────────────────────
+  const ETAPES = ["Reçue", "Confirmée", "En livraison", "Terminée"];
+  const progression = `<div class="od2-etapes">${ETAPES.map((nom, i) => {
+    let cls = "";
+    if (annulee)            cls = i === 0 ? "annul" : "";
+    else if (i <  st.etape) cls = "faite";
+    else if (i === st.etape) cls = "active";
+    const marque = (!annulee && i < st.etape) ? "✓" : (i + 1);
+    return `<div class="od2-etape ${cls}">
+      <div class="od2-pastille">${marque}</div>
+      <div class="nom">${nom}</div>
     </div>`;
-  }).join("")}</div>` : "";
+  }).join("")}</div>`;
 
-  // Note privée owner (v4 : escape HTML complet — pas juste < >)
+  // ── Panier : prix unitaires pris dans le catalogue si la ville existe ────
+  // Le catalogue peut avoir changé depuis la commande ; sans prix on affiche
+  // la quantité seule plutôt qu'un montant faux.
+  const cart = o.cart || {};
+  const tarifs = (state.catalog && state.catalog[o.country] && state.catalog[o.country][o.city]) || {};
+  const articles = Object.entries(cart).map(([nom, qte]) => {
+    const q = Number(qte) || 0;
+    const pu = Number(tarifs[nom]);
+    const ligne = isFinite(pu) ? pu * q : null;
+    // Le premier caractère du produit est son emoji dans le catalogue.
+    const emoji = [...String(nom)][0] || "•";
+    const libelle = String(nom).replace(/^\S+\s*/, "") || String(nom);
+    return `<div class="od2-art">
+      <div class="ic">${escHtml(emoji)}</div>
+      <div class="nom">${escHtml(libelle)}<br><span class="od2-qte">× ${escHtml(q)}</span></div>
+      <div class="prix">${ligne !== null ? nb(ligne) + " " + dev : "—"}</div>
+    </div>`;
+  }).join("");
+  // « 3 articles » = 3 produits distincts, pas 4 unités : c'est le nombre de
+  // lignes que l'owner doit préparer qui compte, pas le cumul des quantités.
+  const nbArticles = Object.keys(cart).length;
+
+  // ── Client ──────────────────────────────────────────────────────────────
+  const nomClient = o.user_name || "?";
+  const initiale  = escHtml([...String(nomClient).trim()][0] || "?").toUpperCase();
+  const langues   = { fr: "Français", en: "English", es: "Español" };
+  const uidSafe   = Number(o.user_id) || 0;
+  const dataChat  = `data-user-id="${uidSafe}" `
+                  + `data-username="${escHtml(o.username || "")}" `
+                  + `data-user-name="${escHtml(nomClient)}"`;
+
+  // ── Adresse ─────────────────────────────────────────────────────────────
+  const lignesAdr = String(o.address || "")
+    .split(",").flatMap(p => p.split("\n"))
+    .map(p => p.trim()).filter(Boolean);
+  // Localité pour la tuile de résumé : premier segment après la rue qui
+  // contient des lettres, donc ni le numéro de rue ni le code postal.
+  const localite = lignesAdr.slice(1).find(l => /[a-zA-ZÀ-ÿ]/.test(l)) || o.city || "—";
+  const mapsJs = o.maps_link ? String(o.maps_link).replace(/\\/g, "\\\\").replace(/'/g, "\\'") : "";
+
+  // ── Photos ──────────────────────────────────────────────────────────────
+  const qs = "?initData=" + encodeURIComponent(tg.initData || "");
+  const selfie = o.selfie_b64
+    ? `<div class="od2-carte">
+         <div class="od2-titre">Selfie client</div>
+         <img class="od2-photo" src="/api/admin/photo/${oid}/selfie${qs}" alt="">
+         <button class="od2-btn secondaire" style="width:100%; margin-top:14px;"
+                 onclick="enregistrerSelfie('${oid}')"><span class="ic">⬇︎</span> Enregistrer la photo</button>
+       </div>` : "";
+  const preuve = o.proof_b64
+    ? `<div class="od2-carte">
+         <div class="od2-titre">Preuve de paiement</div>
+         <img class="od2-photo" src="/api/admin/photo/${oid}/proof${qs}" alt="">
+       </div>` : "";
+
+  // ── Note privée ─────────────────────────────────────────────────────────
   const note = o._client_note || "";
-  const noteEscaped = escHtml(note).replace(/\n/g, "<br>");
-  const uidSafe = Number(o.user_id) || 0;
   const noteHtml = note
-    ? `<div class="client-note-box"><div style="flex:1;">${noteEscaped}<br><a onclick="editClientNote(${uidSafe})" style="font-size:11px; opacity:0.7; cursor:pointer; color:#ff2d9b;">Modifier</a></div></div>`
-    : `<div class="client-note-empty" onclick="editClientNote(${uidSafe})">➕ Ajouter une note privée sur ce client</div>`;
+    ? `<div class="od2-note" onclick="editClientNote(${uidSafe})">
+         <span>📝</span><div>${escHtml(note).replace(/\n/g, "<br>")}</div>
+       </div>`
+    : `<div class="od2-note vide" onclick="editClientNote(${uidSafe})">
+         ＋ Ajouter une note privée sur ce client
+       </div>`;
 
-  el.innerHTML = refreshHdr + noteHtml + `
-    <div class="od-section">
-      <h4>📦 Commande</h4>
-      <div class="od-row"><span class="lbl">N° de commande</span><span class="val" style="font-family:monospace;color:var(--accent);">${escHtml(o.order_id)}</span></div>
-      <div class="od-row"><span class="lbl">Statut</span><span class="val"><span class="status-badge status-${status}">${statusLabels[status] || status}</span></span></div>
-      <div class="od-row"><span class="lbl">Date</span><span class="val">${date}</span></div>
-      <div class="od-row"><span class="lbl">Source</span><span class="val">${o.source === 'miniapp' ? '📲 Mini App' : '💬 Bot'}</span></div>
-      ${o.rating ? `<div class="od-row"><span class="lbl">Note client</span><span class="val">${'⭐'.repeat(o.rating)}</span></div>` : ''}
-      ${timelineHtml}
-    </div>
+  // ── Actions : une seule action principale, celle de l'étape suivante ────
+  const SUITE = {
+    pending:    { s: "confirmed",  txt: "Confirmer",   ic: "✓" },
+    confirmed:  { s: "delivering", txt: "En livraison", ic: "🛵" },
+    delivering: { s: "delivered",  txt: "Terminer",    ic: "📦" },
+  };
+  const suite = SUITE[status];
+  const principal = suite
+    ? `<button class="od2-btn principal" onclick="setOrderStatus('${oid}','${suite.s}')">
+         <span class="ic">${suite.ic}</span> ${suite.txt}</button>`
+    : "";
+  const annulable = status !== "delivered" && !annulee;
 
-    <div class="od-section">
-      <h4>👤 Client</h4>
-      <div class="od-row"><span class="lbl">Nom</span><span class="val">${escHtml(o.user_name || '?')}</span></div>
-      ${o.username ? `<div class="od-row"><span class="lbl">Username</span><span class="val">@${escHtml(o.username)}</span></div>` : ''}
-      <div class="od-row"><span class="lbl">ID</span><span class="val" style="font-family:monospace;">${escHtml(o.user_id)}</span></div>
-      <div class="od-row"><span class="lbl">Langue</span><span class="val">${escHtml((o.lang||'fr').toUpperCase())}</span></div>
-      ${o.phone ? `<div class="od-row"><span class="lbl">Téléphone</span><span class="val">${escHtml(o.phone)}</span></div>` : ''}
-    </div>
+  el.innerHTML = `
+  <div class="od2-nav">
+    <button class="od2-nav-btn" onclick="document.getElementById('backBtn').click()" aria-label="Retour">‹</button>
+    <div class="od2-nav-titre">Détail de commande</div>
+    <button class="od2-nav-btn rond" onclick="copierBonDeCommande('${oid}')" aria-label="Copier le bon de commande">•••</button>
+  </div>
 
-    <div class="od-section">
-      <h4>🛒 Panier (${Object.keys(cart).length} articles)</h4>
-      ${cartHtml || '<div class="od-row"><span class="lbl">—</span></div>'}
-      <div class="od-row" style="margin-top:8px; padding-top:8px; border-top:1px solid var(--border);">
-        <span class="lbl">Total</span>
-        <span class="val" style="font-size:16px; background:var(--accent-grad); -webkit-background-clip:text; background-clip:text; color:transparent;">${(o.total||0).toLocaleString('fr-FR')} ${escHtml(o.display_currency || '€')}</span>
+  <div class="od2">
+    <div class="od2-carte">
+      <div class="od2-tete">
+        <div>
+          <div class="lbl">Commande</div>
+          <div class="od2-num">#${oid}</div>
+          <div class="od2-date">${_dateLongue(o.created_at)}</div>
+        </div>
+        <span class="od2-badge ${st.cls}">${st.txt}</span>
+      </div>
+
+      <div class="od2-resume">
+        <div><div class="v">${nb(o.total)} ${dev}</div><div class="k">Montant total</div></div>
+        <div><div class="v">${nbArticles}</div><div class="k">Article${nbArticles > 1 ? "s" : ""}</div></div>
+        <div><div class="v">${escHtml(localite)}</div><div class="k">Adresse</div></div>
+        <div><div class="v" style="color:var(--od2-${st.cls === "attente" ? "orange" : st.cls === "terminee" ? "vert" : st.cls === "annulee" ? "rouge" : "violet"});">${st.txt}</div><div class="k">Statut</div></div>
       </div>
     </div>
 
-    <div class="od-section">
-      <h4>💳 Paiement</h4>
-      <div class="od-row"><span class="lbl">Mode</span><span class="val">${escHtml(o.payment || '—')}</span></div>
-      ${o.payment_crypto ? `<div class="od-row"><span class="lbl">Crypto</span><span class="val">${escHtml(o.payment_crypto)}</span></div>` : ''}
-      ${o.payment_currency ? `<div class="od-row"><span class="lbl">Devise</span><span class="val">${escHtml(o.payment_currency)}</span></div>` : ''}
-      ${proofImg ? '<h4 style="margin-top:12px;">🏦 Preuve de virement</h4>' + proofImg : ''}
+    <div class="od2-carte">
+      <div class="od2-titre">Progression</div>
+      ${progression}
+      ${o.rating ? `<div class="od2-ligne" style="margin-top:16px;"><span class="k">Note du client</span><span class="v">${"⭐".repeat(o.rating)}</span></div>` : ""}
     </div>
 
-    <div class="od-section">
-      <h4>📍 Adresse</h4>
-      <div class="od-row" style="font-family:monospace; white-space:pre-line;">
-        <span class="lbl" style="text-transform:uppercase; line-height:1.6;">${escHtml(o.address || '—')}</span>
+    <div class="od2-carte">
+      <div class="od2-titre">Client</div>
+      <div class="od2-client">
+        <div class="od2-avatar">${initiale}</div>
+        <div style="flex:1; min-width:0;">
+          <div class="nom">${escHtml(nomClient)}</div>
+          <div class="sous">${o.username ? "@" + escHtml(o.username) : "sans pseudo"}</div>
+        </div>
+        <div class="od2-msg" role="button" aria-label="Envoyer un message via le bot"
+             onclick="askAndSendMessageToClient({user_id:'${uidSafe}', user_name:'${escHtml(nomClient).replace(/'/g, "\\'")}'})">💬</div>
       </div>
-      ${o.maps_link ? `<a href="${escHtml(o.maps_link)}" target="_blank" rel="noopener" style="display:inline-block; margin-top:8px; color:#ff2d9b; font-size:13px;">🗺️ Ouvrir dans la carte</a>` : ''}
+      <div style="margin-top:16px;">
+        <div class="od2-ligne"><span class="k">Langue</span><span class="v">${escHtml(langues[o.lang] || (o.lang || "fr").toUpperCase())}</span></div>
+        <div class="od2-ligne"><span class="k">Identifiant</span><span class="v mono">${escHtml(o.user_id)}</span></div>
+        ${o.phone ? `<div class="od2-ligne"><span class="k">Téléphone</span><span class="v mono">${escHtml(o.phone)}</span></div>` : ""}
+      </div>
+      <div style="margin-top:14px;">${noteHtml}</div>
     </div>
 
-    ${selfieImg ? `<div class="od-section"><h4>📸 Selfie client</h4>${selfieImg}
-      <button class="btn-act" style="background:rgba(255,255,255,0.06); width:100%; margin-top:10px;"
-              onclick="enregistrerSelfie('${escHtml(o.order_id)}')">💾 Enregistrer la photo</button>
-    </div>` : ''}
-
-    <div class="od-actions">
-      <button class="btn-act" style="background:rgba(255,255,255,0.06);"
-              onclick="copierBonDeCommande('${escHtml(o.order_id)}')">📋 Copier le bon de commande</button>
-      ${status !== 'confirmed' && status !== 'delivering' && status !== 'delivered' && status !== 'cancelled' ? `<button class="btn-act btn-confirm" onclick="setOrderStatus('${o.order_id}','confirmed')">✅ Confirmer</button>` : ''}
-      ${status === 'confirmed' ? `<button class="btn-act btn-delivery" onclick="setOrderStatus('${o.order_id}','delivering')">🚚 En livraison</button>` : ''}
-      ${status === 'delivering' ? `<button class="btn-act btn-deliver" onclick="setOrderStatus('${o.order_id}','delivered')">📦 Livrée</button>` : ''}
-      ${status !== 'delivered' && status !== 'cancelled' ? `<button class="btn-act btn-cancel" onclick="setOrderStatus('${o.order_id}','cancelled')">❌ Annuler</button>` : ''}
-      <button class="btn-act btn-contact"
-              data-user-id="${o.user_id}"
-              data-username="${(o.username || '').replace(/"/g,'&quot;')}"
-              data-user-name="${(o.user_name || '').replace(/"/g,'&quot;')}"
-              onclick="contactClient(this)">💬 Contacter le client</button>
-      <button class="btn-act" style="background:rgba(255,255,255,0.06);"
-              onclick="askAndSendMessageToClient({user_id:'${o.user_id}', user_name:'${(o.user_name||'').replace(/'/g,"\\'").replace(/"/g,'&quot;')}'})">📨 Message via le bot</button>
-      ${o.maps_link ? `<button class="btn-act btn-mapview" onclick="openExternal('${o.maps_link.replace(/'/g,"\\'")}')">🗺️ Voir l'adresse</button>` : ''}
+    <div class="od2-carte">
+      <div class="od2-titre">Adresse</div>
+      <div class="od2-adresse"${mapsJs ? ` onclick="openExternal('${mapsJs}')" style="cursor:pointer;"` : ""}>
+        <div class="od2-pin">📍</div>
+        <div class="txt">${lignesAdr.length ? lignesAdr.map(escHtml).join("<br>") : "—"}</div>
+        ${mapsJs ? '<span class="od2-chevron">›</span>' : ""}
+      </div>
+      ${mapsJs ? `<button class="od2-maps" onclick="openExternal('${mapsJs}')">🗺️ Voir sur Maps</button>` : ""}
     </div>
-  `;
+
+    <div class="od2-carte">
+      <div class="od2-titre">Panier (${nbArticles} article${nbArticles > 1 ? "s" : ""})</div>
+      ${articles || '<div class="od2-ligne"><span class="k">Panier vide</span></div>'}
+      <div class="od2-total">
+        <span class="k">Total</span>
+        <span class="v">${nb(o.total)} ${dev}</span>
+      </div>
+    </div>
+
+    <div class="od2-carte">
+      <div class="od2-titre">Paiement</div>
+      <div class="od2-ligne"><span class="k">💳 Mode</span><span class="v">${escHtml(o.payment || "—")}</span></div>
+      ${o.payment_currency ? `<div class="od2-ligne"><span class="k">Devise</span><span class="v">${escHtml(o.payment_currency)}</span></div>` : ""}
+      ${o.payment_crypto ? `<div class="od2-ligne"><span class="k">Crypto</span><span class="v">${escHtml(o.payment_crypto)}</span></div>` : ""}
+    </div>
+
+    ${selfie}
+    ${preuve}
+
+    <div class="od2-actions">
+      <div class="od2-rangee">
+        ${principal}
+        <button class="od2-btn secondaire" ${dataChat} onclick="contactClient(this)"><span class="ic">💬</span> Contacter</button>
+        ${mapsJs ? `<button class="od2-btn secondaire" onclick="openExternal('${mapsJs}')"><span class="ic">🗺️</span> Adresse</button>` : ""}
+      </div>
+      ${annulable ? `<div class="od2-rangee">
+        <button class="od2-btn danger" onclick="setOrderStatus('${oid}','cancelled')"><span class="ic">✕</span> Annuler la commande</button>
+      </div>` : ""}
+    </div>
+  </div>`;
 }
 
 // Ouvre le chat Telegram avec un utilisateur par son ID numérique (sans @username).
