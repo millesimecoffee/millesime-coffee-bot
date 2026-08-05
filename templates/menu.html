@@ -2506,6 +2506,18 @@
     transition: background .25s, color .25s;
   }
   .od2-etape .nom { font-size: 11px; color: var(--od2-txt-3); line-height: 1.3; }
+  .od2-etape .heure {
+    font-size: 10px; color: var(--od2-txt-3); margin-top: 2px;
+    font-variant-numeric: tabular-nums; opacity: .8;
+  }
+  .od2-etape.faite .heure  { color: var(--od2-vert); opacity: 1; }
+  .od2-etape.active .heure { color: var(--od2-orange); opacity: 1; }
+  .od2-verif {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 14px; height: 14px; border-radius: 50%; vertical-align: middle;
+    background: var(--od2-vert); color: #04210E;
+    font-size: 9px; font-weight: 800; margin-left: 3px;
+  }
   /* Le trait relie les pastilles : il part du centre de l'étape courante
      vers celui de la suivante, d'où le décalage de 50 %. */
   .od2-etape::before {
@@ -5127,6 +5139,13 @@ async function openOrderDetail(orderId) {
 // veut une date qui se lit sans effort.
 const _MOIS_FR = ["janvier","février","mars","avril","mai","juin",
                   "juillet","août","septembre","octobre","novembre","décembre"];
+function _heureCourte(iso) {
+  const d = _parseServerDate(iso);
+  if (!d) return "";
+  const p = n => String(n).padStart(2, "0");
+  return `${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+
 function _dateLongue(iso) {
   const d = _parseServerDate(iso);
   if (!d) return "—";
@@ -5188,15 +5207,25 @@ function renderOrderDetail(o) {
   const teinte = { attente: "orange", confirmee: "bleu", livraison: "violet",
                    terminee: "vert", annulee: "rouge" }[st.cls];
 
-  const ETAPES = ["Reçue", "Confirmée", "En livraison", "Terminée"];
-  const progression = `<div class="od2-etapes">${ETAPES.map((nom, i) => {
+  const ETAPES = [
+    { nom: "Reçue",        t: o.created_at },
+    { nom: "Confirmée",    t: o._confirmed_at },
+    { nom: "En livraison", t: o._delivery_started_at },
+    { nom: "Terminée",     t: o._delivered_at },
+  ];
+  const progression = `<div class="od2-etapes">${ETAPES.map((e, i) => {
     let cls = "";
     if (annulee)             cls = i === 0 ? "annul" : "";
     else if (i <  st.etape)  cls = "faite";
     else if (i === st.etape) cls = "active";
     const marque = (!annulee && i < st.etape) ? "✓" : (i + 1);
+    // L'heure n'apparaît que sur une étape réellement franchie : afficher
+    // celle d'une étape à venir laisserait croire qu'elle est faite.
+    const heure = (cls === "faite" || cls === "active") ? _heureCourte(e.t) : "";
     return `<div class="od2-etape ${cls}">
-      <div class="od2-pastille">${marque}</div><div class="nom">${nom}</div>
+      <div class="od2-pastille">${marque}</div>
+      <div class="nom">${e.nom}</div>
+      ${heure ? `<div class="heure">${heure}</div>` : ""}
     </div>`;
   }).join("")}</div>`;
 
@@ -5291,7 +5320,9 @@ function renderOrderDetail(o) {
         ${avatar}
         <div style="flex:1; min-width:0;">
           <div class="nom">${escHtml(nomClient)}</div>
-          <div class="sous">${o.username ? "@" + escHtml(o.username) : "sans pseudo"}</div>
+          <div class="sous">${o.username
+            ? '@' + escHtml(o.username) + ' <span class="od2-verif" title="Pseudo Telegram public">✓</span>'
+            : "sans pseudo"}</div>
           <div class="sous" style="font-size:12px; opacity:.7;">
             ${escHtml(langues[o.lang] || (o.lang || "fr").toUpperCase())} · ${escHtml(o.user_id)}
           </div>

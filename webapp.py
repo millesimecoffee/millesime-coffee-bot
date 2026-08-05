@@ -1891,10 +1891,13 @@ def api_admin_set_status(order_id):
     if (order.get("status") or "pending") == new_status:
         return jsonify({"ok": True, "unchanged": True})
 
-    # Update + horodatage de passage en delivering (pour ETA tracking)
+    # Update + horodatage de chaque passage d'étape. Sans eux, la progression
+    # du panel ne peut afficher que « fait », jamais à quelle heure.
     try:
         upd = {"status": new_status}
-        if new_status == "delivering":
+        if new_status == "confirmed":
+            upd["_confirmed_at"] = _now_iso()
+        elif new_status == "delivering":
             upd["_delivery_started_at"] = _now_iso()
             # Owner peut préciser un temps de livraison en minutes
             try:
@@ -1905,6 +1908,8 @@ def api_admin_set_status(order_id):
                 pass
         elif new_status == "delivered":
             upd["_delivered_at"] = _now_iso()
+        elif new_status == "cancelled":
+            upd["_cancelled_at"] = _now_iso()
         written = update_order(order_id, upd)
     except Exception as exc:
         logger.error("admin_set_status update: %s", exc)
