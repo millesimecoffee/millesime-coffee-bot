@@ -2379,343 +2379,310 @@
   .eta-preset:active { transform: scale(0.94); background: rgba(255,45,155,0.3); }
 
   /* ══════════════════════════════════════════════════════════════════════
-     DÉTAIL DE COMMANDE — refonte iOS sombre
+     DÉTAIL DE COMMANDE — thème néon violet / bleu
      Préfixe `od2-` : le reste de l'app garde ses styles, aucun conflit.
      ══════════════════════════════════════════════════════════════════════ */
   #screen-owner-detail {
-    --od2-bg:        #0A0A0F;   /* noir bleuté, fond d'écran */
-    --od2-carte:     #16161E;   /* carte, un cran au-dessus du fond */
-    --od2-carte-2:   #1E1E28;   /* élément dans une carte */
-    --od2-trait:     rgba(255,255,255,0.07);
-    --od2-txt:       #FFFFFF;
-    --od2-txt-2:     #9A9AA5;   /* libellés secondaires */
-    --od2-txt-3:     #6E6E78;   /* métadonnées */
-    --od2-violet:    #7C5CFF;   /* accent principal */
-    --od2-bleu:      #0A84FF;   /* actions secondaires */
-    --od2-orange:    #FF9F0A;   /* en attente */
-    --od2-vert:      #30D158;   /* validé */
-    --od2-rouge:     #FF453A;   /* annulation, et rien d'autre */
+    --od2-bg:      #050510;
+    --od2-carte:   rgba(18,16,38,0.72);
+    --od2-carte-2: rgba(30,26,58,0.62);
+    --od2-trait:   rgba(139,92,246,0.30);
+    --od2-txt:     #FFFFFF;
+    --od2-txt-2:   #A9A6C4;
+    --od2-txt-3:   #7C7899;
+    --od2-violet:  #8B5CF6;
+    --od2-bleu:    #2563EB;
+    --od2-vert:    #22C55E;
+    --od2-orange:  #F59E0B;
+    --od2-rouge:   #DC2626;
     background: var(--od2-bg);
     font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display",
                  "Inter", system-ui, sans-serif;
     -webkit-font-smoothing: antialiased;
   }
-  /* Le conteneur générique impose ses marges : on les reprend ici. */
   #screen-owner-detail > .container { padding: 0 !important; }
 
-  .od2 { padding: 0 18px calc(86px + env(safe-area-inset-bottom, 0px)); }
+  .od2 { padding: 0 16px calc(28px + env(safe-area-inset-bottom, 0px)); }
 
   /* ── Barre de navigation ─────────────────────────────────────────── */
   .od2-nav {
     position: sticky; top: 0; z-index: 20;
-    display: grid; grid-template-columns: 44px 1fr 44px; align-items: center;
-    /* La barre est hors du bloc `.od2` : elle ne doit donc PAS compenser
-       ses 18 px de padding par une marge négative, sinon elle déborde. */
-    height: 52px; margin: 0 0 8px; padding: 0 10px;
-    background: rgba(10,10,15,0.82);
+    display: grid; grid-template-columns: 48px 1fr 48px; align-items: center;
+    gap: 8px; height: 68px; margin: 0 0 14px; padding: 0 4px;
+    background: rgba(5,5,16,0.86);
     backdrop-filter: saturate(180%) blur(20px);
     -webkit-backdrop-filter: saturate(180%) blur(20px);
-    border-bottom: 0.5px solid var(--od2-trait);
-  }
-  .od2-nav-titre {
-    text-align: center; font-size: 17px; font-weight: 600;
-    letter-spacing: -0.4px; color: var(--od2-txt);
   }
   .od2-nav-btn {
-    width: 44px; height: 44px; border: none; background: none;
+    width: 46px; height: 46px; border-radius: 50%; cursor: pointer;
     display: flex; align-items: center; justify-content: center;
-    color: var(--od2-violet); font-size: 22px; cursor: pointer;
-    transition: opacity .15s;
+    background: rgba(30,26,58,0.7); color: var(--od2-txt);
+    border: 1px solid var(--od2-trait); font-size: 20px;
+    box-shadow: 0 0 14px rgba(139,92,246,0.20);
+    transition: transform .12s, background .15s;
   }
-  .od2-nav-btn:active { opacity: 0.4; }
-  /* Le bouton « ••• » reste dans sa colonne de 44 px : la pastille visible
-     fait 32 px, la zone tactile en fait 44. */
-  .od2-nav-btn.rond { position: relative; }
-  .od2-nav-btn.rond::before {
-    content: ""; position: absolute; top: 50%; left: 50%;
-    width: 32px; height: 32px; transform: translate(-50%, -50%);
-    border-radius: 50%; background: var(--od2-carte-2);
-  }
-  .od2-nav-btn.rond > * , .od2-nav-btn.rond { color: var(--od2-txt); font-size: 15px; }
+  .od2-nav-btn:active { transform: scale(0.92); background: rgba(139,92,246,0.22); }
+  .od2-nav-centre { display: flex; align-items: center; gap: 9px; justify-content: center; }
+  .od2-nav-centre .logo { font-size: 27px; line-height: 1; }
+  .od2-nav-titre { font-size: 19px; font-weight: 700; color: var(--od2-txt); letter-spacing: -0.4px; }
+  .od2-nav-sous  { font-size: 12px; color: var(--od2-txt-3); margin-top: 1px; }
 
   /* ── Carte générique ─────────────────────────────────────────────── */
   .od2-carte {
     background: var(--od2-carte);
-    border: 0.5px solid var(--od2-trait);
-    border-radius: 22px;
-    padding: 15px;
-    margin-bottom: 9px;
-    box-shadow: 0 1px 2px rgba(0,0,0,0.4);
+    border: 1px solid var(--od2-trait);
+    border-radius: 24px;
+    padding: 17px;
+    margin-bottom: 13px;
+    backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
+    box-shadow: 0 0 22px rgba(139,92,246,0.16), inset 0 1px 0 rgba(255,255,255,0.04);
   }
+  .od2-carte.vedette { box-shadow: 0 0 28px rgba(139,92,246,0.30), inset 0 1px 0 rgba(255,255,255,0.05); }
+
   .od2-titre {
-    font-size: 12px; font-weight: 600; letter-spacing: 0.6px;
-    text-transform: uppercase; color: var(--od2-txt-3);
-    margin: 0 0 10px 2px;
+    display: flex; align-items: center; gap: 9px;
+    font-size: 16px; font-weight: 700; color: var(--od2-txt);
+    letter-spacing: -0.3px; margin: 0 0 14px;
   }
+  .od2-titre .ic { font-size: 18px; line-height: 1; }
 
   /* ── En-tête de commande ─────────────────────────────────────────── */
   .od2-tete { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
-  .od2-tete .lbl { font-size: 13px; color: var(--od2-txt-2); margin-bottom: 2px; }
+  .od2-tete .lbl { font-size: 14px; color: var(--od2-txt-2); margin-bottom: 3px; }
   .od2-num {
-    font-size: 28px; font-weight: 700; letter-spacing: -0.8px;
-    color: var(--od2-txt); line-height: 1.1;
+    display: flex; align-items: center; gap: 10px;
+    font-size: 34px; font-weight: 800; letter-spacing: -1.2px;
+    color: var(--od2-txt); line-height: 1.05;
     font-variant-numeric: tabular-nums;
   }
-  .od2-date { font-size: 13px; color: var(--od2-txt-3); margin-top: 6px; }
+  .od2-copie-mini {
+    width: 34px; height: 34px; flex: 0 0 34px; border-radius: 10px;
+    display: flex; align-items: center; justify-content: center;
+    background: rgba(139,92,246,0.14); border: 1px solid var(--od2-trait);
+    color: var(--od2-violet); font-size: 15px; cursor: pointer;
+    transition: transform .12s, background .15s;
+  }
+  .od2-copie-mini:active { transform: scale(0.9); background: rgba(139,92,246,0.3); }
+  .od2-date { font-size: 14px; color: var(--od2-txt-2); margin-top: 8px; }
 
   .od2-badge {
-    display: inline-flex; align-items: center; gap: 5px;
-    padding: 6px 12px; border-radius: 999px;
-    font-size: 11px; font-weight: 700; letter-spacing: 0.5px;
-    text-transform: uppercase; white-space: nowrap;
+    display: inline-flex; align-items: center; gap: 7px;
+    padding: 9px 15px; border-radius: 999px; white-space: nowrap;
+    font-size: 12px; font-weight: 800; letter-spacing: 0.6px; text-transform: uppercase;
   }
-  .od2-badge.attente    { background: rgba(255,159,10,0.16);  color: var(--od2-orange); }
-  .od2-badge.confirmee  { background: rgba(10,132,255,0.16);  color: var(--od2-bleu); }
-  .od2-badge.livraison  { background: rgba(124,92,255,0.18);  color: var(--od2-violet); }
-  .od2-badge.terminee   { background: rgba(48,209,88,0.16);   color: var(--od2-vert); }
-  .od2-badge.annulee    { background: rgba(255,69,58,0.16);   color: var(--od2-rouge); }
-
-  /* ── Résumé en 4 chiffres ────────────────────────────────────────── */
-  /* Une seule rangée de 4 : deux fois moins haut qu'une grille 2×2, et
-     l'essentiel se lit d'un coup d'œil sans descendre. */
-  .od2-resume {
-    display: grid; grid-template-columns: repeat(4, 1fr); gap: 1px;
-    margin-top: 14px; border-radius: 14px; overflow: hidden;
-    background: var(--od2-trait);
+  .od2-badge .rond {
+    width: 18px; height: 18px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 11px; color: #fff;
   }
-  .od2-resume > div { background: var(--od2-carte-2); padding: 10px 6px; text-align: center; min-width: 0; }
-  .od2-resume .v {
-    font-size: 15px; font-weight: 700; color: var(--od2-txt);
-    letter-spacing: -0.3px; font-variant-numeric: tabular-nums;
-    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-  }
-  .od2-resume .k {
-    font-size: 10px; color: var(--od2-txt-3); margin-top: 2px;
-    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-  }
+  .od2-badge.terminee  { background: rgba(34,197,94,0.15);  color: #4ADE80; border: 1px solid rgba(34,197,94,0.45); box-shadow: 0 0 18px rgba(34,197,94,0.28); }
+  .od2-badge.terminee  .rond { background: var(--od2-vert); }
+  .od2-badge.attente   { background: rgba(245,158,11,0.15); color: #FBBF24; border: 1px solid rgba(245,158,11,0.45); box-shadow: 0 0 18px rgba(245,158,11,0.26); }
+  .od2-badge.attente   .rond { background: var(--od2-orange); }
+  .od2-badge.confirmee { background: rgba(37,99,235,0.18);  color: #60A5FA; border: 1px solid rgba(37,99,235,0.5);  box-shadow: 0 0 18px rgba(37,99,235,0.3); }
+  .od2-badge.confirmee .rond { background: var(--od2-bleu); }
+  .od2-badge.livraison { background: rgba(139,92,246,0.18); color: #A78BFA; border: 1px solid rgba(139,92,246,0.5); box-shadow: 0 0 18px rgba(139,92,246,0.3); }
+  .od2-badge.livraison .rond { background: var(--od2-violet); }
+  .od2-badge.annulee   { background: rgba(220,38,38,0.15);  color: #F87171; border: 1px solid rgba(220,38,38,0.45); box-shadow: 0 0 18px rgba(220,38,38,0.26); }
+  .od2-badge.annulee   .rond { background: var(--od2-rouge); }
 
   /* ── Progression ─────────────────────────────────────────────────── */
   .od2-etapes { display: flex; align-items: flex-start; }
   .od2-etape { flex: 1; text-align: center; position: relative; }
   .od2-pastille {
-    width: 30px; height: 30px; border-radius: 50%; margin: 0 auto 8px;
+    width: 34px; height: 34px; border-radius: 50%; margin: 0 auto 9px;
     display: flex; align-items: center; justify-content: center;
-    font-size: 13px; font-weight: 700;
-    background: var(--od2-carte-2); color: var(--od2-txt-3);
-    border: 2px solid transparent; position: relative; z-index: 2;
-    transition: background .25s, color .25s;
+    font-size: 15px; font-weight: 700; color: var(--od2-txt-3);
+    background: rgba(40,36,70,0.9); border: 1px solid rgba(139,92,246,0.22);
+    position: relative; z-index: 2; transition: background .25s, box-shadow .25s;
   }
-  .od2-etape .nom { font-size: 11px; color: var(--od2-txt-3); line-height: 1.3; }
-  .od2-etape .heure {
-    font-size: 10px; color: var(--od2-txt-3); margin-top: 2px;
-    font-variant-numeric: tabular-nums; opacity: .8;
-  }
-  .od2-etape.faite .heure  { color: var(--od2-vert); opacity: 1; }
-  .od2-etape.active .heure { color: var(--od2-orange); opacity: 1; }
-  .od2-verif {
-    display: inline-flex; align-items: center; justify-content: center;
-    width: 14px; height: 14px; border-radius: 50%; vertical-align: middle;
-    background: var(--od2-vert); color: #04210E;
-    font-size: 9px; font-weight: 800; margin-left: 3px;
-  }
-  /* Le trait relie les pastilles : il part du centre de l'étape courante
-     vers celui de la suivante, d'où le décalage de 50 %. */
+  .od2-etape .nom   { font-size: 12px; color: var(--od2-txt-2); line-height: 1.3; }
+  .od2-etape .heure { font-size: 12px; color: var(--od2-txt-3); margin-top: 2px; font-variant-numeric: tabular-nums; }
+  /* Le trait relie une pastille à la suivante : il part du centre de l'étape
+     courante, d'où le décalage de 50 %. */
   .od2-etape::before {
-    content: ""; position: absolute; top: 14px; left: 50%; width: 100%;
-    height: 2px; background: var(--od2-carte-2); z-index: 1;
+    content: ""; position: absolute; top: 16px; left: 50%; width: 100%;
+    height: 3px; background: rgba(60,54,100,0.9); z-index: 1;
   }
   .od2-etape:last-child::before { display: none; }
-  .od2-etape.faite .od2-pastille { background: var(--od2-vert); color: #04210E; }
-  .od2-etape.faite::before       { background: var(--od2-vert); }
-  .od2-etape.faite .nom          { color: var(--od2-txt-2); }
+  .od2-etape.faite .od2-pastille {
+    background: var(--od2-vert); color: #fff; border-color: transparent;
+    box-shadow: 0 0 16px rgba(34,197,94,0.65);
+  }
+  .od2-etape.faite::before { background: var(--od2-vert); box-shadow: 0 0 10px rgba(34,197,94,0.5); }
+  .od2-etape.faite .nom    { color: var(--od2-txt); }
+  .od2-etape.faite .heure  { color: #4ADE80; }
   .od2-etape.active .od2-pastille {
-    background: var(--od2-orange); color: #2B1800;
-    box-shadow: 0 0 0 4px rgba(255,159,10,0.16);
+    background: var(--od2-orange); color: #fff; border-color: transparent;
+    box-shadow: 0 0 18px rgba(245,158,11,0.7);
   }
-  .od2-etape.active .nom { color: var(--od2-orange); font-weight: 600; }
-  .od2-etape.annul .od2-pastille { background: var(--od2-rouge); color: #2B0704; }
-  .od2-etape.annul .nom { color: var(--od2-rouge); }
+  .od2-etape.active .nom   { color: var(--od2-txt); font-weight: 600; }
+  .od2-etape.active .heure { color: #FBBF24; }
+  .od2-etape.annul .od2-pastille {
+    background: var(--od2-rouge); color: #fff; border-color: transparent;
+    box-shadow: 0 0 18px rgba(220,38,38,0.6);
+  }
+  .od2-etape.annul .nom { color: #F87171; }
 
-  /* ── Ligne générique (client, paiement) ──────────────────────────── */
-  .od2-ligne {
-    display: flex; align-items: center; gap: 14px;
-    padding: 10px 0; border-top: 0.5px solid var(--od2-trait);
+  /* ── Boutons ─────────────────────────────────────────────────────── */
+  .od2-rangee { display: flex; gap: 11px; }
+  .od2-rangee + .od2-rangee { margin-top: 11px; }
+  .od2-btn {
+    flex: 1; min-height: 56px; border-radius: 17px; border: none;
+    display: flex; align-items: center; justify-content: center; gap: 9px;
+    font-family: inherit; font-size: 15px; font-weight: 600;
+    letter-spacing: -0.2px; cursor: pointer; padding: 0 13px;
+    color: #fff; line-height: 1.2;
+    transition: transform .12s, opacity .15s, filter .15s;
   }
-  .od2-ligne:first-of-type { border-top: none; padding-top: 0; }
-  .od2-ligne .k { font-size: 15px; color: var(--od2-txt-2); flex: 1; }
-  .od2-ligne .v {
-    font-size: 15px; color: var(--od2-txt); font-weight: 500;
-    text-align: right; word-break: break-word;
+  .od2-btn:active { transform: scale(0.97); filter: brightness(1.15); }
+  .od2-btn:disabled { opacity: 0.45; cursor: default; transform: none; }
+  .od2-btn .ic {
+    width: 26px; height: 26px; flex: 0 0 26px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    background: rgba(255,255,255,0.22); font-size: 13px;
   }
-  .od2-ligne .v.mono { font-variant-numeric: tabular-nums; letter-spacing: 0.2px; }
+  .od2-btn.valider {
+    background: linear-gradient(100deg, #22C55E, #2563EB);
+    box-shadow: 0 0 22px rgba(37,99,235,0.42);
+  }
+  .od2-btn.danger {
+    background: linear-gradient(100deg, #DC2626, #7F1D1D);
+    box-shadow: 0 0 22px rgba(220,38,38,0.38);
+  }
+  .od2-btn.principal {
+    background: linear-gradient(100deg, #7C3AED, #6D28D9);
+    box-shadow: 0 0 26px rgba(124,58,237,0.5);
+  }
+  .od2-btn.secondaire {
+    background: rgba(40,36,70,0.8); border: 1px solid var(--od2-trait);
+    box-shadow: 0 0 14px rgba(139,92,246,0.14);
+  }
 
   /* ── Client ──────────────────────────────────────────────────────── */
-  .od2-client { display: flex; align-items: center; gap: 14px; }
+  .od2-client { display: flex; align-items: center; gap: 15px; }
   .od2-avatar {
-    width: 50px; height: 50px; border-radius: 50%; flex: 0 0 50px;
-    display: flex; align-items: center; justify-content: center;
-    font-size: 22px; font-weight: 600; color: #fff; overflow: hidden;
-    background: linear-gradient(140deg, #7C5CFF, #B45CFF);
-    border: 2px solid rgba(124,92,255,0.45); position: relative;
+    width: 76px; height: 76px; border-radius: 50%; flex: 0 0 76px;
+    display: flex; align-items: center; justify-content: center; overflow: hidden;
+    font-size: 30px; font-weight: 700; color: #fff;
+    background: linear-gradient(140deg, #8B5CF6, #2563EB);
+    border: 2px solid rgba(139,92,246,0.75);
+    box-shadow: 0 0 20px rgba(139,92,246,0.45);
   }
-  /* Le selfie sert de photo de profil : la grande carte photo disparaît,
-     l'écran raccourcit d'autant. Un appui l'agrandit. */
-  .od2-avatar.photo { cursor: pointer; background: var(--od2-carte-2); }
+  .od2-avatar.photo { cursor: pointer; background: rgba(30,26,58,0.7); }
   .od2-avatar img { width: 100%; height: 100%; object-fit: cover; display: block; }
-  .od2-avatar.photo::after {
-    content: "⤢"; position: absolute; right: -1px; bottom: -1px;
-    width: 19px; height: 19px; border-radius: 50%;
-    background: var(--od2-violet); color: #fff;
-    font-size: 10px; display: flex; align-items: center; justify-content: center;
-    border: 2px solid var(--od2-carte);
+  .od2-client .nom  { font-size: 21px; font-weight: 700; color: var(--od2-txt); letter-spacing: -0.4px; }
+  .od2-client .sous { font-size: 15px; color: var(--od2-txt-2); margin-top: 2px; }
+  .od2-verif {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 18px; height: 18px; border-radius: 50%; vertical-align: middle;
+    background: var(--od2-vert); color: #fff; font-size: 11px; font-weight: 800;
+    margin-left: 5px; box-shadow: 0 0 10px rgba(34,197,94,0.6);
   }
-
-  /* Agrandissement du selfie */
-  .od2-loupe {
-    position: fixed; inset: 0; z-index: 9999;
-    display: flex; align-items: center; justify-content: center;
-    padding: 24px; background: rgba(0,0,0,0.92);
-    backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
-  }
-  .od2-loupe img { max-width: 100%; max-height: 80vh; border-radius: 18px; }
-  .od2-loupe .fermer {
-    position: absolute; top: calc(16px + env(safe-area-inset-top, 0px)); right: 18px;
-    width: 40px; height: 40px; border-radius: 50%; border: none;
-    background: rgba(255,255,255,0.14); color: #fff; font-size: 19px; cursor: pointer;
-  }
-
-  /* En-tête pays / ville */
-  .od2-lieu {
-    display: flex; align-items: center; gap: 10px;
-    padding: 9px 12px; margin-bottom: 11px;
-    border-radius: 13px; background: var(--od2-carte-2);
-  }
-  .od2-lieu .drapeau { font-size: 21px; line-height: 1; }
-  .od2-lieu .ville { font-size: 16px; font-weight: 600; color: var(--od2-txt); letter-spacing: -0.3px; }
-  .od2-lieu .pays  { font-size: 12px; color: var(--od2-txt-2); margin-top: 1px; }
-  .od2-client .nom { font-size: 17px; font-weight: 600; color: var(--od2-txt); letter-spacing: -0.3px; }
-  .od2-client .sous { font-size: 14px; color: var(--od2-txt-2); margin-top: 2px; }
-  .od2-actions-client { display: flex; gap: 8px; flex: 0 0 auto; }
+  .od2-actions-client { display: flex; gap: 10px; flex: 0 0 auto; }
   .od2-msg {
-    width: 44px; height: 44px; flex: 0 0 44px; border-radius: 14px;
+    width: 52px; height: 52px; flex: 0 0 52px; border-radius: 15px;
     display: flex; align-items: center; justify-content: center;
-    background: rgba(124,92,255,0.12);
-    border: 1px solid rgba(124,92,255,0.34);
-    color: var(--od2-violet); font-size: 18px; cursor: pointer;
+    background: rgba(40,36,70,0.8); border: 1px solid var(--od2-trait);
+    color: var(--od2-violet); font-size: 21px; cursor: pointer;
+    box-shadow: 0 0 14px rgba(139,92,246,0.2);
     transition: transform .12s, background .15s;
   }
-  .od2-msg:active { transform: scale(0.92); background: rgba(124,92,255,0.24); }
-  .od2-msg.bleu {
-    background: rgba(10,132,255,0.12); border-color: rgba(10,132,255,0.34);
-    color: var(--od2-bleu);
-  }
-  .od2-msg.bleu:active { background: rgba(10,132,255,0.24); }
+  .od2-msg:active { transform: scale(0.92); background: rgba(139,92,246,0.28); }
+  .od2-msg.bleu { color: #60A5FA; border-color: rgba(37,99,235,0.5); box-shadow: 0 0 14px rgba(37,99,235,0.28); }
+  .od2-msg.bleu:active { background: rgba(37,99,235,0.28); }
 
-  /* ── Adresse ─────────────────────────────────────────────────────── */
-  .od2-adresse { display: flex; align-items: flex-start; gap: 14px; }
-  .od2-pin {
-    width: 38px; height: 38px; flex: 0 0 38px; border-radius: 12px;
-    display: flex; align-items: center; justify-content: center;
-    background: rgba(124,92,255,0.14); font-size: 17px;
+  /* ── Articles ────────────────────────────────────────────────────── */
+  .od2-art {
+    display: flex; align-items: center; gap: 14px;
+    padding: 13px 14px; border-radius: 17px;
+    background: var(--od2-carte-2);
+    border: 1px solid rgba(139,92,246,0.18);
   }
-  .od2-adresse .txt {
-    flex: 1; font-size: 15px; line-height: 1.45; color: var(--od2-txt);
-    text-transform: uppercase; letter-spacing: 0.2px;
-  }
-  .od2-chevron { color: var(--od2-txt-3); font-size: 17px; align-self: center; }
-  .od2-maps {
-    display: flex; align-items: center; justify-content: center;
-    width: 44px; height: 44px; flex: 0 0 44px; align-self: center;
-    border-radius: 14px; border: 1px solid rgba(10,132,255,0.34); cursor: pointer;
-    background: rgba(10,132,255,0.12); color: var(--od2-bleu);
-    font-size: 18px; font-family: inherit;
-    transition: transform .12s, background .15s;
-  }
-  .od2-maps:active { transform: scale(0.985); background: rgba(10,132,255,0.24); }
-
-  /* ── Panier ──────────────────────────────────────────────────────── */
-  .od2-art { display: flex; align-items: center; gap: 11px; padding: 6px 0; }
-  .od2-art + .od2-art { border-top: 0.5px solid var(--od2-trait); }
+  .od2-art + .od2-art { margin-top: 9px; }
   .od2-art .ic {
-    width: 34px; height: 34px; flex: 0 0 34px; border-radius: 10px;
+    width: 46px; height: 46px; flex: 0 0 46px; border-radius: 50%;
     display: flex; align-items: center; justify-content: center;
-    background: var(--od2-carte-2); font-size: 17px;
+    background: rgba(37,99,235,0.2); border: 1px solid rgba(37,99,235,0.45);
+    font-size: 21px; box-shadow: 0 0 16px rgba(37,99,235,0.3);
   }
-  .od2-art .nom { flex: 1; font-size: 15px; color: var(--od2-txt); font-weight: 500; }
+  .od2-art .nom { flex: 1; font-size: 17px; color: var(--od2-txt); font-weight: 600; }
   .od2-qte {
-    display: inline-block; margin-top: 3px; padding: 2px 8px;
-    border-radius: 7px; background: var(--od2-carte-2);
-    font-size: 11px; font-weight: 700; color: var(--od2-txt-2);
+    display: inline-block; margin-left: 8px; padding: 3px 10px;
+    border-radius: 9px; background: rgba(139,92,246,0.2);
+    border: 1px solid rgba(139,92,246,0.35);
+    font-size: 13px; font-weight: 700; color: #C4B5FD;
     font-variant-numeric: tabular-nums;
   }
   .od2-art .prix {
-    font-size: 15px; font-weight: 600; color: var(--od2-txt);
+    font-size: 17px; font-weight: 700; color: var(--od2-txt);
     font-variant-numeric: tabular-nums; white-space: nowrap;
   }
-  .od2-total {
-    display: flex; justify-content: space-between; align-items: center;
-    margin-top: 12px; padding-top: 12px;
-    border-top: 0.5px solid var(--od2-trait);
+
+  /* ── Adresse ─────────────────────────────────────────────────────── */
+  .od2-adresse { display: flex; align-items: center; gap: 13px; }
+  .od2-adresse .txt {
+    flex: 1; font-size: 15px; line-height: 1.45; color: var(--od2-txt-2);
+    text-transform: uppercase; letter-spacing: 0.2px;
   }
-  .od2-total .k { font-size: 15px; color: var(--od2-txt-2); }
+  .od2-maps {
+    display: flex; align-items: center; justify-content: center; gap: 7px;
+    min-height: 46px; padding: 0 15px; flex: 0 0 auto; align-self: center;
+    border-radius: 14px; cursor: pointer; font-family: inherit;
+    background: rgba(139,92,246,0.14); border: 1px solid rgba(139,92,246,0.45);
+    color: #C4B5FD; font-size: 15px; font-weight: 600;
+    box-shadow: 0 0 14px rgba(139,92,246,0.22);
+    transition: transform .12s, background .15s;
+  }
+  .od2-maps:active { transform: scale(0.95); background: rgba(139,92,246,0.3); }
+
+  /* ── Total ───────────────────────────────────────────────────────── */
+  .od2-total { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+  .od2-total .mode { font-size: 15px; color: var(--od2-txt-2); margin-top: 3px; }
   .od2-total .v {
-    font-size: 26px; font-weight: 700; color: var(--od2-violet);
-    letter-spacing: -0.6px; font-variant-numeric: tabular-nums;
+    font-size: 30px; font-weight: 800; color: #A78BFA;
+    letter-spacing: -0.8px; font-variant-numeric: tabular-nums;
+    text-shadow: 0 0 18px rgba(139,92,246,0.6);
   }
 
-  /* ── Photo ───────────────────────────────────────────────────────── */
-  .od2-photo {
-    width: 100%; border-radius: 16px; display: block;
-    border: 0.5px solid var(--od2-trait);
+  /* ── Lieu (pays / ville) ─────────────────────────────────────────── */
+  .od2-lieu {
+    display: flex; align-items: center; gap: 11px;
+    padding: 11px 13px; margin-bottom: 12px;
+    border-radius: 15px; background: var(--od2-carte-2);
+    border: 1px solid rgba(139,92,246,0.18);
   }
+  .od2-lieu .drapeau { font-size: 24px; line-height: 1; }
+  .od2-lieu .ville { font-size: 16px; font-weight: 700; color: var(--od2-txt); letter-spacing: -0.3px; }
+  .od2-lieu .pays  { font-size: 13px; color: var(--od2-txt-2); margin-top: 1px; }
 
   /* ── Note privée ─────────────────────────────────────────────────── */
   .od2-note {
     display: flex; gap: 9px; align-items: flex-start;
-    padding: 9px 11px; border-radius: 12px; cursor: pointer;
-    background: rgba(255,159,10,0.08);
-    border: 1px solid rgba(255,159,10,0.2);
+    padding: 10px 12px; border-radius: 13px; cursor: pointer;
+    background: rgba(245,158,11,0.09); border: 1px solid rgba(245,158,11,0.28);
     font-size: 13px; color: var(--od2-txt); line-height: 1.4;
   }
-  .od2-note.vide {
-    background: none; border: none; padding: 6px 2px;
-    color: var(--od2-txt-3); font-size: 13px;
-  }
+  .od2-note.vide { background: none; border: none; padding: 7px 2px; color: var(--od2-txt-3); }
 
-  /* ── Barre d'actions ─────────────────────────────────────────────── */
-  .od2-actions {
-    position: sticky; bottom: 0; z-index: 15;
-    margin: 18px -18px 0;
-    padding: 14px 18px calc(16px + env(safe-area-inset-bottom, 0px));
-    background: linear-gradient(to top, rgba(10,10,15,0.98) 72%, rgba(10,10,15,0));
-    backdrop-filter: blur(18px); -webkit-backdrop-filter: blur(18px);
+  .od2-photo { width: 100%; border-radius: 17px; display: block; border: 1px solid var(--od2-trait); }
+
+  /* ── Agrandissement du selfie ────────────────────────────────────── */
+  .od2-loupe {
+    position: fixed; inset: 0; z-index: 9999;
+    display: flex; align-items: center; justify-content: center;
+    padding: 24px; background: rgba(0,0,0,0.93);
+    backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
   }
-  .od2-rangee { display: flex; gap: 10px; }
-  .od2-rangee + .od2-rangee { margin-top: 10px; }
-  .od2-btn {
-    flex: 1; min-height: 50px; border-radius: 16px; border: none;
-    display: flex; align-items: center; justify-content: center; gap: 7px;
-    font-family: inherit; font-size: 15px; font-weight: 600;
-    letter-spacing: -0.2px; cursor: pointer; padding: 0 12px;
-    transition: transform .12s, opacity .15s, background .15s;
+  .od2-loupe img { max-width: 100%; max-height: 80vh; border-radius: 20px; }
+  .od2-loupe .fermer {
+    position: absolute; top: calc(16px + env(safe-area-inset-top, 0px)); right: 18px;
+    width: 44px; height: 44px; border-radius: 50%; border: 1px solid var(--od2-trait);
+    background: rgba(30,26,58,0.85); color: #fff; font-size: 19px; cursor: pointer;
   }
-  .od2-btn:active { transform: scale(0.97); }
-  .od2-btn:disabled { opacity: 0.45; cursor: default; transform: none; }
-  .od2-btn.principal {
-    background: var(--od2-violet); color: #fff;
-    box-shadow: 0 6px 18px rgba(124,92,255,0.32);
-  }
-  .od2-btn.secondaire {
-    background: var(--od2-carte-2); color: var(--od2-txt);
-    border: 0.5px solid var(--od2-trait);
-  }
-  .od2-btn.secondaire:active { background: #262633; }
-  .od2-btn.danger { background: rgba(255,69,58,0.13); color: var(--od2-rouge); }
-  .od2-btn.danger:active { background: rgba(255,69,58,0.24); }
-  .od2-btn .ic { font-size: 16px; }
 
   @media (prefers-reduced-motion: reduce) {
-    .od2-btn, .od2-msg, .od2-maps, .od2-pastille { transition: none; }
+    .od2-btn, .od2-msg, .od2-maps, .od2-pastille, .od2-nav-btn, .od2-copie-mini { transition: none; }
   }
 </style>
 
@@ -5153,8 +5120,8 @@ function _dateLongue(iso) {
   return `${d.getDate()} ${_MOIS_FR[d.getMonth()]} ${d.getFullYear()} à ${p(d.getHours())}:${p(d.getMinutes())}`;
 }
 
-// Agrandissement du selfie : le selfie sert de photo de profil, il n'y a donc
-// plus de grande carte photo. Un appui sur l'avatar l'ouvre en plein écran.
+// Agrandissement du selfie : il sert de photo de profil, il n'y a donc plus de
+// grande carte photo. Un appui sur l'avatar l'ouvre en plein écran.
 function ouvrirSelfie(orderId) {
   const url = `/api/admin/photo/${encodeURIComponent(orderId)}/selfie`
             + `?initData=${encodeURIComponent(tg.initData || "")}`;
@@ -5166,9 +5133,9 @@ function ouvrirSelfie(orderId) {
   hapticSelect();
 }
 
-// Ouvre l'adresse dans Plans (Apple Maps) plutôt que dans le navigateur.
-// iOS reconnaît maps.apple.com et bascule dans l'app native ; le lien
-// OpenStreetMap stocké sur la commande, lui, reste dans Safari.
+// Ouvre l'adresse dans Plans plutôt que dans le navigateur : iOS reconnaît
+// maps.apple.com et bascule dans l'app native, là où le lien OpenStreetMap
+// stocké sur la commande restait dans Safari.
 function ouvrirDansPlans(lat, lon, libelle) {
   const q = encodeURIComponent(libelle || "");
   const url = (lat && lon)
@@ -5176,6 +5143,13 @@ function ouvrirDansPlans(lat, lon, libelle) {
     : `https://maps.apple.com/?q=${q}`;
   hapticMedium();
   openExternal(url);
+}
+
+function _heureCourte(iso) {
+  const d = _parseServerDate(iso);
+  if (!d) return "";
+  const p = n => String(n).padStart(2, "0");
+  return `${p(d.getHours())}:${p(d.getMinutes())}`;
 }
 
 function renderOrderDetail(o) {
@@ -5195,17 +5169,15 @@ function renderOrderDetail(o) {
 
   // ── Statut ──────────────────────────────────────────────────────────────
   const STATUTS = {
-    pending:             { txt: "En attente",     cls: "attente",   etape: 0 },
-    confirmed:           { txt: "Confirmée",      cls: "confirmee", etape: 1 },
-    delivering:          { txt: "En livraison",   cls: "livraison", etape: 2 },
-    delivered:           { txt: "Terminée",       cls: "terminee",  etape: 4 },
-    cancelled:           { txt: "Annulée",        cls: "annulee",   etape: -1 },
-    cancelled_by_client: { txt: "Annulée client", cls: "annulee",   etape: -1 },
+    pending:             { txt: "En attente",     cls: "attente",   etape: 0, ic: "!" },
+    confirmed:           { txt: "Confirmée",      cls: "confirmee", etape: 1, ic: "✓" },
+    delivering:          { txt: "En livraison",   cls: "livraison", etape: 2, ic: "🛵" },
+    delivered:           { txt: "Terminée",       cls: "terminee",  etape: 4, ic: "✓" },
+    cancelled:           { txt: "Annulée",        cls: "annulee",   etape: -1, ic: "✕" },
+    cancelled_by_client: { txt: "Annulée client", cls: "annulee",   etape: -1, ic: "✕" },
   };
   const st = STATUTS[status] || STATUTS.pending;
   const annulee = st.etape < 0;
-  const teinte = { attente: "orange", confirmee: "bleu", livraison: "violet",
-                   terminee: "vert", annulee: "rouge" }[st.cls];
 
   const ETAPES = [
     { nom: "Reçue",        t: o.created_at },
@@ -5219,8 +5191,8 @@ function renderOrderDetail(o) {
     else if (i <  st.etape)  cls = "faite";
     else if (i === st.etape) cls = "active";
     const marque = (!annulee && i < st.etape) ? "✓" : (i + 1);
-    // L'heure n'apparaît que sur une étape réellement franchie : afficher
-    // celle d'une étape à venir laisserait croire qu'elle est faite.
+    // L'heure n'apparaît que sur une étape réellement franchie : en montrer
+    // une sur une étape à venir laisserait croire qu'elle est passée.
     const heure = (cls === "faite" || cls === "active") ? _heureCourte(e.t) : "";
     return `<div class="od2-etape ${cls}">
       <div class="od2-pastille">${marque}</div>
@@ -5229,7 +5201,7 @@ function renderOrderDetail(o) {
     </div>`;
   }).join("")}</div>`;
 
-  // ── Panier ──────────────────────────────────────────────────────────────
+  // ── Panier : prix unitaires depuis le catalogue si la ville existe encore ─
   const cart = o.cart || {};
   const tarifs = (state.catalog && state.catalog[o.country] && state.catalog[o.country][o.city]) || {};
   const articles = Object.entries(cart).map(([nom, qte]) => {
@@ -5240,7 +5212,7 @@ function renderOrderDetail(o) {
     const libelle = String(nom).replace(/^\S+\s*/, "") || String(nom);
     return `<div class="od2-art">
       <div class="ic">${escHtml(emoji)}</div>
-      <div class="nom">${escHtml(libelle)} <span class="od2-qte">× ${escHtml(q)}</span></div>
+      <div class="nom">${escHtml(libelle)}<span class="od2-qte">×${escHtml(q)}</span></div>
       <div class="prix">${ligne !== null ? nb(ligne) + " " + dev : "—"}</div>
     </div>`;
   }).join("");
@@ -5282,104 +5254,108 @@ function renderOrderDetail(o) {
 
   // ── Action principale = étape suivante ──────────────────────────────────
   const SUITE = {
-    pending:    { s: "confirmed",  txt: "Confirmer",    ic: "✓" },
-    confirmed:  { s: "delivering", txt: "En livraison", ic: "🛵" },
-    delivering: { s: "delivered",  txt: "Terminer",     ic: "📦" },
+    pending:    { s: "confirmed",  txt: "Confirmer la commande" },
+    confirmed:  { s: "delivering", txt: "Passer en livraison" },
+    delivering: { s: "delivered",  txt: "Marquer comme terminée" },
   }[status];
-  const principal = SUITE
-    ? `<button class="od2-btn principal" onclick="setOrderStatus('${oid}','${SUITE.s}')">
-         <span class="ic">${SUITE.ic}</span> ${SUITE.txt}</button>` : "";
   const annulable = status !== "delivered" && !annulee;
+  const actions = (SUITE || annulable) ? `
+      <div class="od2-rangee" style="margin-top:16px;">
+        ${SUITE ? `<button class="od2-btn valider" onclick="setOrderStatus('${oid}','${SUITE.s}')">
+          <span class="ic">✓</span> ${SUITE.txt}</button>` : ""}
+        ${annulable ? `<button class="od2-btn danger" onclick="setOrderStatus('${oid}','cancelled')">
+          <span class="ic">✕</span> Annuler la commande</button>` : ""}
+      </div>` : "";
 
   el.innerHTML = `
   <div class="od2-nav">
     <button class="od2-nav-btn" onclick="document.getElementById('backBtn').click()" aria-label="Retour">‹</button>
-    <div class="od2-nav-titre">Détail de commande</div>
-    <button class="od2-nav-btn rond" onclick="copierBonDeCommande('${oid}')" aria-label="Copier le bon de commande">•••</button>
+    <div class="od2-nav-centre">
+      <span class="logo">☕</span>
+      <div>
+        <div class="od2-nav-titre">Millésime Coffee</div>
+        <div class="od2-nav-sous">mini-application</div>
+      </div>
+    </div>
+    <button class="od2-nav-btn" onclick="copierBonDeCommande('${oid}')" aria-label="Copier le bon de commande">•••</button>
   </div>
 
   <div class="od2">
-    <div class="od2-carte">
+    <div class="od2-carte vedette">
       <div class="od2-tete">
-        <div>
+        <div style="min-width:0;">
           <div class="lbl">Commande</div>
-          <div class="od2-num">#${oid}</div>
+          <div class="od2-num">#${oid}
+            <span class="od2-copie-mini" role="button" aria-label="Copier le bon de commande"
+                  onclick="copierBonDeCommande('${oid}')">⧉</span>
+          </div>
           <div class="od2-date">${_dateLongue(o.created_at)}</div>
         </div>
-        <span class="od2-badge ${st.cls}">${st.txt}</span>
+        <span class="od2-badge ${st.cls}"><span class="rond">${st.ic}</span>${st.txt}</span>
       </div>
-      <div style="margin-top:15px; padding-top:14px; border-top:0.5px solid var(--od2-trait);">
+
+      <div style="margin-top:17px; padding-top:16px; border-top:1px solid var(--od2-trait);">
         ${progression}
       </div>
-      ${o.rating ? `<div class="od2-ligne"><span class="k">Note du client</span><span class="v">${"⭐".repeat(o.rating)}</span></div>` : ""}
+      ${actions}
     </div>
 
     <div class="od2-carte">
-      <div class="od2-titre">Client &amp; livraison</div>
+      <div class="od2-titre"><span class="ic">👤</span> Client</div>
       <div class="od2-client">
         ${avatar}
         <div style="flex:1; min-width:0;">
-          <div class="nom">${escHtml(nomClient)}</div>
-          <div class="sous">${o.username
-            ? '@' + escHtml(o.username) + ' <span class="od2-verif" title="Pseudo Telegram public">✓</span>'
-            : "sans pseudo"}</div>
-          <div class="sous" style="font-size:12px; opacity:.7;">
+          <div class="nom">${escHtml(nomClient)}${o.username ? '<span class="od2-verif">✓</span>' : ""}</div>
+          <div class="sous">${o.username ? "@" + escHtml(o.username) : "sans pseudo"}</div>
+          <div class="sous" style="font-size:14px;">
             ${escHtml(langues[o.lang] || (o.lang || "fr").toUpperCase())} · ${escHtml(o.user_id)}
           </div>
         </div>
         <div class="od2-actions-client">
           <div class="od2-msg bleu" ${dataChat} onclick="contactClient(this)"
-               role="button" aria-label="Contacter le client">💬</div>
+               role="button" aria-label="Contacter le client">➤</div>
           ${o.selfie_b64 ? `<div class="od2-msg" role="button" aria-label="Enregistrer la photo"
                onclick="enregistrerSelfie('${oid}')">⬇︎</div>` : ""}
         </div>
       </div>
-
-      <div class="od2-lieu" style="margin-top:13px;">
-        <span class="drapeau">${drapeau}</span>
-        <div><div class="ville">${escHtml(ville)}</div><div class="pays">${escHtml(paysNom || "—")}</div></div>
-      </div>
-      <div class="od2-adresse"${aUneAdresse ? ` onclick="${plansJs}" style="cursor:pointer;"` : ""}>
-        <div class="od2-pin">📍</div>
-        <div class="txt">${lignesAdr.length ? lignesAdr.map(escHtml).join("<br>") : "—"}</div>
-        ${aUneAdresse ? `<button class="od2-maps" onclick="event.stopPropagation(); ${plansJs}"
-             aria-label="Ouvrir dans Plans" title="Ouvrir dans Plans">🗺️</button>` : ""}
-      </div>
-      <div style="margin-top:9px;">${noteHtml}</div>
+      <div style="margin-top:12px;">${noteHtml}</div>
     </div>
 
     <div class="od2-carte">
-      <div class="od2-titre">Panier (${nbArticles} article${nbArticles > 1 ? "s" : ""})</div>
-      ${articles || '<div class="od2-ligne"><span class="k">Panier vide</span></div>'}
+      <div class="od2-titre"><span class="ic">🛒</span> Commande (${nbArticles} article${nbArticles > 1 ? "s" : ""})</div>
+      ${articles || '<div class="od2-art"><div class="nom">Panier vide</div></div>'}
+    </div>
+
+    <div class="od2-carte">
+      <div class="od2-titre"><span class="ic">📍</span> Adresse de livraison</div>
+      <div class="od2-lieu">
+        <span class="drapeau">${drapeau}</span>
+        <div><div class="ville">${escHtml(ville)}</div><div class="pays">${escHtml(paysNom || "—")}</div></div>
+      </div>
+      <div class="od2-adresse">
+        <div class="txt">${lignesAdr.length ? lignesAdr.map(escHtml).join("<br>") : "—"}</div>
+        ${aUneAdresse ? `<button class="od2-maps" onclick="${plansJs}">🗺️ Maps</button>` : ""}
+      </div>
+    </div>
+
+    <div class="od2-carte">
       <div class="od2-total">
         <div>
-          <div class="k">Total</div>
-          <div class="k" style="font-size:12px; margin-top:2px;">💳 ${escHtml(o.payment || "—")}${o.payment_crypto ? " · " + escHtml(o.payment_crypto) : ""}</div>
+          <div class="od2-titre" style="margin:0;"><span class="ic">💳</span> Total</div>
+          <div class="mode">${escHtml(o.payment || "—")}${o.payment_crypto ? " · " + escHtml(o.payment_crypto) : ""}</div>
         </div>
         <span class="v">${nb(o.total)} ${dev}</span>
       </div>
-      <button class="od2-btn secondaire" style="width:100%; margin-top:12px;"
-              onclick="copierBonDeCommande('${oid}')">
-        <span class="ic">📋</span> Copier le bon pour le livreur</button>
     </div>
 
     ${o.proof_b64 ? `<div class="od2-carte">
-      <div class="od2-titre">Preuve de paiement</div>
+      <div class="od2-titre"><span class="ic">🧾</span> Preuve de paiement</div>
       <img class="od2-photo" src="/api/admin/photo/${oid}/proof${qs}" alt="">
     </div>` : ""}
 
-    <div class="od2-actions">
-      <div class="od2-rangee">
-        ${principal}
-        <button class="od2-btn secondaire" style="flex:0 0 54px;" title="Copier le bon pour le livreur"
-                aria-label="Copier le bon pour le livreur"
-                onclick="copierBonDeCommande('${oid}')"><span class="ic">📋</span></button>
-        ${annulable ? `<button class="od2-btn danger"${principal ? ' style="flex:0 0 36%;"' : ""}
-          onclick="setOrderStatus('${oid}','cancelled')"><span class="ic">✕</span> Annuler</button>` : ""}
-        ${!principal && !annulable ? `<button class="od2-btn secondaire" ${dataChat}
-          onclick="contactClient(this)"><span class="ic">💬</span> Contacter le client</button>` : ""}
-      </div>
-    </div>
+    <button class="od2-btn principal" style="width:100%; margin-top:4px;"
+            onclick="copierBonDeCommande('${oid}')">
+      <span class="ic">📋</span> Copier le bon pour le livreur</button>
   </div>`;
 }
 
