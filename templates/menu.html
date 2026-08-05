@@ -2459,9 +2459,9 @@
     background: var(--od2-carte);
     backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
     border: 1px solid var(--od2-bordure);
-    border-radius: 28px;
-    padding: 20px;
-    margin-bottom: 13px;
+    border-radius: 26px;
+    padding: 16px;
+    margin-bottom: 11px;
     box-shadow: 0 0 25px rgba(147,51,234,0.18),
                 0 0 60px rgba(147,51,234,0.08),
                 inset 0 1px 0 rgba(255,255,255,0.05);
@@ -2475,11 +2475,12 @@
   .od2-titre .ic { font-size: 19px; line-height: 1; }
 
   /* ── En-tête de commande ─────────────────────────────────────────── */
-  .od2-tete { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
+  .od2-tete { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; }
+  .od2-tete > div:first-child { min-width: 0; flex: 1; }
   .od2-tete .lbl { font-size: 15px; color: var(--od2-txt-2); margin-bottom: 4px; }
   .od2-num {
-    display: flex; align-items: center; gap: 10px;
-    font-size: 36px; font-weight: 800; letter-spacing: -1.3px;
+    display: flex; align-items: center; gap: 8px; min-width: 0;
+    font-size: 29px; font-weight: 800; letter-spacing: -1px;
     color: var(--od2-txt); line-height: 1.05;
     font-variant-numeric: tabular-nums;
   }
@@ -2503,7 +2504,7 @@
   .od2-date { font-size: 15px; color: var(--od2-txt-2); margin-top: 9px; }
 
   .od2-badge {
-    display: inline-flex; align-items: center; gap: 7px;
+    display: inline-flex; align-items: center; gap: 6px; flex: 0 0 auto;
     padding: 9px 16px; border-radius: 999px; white-space: nowrap;
     font-size: 12px; font-weight: 800; letter-spacing: 0.7px; text-transform: uppercase;
     border: 2px solid currentColor;
@@ -2524,19 +2525,19 @@
   .od2-etapes { display: flex; align-items: flex-start; }
   .od2-etape { flex: 1; text-align: center; position: relative; }
   .od2-pastille {
-    width: 54px; height: 54px; border-radius: 50%; margin: 0 auto 11px;
+    width: 42px; height: 42px; border-radius: 50%; margin: 0 auto 9px;
     display: flex; align-items: center; justify-content: center;
-    font-size: 21px; font-weight: 800; color: var(--od2-txt-3);
+    font-size: 17px; font-weight: 800; color: var(--od2-txt-3);
     background: #23222F; border: 1px solid rgba(147,51,234,0.25);
     position: relative; z-index: 2; transition: background .25s, box-shadow .25s;
   }
-  .od2-etape .nom   { font-size: 12px; color: var(--od2-txt-2); line-height: 1.3; }
-  .od2-etape .heure { font-size: 12px; color: var(--od2-txt-3); margin-top: 3px; font-variant-numeric: tabular-nums; }
+  .od2-etape .nom   { font-size: 11px; color: var(--od2-txt-2); line-height: 1.25; }
+  .od2-etape .heure { font-size: 11px; color: var(--od2-txt-3); margin-top: 2px; font-variant-numeric: tabular-nums; }
   /* Le trait relie une pastille à la suivante : il part du centre de l'étape
      courante, d'où le décalage de 50 %. */
   .od2-etape::before {
-    content: ""; position: absolute; top: 25px; left: 50%; width: 100%;
-    height: 5px; background: #2B2A3A; z-index: 1;
+    content: ""; position: absolute; top: 19px; left: 50%; width: 100%;
+    height: 4px; background: #2B2A3A; z-index: 1;
   }
   .od2-etape:last-child::before { display: none; }
   .od2-etape.faite .od2-pastille {
@@ -2561,10 +2562,12 @@
   /* ── Boutons ─────────────────────────────────────────────────────── */
   .od2-rangee { display: flex; gap: 11px; }
   .od2-btn {
-    flex: 1; min-height: 60px; border-radius: 20px; border: none;
-    display: flex; align-items: center; justify-content: center; gap: 9px;
-    font-family: inherit; font-size: 15px; font-weight: 600;
-    letter-spacing: -0.2px; cursor: pointer; padding: 0 14px;
+    flex: 1; min-height: 54px; border-radius: 17px; border: none;
+    min-width: 0;
+    display: flex; align-items: center; justify-content: center; gap: 8px;
+    white-space: nowrap; overflow: hidden;
+    font-family: inherit; font-size: 14px; font-weight: 600;
+    letter-spacing: -0.2px; cursor: pointer; padding: 0 10px;
     color: #fff; line-height: 1.2;
     transition: transform .12s, opacity .15s, filter .15s;
   }
@@ -2590,9 +2593,9 @@
     50%     { box-shadow: 0 0 56px rgba(168,85,247,0.78); }
   }
   .od2-cta {
-    width: 100%; height: 68px; border-radius: 24px; border: none; cursor: pointer;
+    width: 100%; height: 60px; border-radius: 20px; border: none; cursor: pointer;
     display: flex; align-items: center; justify-content: center; gap: 11px;
-    font-family: inherit; font-size: 17px; font-weight: 700; color: #fff;
+    font-family: inherit; font-size: 16px; font-weight: 700; color: #fff;
     background: linear-gradient(90deg, #7E22CE, #9333EA, #C026D3);
     box-shadow: 0 0 40px rgba(168,85,247,0.55);
     animation: od2Entree .4s both, od2Halo 3s ease-in-out 1.2s infinite;
@@ -2601,31 +2604,38 @@
   .od2-cta:active { transform: scale(0.97); filter: brightness(1.15); }
 
   /* ── Client ──────────────────────────────────────────────────────── */
-  .od2-client { display: flex; align-items: center; gap: 16px; }
+  .od2-client { display: flex; align-items: center; gap: 13px; }
   .od2-avatar {
-    width: 90px; height: 90px; border-radius: 50%; flex: 0 0 90px;
+    width: 62px; height: 62px; border-radius: 50%; flex: 0 0 62px;
     display: flex; align-items: center; justify-content: center; overflow: hidden;
-    font-size: 34px; font-weight: 700; color: #fff;
+    font-size: 24px; font-weight: 700; color: #fff;
     background: linear-gradient(140deg, #9333EA, #2563EB);
-    border: 3px solid rgba(147,51,234,0.85);
+    border: 2px solid rgba(147,51,234,0.85);
     box-shadow: 0 0 26px rgba(147,51,234,0.55);
   }
   .od2-avatar.photo { cursor: pointer; background: #171523; }
   .od2-avatar img { width: 100%; height: 100%; object-fit: cover; display: block; }
-  .od2-client .nom  { font-size: 22px; font-weight: 700; color: var(--od2-txt); letter-spacing: -0.4px; }
-  .od2-client .sous { font-size: 15px; color: var(--od2-txt-2); margin-top: 3px; }
+  .od2-nom-ligne { display: flex; align-items: center; gap: 6px; min-width: 0; }
+  .od2-client .nom  {
+    font-size: 19px; font-weight: 700; color: var(--od2-txt); letter-spacing: -0.4px;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0;
+  }
+  .od2-client .sous {
+    font-size: 14px; color: var(--od2-txt-2); margin-top: 2px;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
   .od2-verif {
     display: inline-flex; align-items: center; justify-content: center;
     width: 20px; height: 20px; border-radius: 50%; vertical-align: middle;
     background: var(--od2-vert); color: #0A0A0F; font-size: 12px; font-weight: 800;
-    margin-left: 6px; box-shadow: 0 0 12px rgba(125,255,0,0.7);
+    flex: 0 0 20px; box-shadow: 0 0 12px rgba(125,255,0,0.7);
   }
-  .od2-actions-client { display: flex; gap: 11px; flex: 0 0 auto; }
+  .od2-actions-client { display: flex; gap: 8px; flex: 0 0 auto; }
   .od2-msg {
-    width: 68px; height: 68px; flex: 0 0 68px; border-radius: 20px;
+    width: 50px; height: 50px; flex: 0 0 50px; border-radius: 15px;
     display: flex; align-items: center; justify-content: center;
     background: rgba(60,60,90,0.4); border: 1px solid rgba(147,51,234,0.5);
-    color: #C084FC; font-size: 25px; cursor: pointer;
+    color: #C084FC; font-size: 20px; cursor: pointer;
     box-shadow: 0 0 18px rgba(147,51,234,0.22);
     transition: transform .12s, background .15s;
   }
@@ -2636,13 +2646,13 @@
   /* ── Articles ────────────────────────────────────────────────────── */
   .od2-art {
     display: flex; align-items: center; gap: 16px;
-    padding: 22px; border-radius: 24px;
+    padding: 15px; border-radius: 20px;
     background: rgba(35,35,50,0.5);
     border: 1px solid rgba(147,51,234,0.20);
   }
   .od2-art + .od2-art { margin-top: 11px; }
   .od2-art .ic {
-    width: 52px; height: 52px; flex: 0 0 52px; border-radius: 50%;
+    width: 44px; height: 44px; flex: 0 0 44px; border-radius: 50%;
     display: flex; align-items: center; justify-content: center;
     background: rgba(37,99,235,0.22); border: 1px solid rgba(37,99,235,0.5);
     font-size: 24px; box-shadow: 0 0 20px rgba(37,99,235,0.35);
@@ -2690,8 +2700,8 @@
   .od2-total { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
   .od2-total .mode { font-size: 15px; color: var(--od2-txt-2); margin-top: 4px; }
   .od2-total .v {
-    font-size: 52px; font-weight: 800; color: #E879F9;
-    letter-spacing: -1.8px; font-variant-numeric: tabular-nums; line-height: 1;
+    font-size: 38px; font-weight: 800; color: #E879F9;
+    letter-spacing: -1.2px; font-variant-numeric: tabular-nums; line-height: 1;
     text-shadow: 0 0 20px rgba(232,121,249,0.70);
   }
 
@@ -5298,9 +5308,9 @@ function renderOrderDetail(o) {
 
   // ── Action principale = étape suivante ──────────────────────────────────
   const SUITE = {
-    pending:    { s: "confirmed",  txt: "Confirmer la commande" },
-    confirmed:  { s: "delivering", txt: "Passer en livraison" },
-    delivering: { s: "delivered",  txt: "Marquer comme terminée" },
+    pending:    { s: "confirmed",  txt: "Confirmer" },
+    confirmed:  { s: "delivering", txt: "Livraison" },
+    delivering: { s: "delivered",  txt: "Terminer" },
   }[status];
   const annulable = status !== "delivered" && !annulee;
   const actions = (SUITE || annulable) ? `
@@ -5308,7 +5318,7 @@ function renderOrderDetail(o) {
         ${SUITE ? `<button class="od2-btn valider" onclick="setOrderStatus('${oid}','${SUITE.s}')">
           <span class="ic">✓</span> ${SUITE.txt}</button>` : ""}
         ${annulable ? `<button class="od2-btn danger" onclick="setOrderStatus('${oid}','cancelled')">
-          <span class="ic">✕</span> Annuler la commande</button>` : ""}
+          <span class="ic">✕</span> Annuler</button>` : ""}
       </div>` : "";
 
   el.innerHTML = `
@@ -5350,7 +5360,10 @@ function renderOrderDetail(o) {
       <div class="od2-client">
         ${avatar}
         <div style="flex:1; min-width:0;">
-          <div class="nom">${escHtml(nomClient)}${o.username ? '<span class="od2-verif">✓</span>' : ""}</div>
+          <div class="od2-nom-ligne">
+            <span class="nom">${escHtml(nomClient)}</span>
+            ${o.username ? '<span class="od2-verif">✓</span>' : ""}
+          </div>
           <div class="sous">${o.username ? "@" + escHtml(o.username) : "sans pseudo"}</div>
           <div class="sous" style="font-size:14px;">
             ${escHtml(langues[o.lang] || (o.lang || "fr").toUpperCase())} · ${escHtml(o.user_id)}
