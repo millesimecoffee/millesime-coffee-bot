@@ -58,6 +58,12 @@ logging.basicConfig(format=_LOG_FORMAT, level=logging.INFO)
 logger = logging.getLogger(__name__)
 # M4: RotatingFileHandler ajouté dans main()
 
+# httpx journalise l'URL complète de chaque requête, or l'URL de l'API Telegram
+# contient le token du bot : en INFO il se retrouve en clair dans les logs Render.
+# WARNING garde les erreurs sans écrire le token.
+logging.getLogger("httpx").setLevel(logging.WARNING)
+logging.getLogger("httpcore").setLevel(logging.WARNING)
+
 # ── Config ────────────────────────────────────────────────────────────────────
 BOT_TOKEN      = os.getenv("BOT_TOKEN", "")
 BOT_PASSWORD   = os.getenv("BOT_PASSWORD", "SECRET123")

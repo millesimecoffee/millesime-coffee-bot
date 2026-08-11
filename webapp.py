@@ -16,6 +16,12 @@ from flask import Flask, jsonify, render_template, request
 
 logger = logging.getLogger(__name__)
 
+# Les URL de l'API Telegram contiennent le token du bot : httpx les journalise
+# en INFO, ce qui met le token en clair dans les logs. Utile aussi quand webapp
+# est lancé seul (run_webapp_dev.py), sans passer par la config de bot.py.
+logging.getLogger("httpx").setLevel(logging.WARNING)
+logging.getLogger("httpcore").setLevel(logging.WARNING)
+
 app = Flask(__name__)
 app.config["MAX_CONTENT_LENGTH"] = 10 * 1024 * 1024  # 10 MB max (selfie)
 
