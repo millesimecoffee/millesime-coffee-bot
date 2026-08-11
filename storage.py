@@ -72,7 +72,13 @@ def _invalidate_cache() -> None:
 _FILE_CACHE: dict = {"cle": None, "data": None}
 
 
-def _load_from_file() -> list:
+class LectureImpossible(Exception):
+    """orders.json existe mais n'a pas pu être lu."""
+
+
+def _load_from_file(pour_ecriture: bool = False) -> list:
+    """Lit les commandes. `pour_ecriture` : lève au lieu de renvoyer une liste
+    vide si le fichier est illisible — voir le commentaire dans le except."""
     if not _ORDERS_FILE.exists():
         return []
     try:
@@ -89,16 +95,54 @@ def _load_from_file() -> list:
         return list(data)
     except (json.JSONDecodeError, OSError) as exc:
         logger.error("Lecture orders.json : %s", exc)
+        if pour_ecriture:
+            # Renvoyer une liste vide ici serait catastrophique : l'appelant
+            # ajouterait sa commande à cette liste vide puis réécrirait le
+            # fichier, effaçant tout l'historique. On échoue bruyamment.
+            raise LectureImpossible(str(exc)) from exc
         return []
+
+
+def _ecrire_json_atomique(chemin: Path, donnees, indent=None) -> None:
+    """Écrit un JSON sans jamais laisser le fichier dans un état partiel.
+
+    Ouvrir directement en « w » vide le fichier avant de le réécrire : toute
+    lecture concurrente voit alors du JSON tronqué, et un arrêt du processus
+    au mauvais moment le corrompt définitivement. Ce cas s'est produit en
+    production sur orders.json. os.replace() est atomique.
+    """
+    tmp = chemin.with_suffix(chemin.suffix + ".tmp")
+    try:
+        with tmp.open("w", encoding="utf-8") as f:
+            json.dump(donnees, f, ensure_ascii=False, indent=indent)
+            f.flush()
+            os.fsync(f.fileno())
+        # Windows refuse le remplacement tant qu'un lecteur tient le fichier
+        # ouvert (WinError 5), là où POSIX l'autorise toujours.
+        derniere = None
+        for essai in range(12):
+            try:
+                os.replace(tmp, chemin)
+                return
+            except PermissionError as exc:
+                derniere = exc
+                time.sleep(0.03 * (essai + 1))
+        raise derniere
+    except OSError:
+        try:
+            tmp.unlink(missing_ok=True)
+        except OSError:
+            pass
+        raise
 
 
 def _save_to_file(orders: list) -> None:
     try:
-        with _ORDERS_FILE.open("w", encoding="utf-8") as f:
-            json.dump(orders, f, ensure_ascii=False, indent=2)
+        _ecrire_json_atomique(_ORDERS_FILE, orders, indent=2)
         _gh.backup_file_async("orders.json")
     except OSError as exc:
         logger.error("Écriture orders.json : %s", exc)
+        raise
 
 
 def _load() -> list:
@@ -138,7 +182,7 @@ def save_order(order: dict) -> None:
             _sb.insert("orders", row)
             _invalidate_cache()
         else:
-            orders = _load_from_file()
+            orders = _load_from_file(pour_ecriture=True)
             orders.append(order)
             _save_to_file(orders)
 
@@ -193,7 +237,7 @@ def update_order(order_id: str, updates: dict) -> bool:
             return True
 
         # Mode fichier
-        orders = _load_from_file()
+        orders = _load_from_file(pour_ecriture=True)
         for i, o in enumerate(orders):
             if o.get("order_id") == order_id:
                 orders[i].update(updates)
@@ -381,8 +425,7 @@ def save_blacklist(blacklist: set) -> None:
         return
 
     try:
-        with _BLACKLIST_FILE.open("w", encoding="utf-8") as f:
-            json.dump(list(blacklist), f)
+        _ecrire_json_atomique(_BLACKLIST_FILE, list(blacklist))
         _gh.backup_file_async("blacklist.json")
     except Exception as exc:
         logger.error("Écriture blacklist.json : %s", exc)
@@ -468,8 +511,7 @@ def save_blocked(blocked: dict[int, datetime]) -> None:
     blocked_file = _DATA_DIR / "blocked.json"
     try:
         data = {str(uid): ts.isoformat() for uid, ts in blocked.items()}
-        with blocked_file.open("w", encoding="utf-8") as f:
-            json.dump(data, f)
+        _ecrire_json_atomique(blocked_file, data)
         _gh.backup_file_async("blocked.json")
     except Exception as exc:
         logger.error("Écriture blocked.json : %s", exc)
