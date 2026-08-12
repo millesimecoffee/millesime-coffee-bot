@@ -29,6 +29,8 @@ from telegram import (
     WebAppInfo,
     BotCommand,
     CopyTextButton,
+    MenuButtonWebApp,
+    MenuButtonCommands,
 )
 from telegram.ext import (
     Application,
@@ -427,50 +429,96 @@ def _restart_keyboard() -> ReplyKeyboardMarkup:
 
 
 # ═════════════════════════════════════════════════════════════════════════════
-# /start → choix de langue → welcome + mot de passe
+# Accès Mini App — le bot ne sert qu'à ouvrir le catalogue
 # ═════════════════════════════════════════════════════════════════════════════
 
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    user_id_int   = update.effective_user.id
-    is_owner_user = str(user_id_int) == str(OWNER_USER_ID)
+CATALOGUE_LABEL = "🛍️  CATALOGUE"
 
-    # Blacklist permanente
-    if user_id_int in _blacklist:
+
+def _catalogue_keyboard() -> ReplyKeyboardMarkup | None:
+    """Grand bouton persistant qui ouvre la Mini App. None si URL absente."""
+    if not WEBAPP_URL:
+        return None
+    return ReplyKeyboardMarkup(
+        [[KeyboardButton(CATALOGUE_LABEL,
+                         web_app=WebAppInfo(url=f"{WEBAPP_URL}/menu"))]],
+        resize_keyboard=True,
+        is_persistent=True,
+    )
+
+
+async def _envoyer_catalogue(message, texte: str) -> None:
+    """Envoie `texte` avec le bouton catalogue, ou un avertissement si la Mini
+    App n'est pas configurée."""
+    kb = _catalogue_keyboard()
+    if kb is None:
+        await message.reply_text("⚠️ Mini App non configurée (WEBAPP_URL absent).")
+        return
+    await message.reply_text(texte, reply_markup=kb, parse_mode="Markdown")
+
+
+async def _acces_refuse(update: Update) -> bool:
+    """Banni / pause / hors horaires : répond et renvoie True si l'accès est
+    refusé. L'owner passe toujours."""
+    user = update.effective_user
+    if not user or not update.message:
+        return True
+    if int(user.id) in _blacklist:
         await update.message.reply_text(t("blacklisted", "fr"))
-        return ConversationHandler.END
-
-    # Pause d'urgence owner (#40)
-    if _paused and not is_owner_user:
+        return True
+    if str(user.id) == str(OWNER_USER_ID):
+        return False
+    if _paused:
         reason = _paused_reason or "service temporairement indisponible"
         await update.message.reply_text(
             f"⏸️ *Service en pause*\n\n_{reason}_\n\nRéessayez plus tard. 🙏",
             parse_mode="Markdown",
-            reply_markup=_restart_keyboard(),
         )
-        return ConversationHandler.END
+        return True
+    if not _is_open():
+        await update.message.reply_text(_CLOSED_BANNER, parse_mode="Markdown")
+        return True
+    return False
 
-    # Hors horaires : message "fermé" multi-langue et fin de session.
-    if not _is_open() and not is_owner_user:
-        await update.message.reply_text(
-            _CLOSED_BANNER,
-            parse_mode="Markdown",
-            reply_markup=_restart_keyboard(),
-        )
+
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Unique porte d'entrée : un bouton, rien d'autre.
+
+    Le parcours de commande vit entièrement dans la Mini App (langue, mot de
+    passe, pays, ville, panier, adresse, selfie, paiement). Le bot ne dialogue
+    plus avec le client dans le chat.
+    """
+    if await _acces_refuse(update):
         return ConversationHandler.END
 
     context.user_data.clear()
     _touch(context.user_data)
-    keyboard = InlineKeyboardMarkup([
-        [InlineKeyboardButton("🇫🇷 Français", callback_data="lang:fr")],
-        [InlineKeyboardButton("🇪🇸 Español",  callback_data="lang:es")],
-        [InlineKeyboardButton("🇬🇧 English",  callback_data="lang:en")],
-    ])
-    await update.message.reply_text(
-        "🌐 *Choose your language / Choisissez votre langue / Elige tu idioma:*",
-        reply_markup=keyboard,
-        parse_mode="Markdown",
+    await _envoyer_catalogue(
+        update.message,
+        "☕️ *MILLÉSIME COFFEE*\n\n"
+        "Appuyez sur *CATALOGUE* pour ouvrir la boutique.",
     )
-    return SELECTING_LANGUAGE
+    return ConversationHandler.END
+
+
+async def rappel_catalogue(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Filet : tout message écrit au bot renvoie vers la Mini App.
+
+    Enregistré en dernier, donc n'intervient que si aucun autre handler n'a
+    pris le message (commandes owner, boutons, position en direct…).
+    """
+    user = update.effective_user
+    if not user or not update.message:
+        return
+    if str(user.id) == str(OWNER_USER_ID):
+        return                      # l'owner garde ses commandes
+    if await _acces_refuse(update):
+        return
+    await _envoyer_catalogue(
+        update.message,
+        "Tout se passe dans l'application 👇\n"
+        "Appuyez sur *CATALOGUE*.",
+    )
 
 
 async def select_language(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
@@ -1880,60 +1928,12 @@ async def cmd_status(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
 # ═════════════════════════════════════════════════════════════════════════════
 
 async def cmd_app(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Ouvre la Mini App du catalogue via une reply keyboard.
-
-    Cas particuliers gérés (comme /start) :
-    - Utilisateur banni → message + return
-    - Bot en pause → message + return
-    - Hors horaires → message d'erreur + return
-    """
-    user = update.effective_user
-    if not user or not update.message:
+    """Alias de /start : réaffiche le bouton CATALOGUE."""
+    if await _acces_refuse(update):
         return
-    lang = _lang(context.user_data) if context.user_data else "fr"
-
-    # Blacklist
-    if int(user.id) in _blacklist:
-        await update.message.reply_text(t("blacklisted", "fr"))
-        return
-
-    is_owner_user = str(user.id) == str(OWNER_USER_ID)
-
-    # Pause d'urgence
-    if _paused and not is_owner_user:
-        reason = _paused_reason or "service temporairement indisponible"
-        await update.message.reply_text(
-            f"⏸️ *Service en pause*\n\n_{reason}_",
-            parse_mode="Markdown",
-        )
-        return
-
-    # Hors horaires
-    if not _is_open() and not is_owner_user:
-        await update.message.reply_text(_CLOSED_BANNER, parse_mode="Markdown")
-        return
-
-    if not WEBAPP_URL:
-        await update.message.reply_text(
-            "⚠️ Mini App non configurée (WEBAPP_URL absent).",
-        )
-        return
-
-    # Reply keyboard avec bouton WebApp
-    kb = ReplyKeyboardMarkup(
-        [[KeyboardButton(
-            "🛍️ Ouvrir le catalogue",
-            web_app=WebAppInfo(url=f"{WEBAPP_URL}/menu"),
-        )]],
-        resize_keyboard=True,
-        one_time_keyboard=False,
-    )
-    await update.message.reply_text(
-        "📲 *Nouveau catalogue interactif*\n\n"
-        "Appuyez sur le bouton ci-dessous pour ouvrir l'application "
-        "et parcourir le menu plus rapidement.",
-        reply_markup=kb,
-        parse_mode="Markdown",
+    await _envoyer_catalogue(
+        update.message,
+        "☕️ *MILLÉSIME COFFEE*\n\nAppuyez sur *CATALOGUE* pour ouvrir la boutique.",
     )
 
 
@@ -2981,7 +2981,7 @@ async def _stale_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
 def build_conv_handler() -> ConversationHandler:
     return ConversationHandler(
         entry_points=[
-            CommandHandler("start", start),
+            # /start n'entre plus ici : il ouvre directement la Mini App.
             # Mini App via sendData (keyboard button)
             MessageHandler(filters.StatusUpdate.WEB_APP_DATA, handle_miniapp_cart),
             # Mini App via POST /api/submit_cart : user clique un bouton paiement
@@ -3041,7 +3041,6 @@ def build_conv_handler() -> ConversationHandler:
         },
         fallbacks=[
             CommandHandler("cancel", cancel),
-            CommandHandler("start",  start),
             # Boutons inline obsolètes (session expirée) → répondre proprement
             CallbackQueryHandler(_stale_callback),
         ],
@@ -3050,14 +3049,12 @@ def build_conv_handler() -> ConversationHandler:
 
 
 async def _post_init(app: Application) -> None:
-    # Menu client : /start + /app (nouvelle Mini App)
-    _client_cmds = [
-        BotCommand("start", "🛍️ Démarrer (mode classique)"),
-        BotCommand("app",   "📲 Ouvrir le catalogue (Mini App)"),
-    ]
+    # Côté client : aucune commande. Le bot n'est qu'une porte vers la Mini App,
+    # la liste "/" ne doit rien proposer.
+    _client_cmds: list[BotCommand] = []
     # Menu owner : toutes les commandes
     _owner_cmds = [
-        BotCommand("start",      "🛍️ Démarrer (mode classique)"),
+        BotCommand("start",      "🛍️ Ouvrir le catalogue"),
         BotCommand("app",        "📲 Catalogue Mini App"),
         BotCommand("stats",      "📊 Statistiques"),
         BotCommand("orders",     "📋 Mes commandes"),
@@ -3085,6 +3082,29 @@ async def _post_init(app: Application) -> None:
             )
     except Exception as exc:
         logger.warning("set_my_commands: %s", exc)
+
+    # Bouton de menu du chat (à gauche de la zone de saisie) : il devient
+    # "CATALOGUE" et ouvre la Mini App. C'est le bouton visible en permanence,
+    # même avant d'avoir écrit quoi que ce soit au bot.
+    try:
+        if WEBAPP_URL:
+            await app.bot.set_chat_menu_button(
+                menu_button=MenuButtonWebApp(
+                    text="CATALOGUE",
+                    web_app=WebAppInfo(url=f"{WEBAPP_URL}/menu"),
+                )
+            )
+            logger.info("Bouton de menu → Mini App CATALOGUE")
+            # L'owner garde le menu des commandes à cet endroit.
+            if OWNER_USER_ID:
+                await app.bot.set_chat_menu_button(
+                    chat_id=int(OWNER_USER_ID),
+                    menu_button=MenuButtonCommands(),
+                )
+        else:
+            logger.warning("WEBAPP_URL absent — bouton de menu inchangé")
+    except Exception as exc:
+        logger.warning("set_chat_menu_button: %s", exc)
 
     # Initialiser le client Telethon (envoi depuis compte personnel admin)
     try:
@@ -3157,6 +3177,7 @@ def main():
         .build()
     )
     app.add_handler(build_conv_handler())
+    app.add_handler(CommandHandler("start",  start))
     app.add_handler(CallbackQueryHandler(owner_status_update, pattern="^owner:"))
     app.add_handler(CallbackQueryHandler(_noop_callback,       pattern="^noop$"))
     app.add_handler(CommandHandler("help",   cmd_help))
@@ -3185,6 +3206,15 @@ def main():
     app.add_handler(CallbackQueryHandler(handle_rating,        pattern="^rate:"))
     app.add_handler(CallbackQueryHandler(handle_feedback,      pattern="^fb:"))
     app.add_handler(CallbackQueryHandler(handle_client_cancel, pattern="^client_cancel:"))
+
+    # Dernier de la liste : tout ce qu'un client écrit au bot (texte, photo,
+    # sticker, commande inconnue…) renvoie au bouton CATALOGUE. Enregistré en
+    # dernier dans le même groupe, il ne se déclenche donc que si aucun handler
+    # ci-dessus n'a pris le message.
+    app.add_handler(MessageHandler(
+        filters.ChatType.PRIVATE & ~filters.StatusUpdate.ALL & ~filters.LOCATION,
+        rappel_catalogue,
+    ))
 
     # ── Job minuit : rapport automatique à 00h00:05 heure de Paris ───────────
     app.job_queue.run_daily(
