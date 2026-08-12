@@ -81,12 +81,23 @@ def _ecrire(data: dict) -> None:
     _gh.backup_file_async("chats.json")
 
 
-def _fil(data: dict, client_id) -> dict:
-    """Le fil d'un client, créé au besoin."""
+def _vide() -> dict:
+    return {"messages": [], "lu_vendeur": "", "lu_client": "", "profil": {}}
+
+
+def _fil(data: dict, client_id, creer: bool = False) -> dict:
+    """Le fil d'un client.
+
+    `creer=False` renvoie un fil détaché sans rien ajouter au dictionnaire :
+    sinon la simple ouverture de l'écran par un visiteur inscrirait un fil
+    vide, que la première écriture venue graverait dans chats.json.
+    """
     cle = str(client_id)
     fil = data.get(cle)
     if not isinstance(fil, dict):
-        fil = {"messages": [], "lu_vendeur": "", "lu_client": "", "profil": {}}
+        if not creer:
+            return _vide()
+        fil = _vide()
         data[cle] = fil
     fil.setdefault("messages", [])
     fil.setdefault("lu_vendeur", "")
@@ -178,7 +189,7 @@ def ajouter(client_id, de: str, texte: str = "", media_id: str = "",
 
     with _lock:
         data = _lire()
-        fil = _fil(data, client_id)
+        fil = _fil(data, client_id, creer=True)
         fil["messages"].append(msg)
         if len(fil["messages"]) > MAX_MESSAGES:
             fil["messages"] = fil["messages"][-MAX_MESSAGES:]
@@ -207,6 +218,8 @@ def contient(media_id: str, client_id) -> bool:
 def marquer_lu(client_id, par: str) -> None:
     with _lock:
         data = _lire()
+        if str(client_id) not in data:
+            return                      # rien à marquer, rien à créer
         fil = _fil(data, client_id)
         cle = "lu_vendeur" if par == VENDEUR else "lu_client"
         dernier = fil["messages"][-1]["id"] if fil["messages"] else ""

@@ -196,7 +196,19 @@ restants = chat.messages(CLIENT)
 print(f"   apres {len(gros)} + 1 messages : {len(restants)} conserves, dernier = {restants[-1]['texte']!r}")
 assert len(restants) == chat.MAX_MESSAGES and restants[-1]["texte"] == "le dernier"
 
-titre(15, "Sauvegarde distante : jamais deux envois en meme temps")
+titre(15, "Ouvrir la messagerie sans ecrire ne cree pas de fil vide")
+uid["v"] = 777000333
+fil()
+apres = list(chat._lire())
+print(f"   visiteur 777000333 apres ouverture : present = {'777000333' in apres}")
+assert "777000333" not in apres
+uid["v"] = OWNER
+noms = [f["client_id"] for f in app.post("/api/chat/threads",
+                                         json={"initData": "x"}).get_json()["threads"]]
+print(f"   conversations listees : {noms}")
+assert "777000333" not in noms
+
+titre(16, "Sauvegarde distante : jamais deux envois en meme temps")
 print("    (chaque envoi cree un commit sur la meme branche ; deux commits")
 print("     simultanes se soldent par un 409, meme sur des chemins differents)")
 import threading as _th
@@ -236,7 +248,7 @@ for f in fils:
 print(f"   {len(faits)} envois, {len(chevauchements)} chevauchement(s)")
 assert len(faits) == 12 and not chevauchements
 
-titre(16, "Un conflit GitHub est reessaye, pas abandonne")
+titre(17, "Un conflit GitHub est reessaye, pas abandonne")
 essais = {"n": 0}
 
 
