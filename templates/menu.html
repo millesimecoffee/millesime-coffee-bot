@@ -2738,6 +2738,177 @@
     .od2-carte, .od2-sous-entete, .od2-cta { animation: none; }
     .od2-btn, .od2-msg, .od2-maps, .od2-pastille, .od2-nav-btn, .od2-copie-mini { transition: none; }
   }
+
+  /* ═══════════════════════════════════════════════════════════════════════
+     MESSAGERIE — conversation privée vendeur ↔ client
+     ═══════════════════════════════════════════════════════════════════════ */
+  #screen-chat {
+    --ch-fond:    #0b0b12;
+    --ch-carte:   #17172a;
+    --ch-moi:     linear-gradient(135deg, #7c3aed, #4f46e5);
+    --ch-txt:     #f4f4fb;
+    --ch-txt-2:   #a1a1c4;
+    --ch-bordure: rgba(255,255,255,0.09);
+  }
+  /* La conversation occupe tout l'écran : la zone d'écriture reste collée en
+     bas, seule la liste des bulles défile. */
+  #screen-chat.active {
+    position: fixed; inset: 0; z-index: 60;
+    display: flex; flex-direction: column;
+    background: var(--ch-fond); color: var(--ch-txt);
+    /* L'animation d'entrée des écrans laisse un translateY(8px) résiduel :
+       sur un élément en position fixed, il décale tout le plein écran vers le
+       bas et rogne la zone d'écriture. On l'annule ici. */
+    animation: chOuvre 0.2s ease-out;
+    transform: none;
+  }
+  @keyframes chOuvre { from { opacity: 0; } }
+  .ch-entete {
+    display: flex; align-items: center; gap: 11px; flex: 0 0 auto;
+    padding: calc(10px + env(safe-area-inset-top, 0px)) 14px 10px;
+    background: rgba(23,23,42,0.96); border-bottom: 1px solid var(--ch-bordure);
+    backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
+  }
+  .ch-retour {
+    width: 36px; height: 36px; flex: 0 0 36px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    background: rgba(255,255,255,0.07); border: 1px solid var(--ch-bordure);
+    color: var(--ch-txt); font-size: 19px; cursor: pointer;
+  }
+  .ch-avatar {
+    width: 38px; height: 38px; flex: 0 0 38px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    background: linear-gradient(135deg,#7c3aed,#ec4899);
+    font-weight: 800; font-size: 16px; color: #fff;
+  }
+  .ch-entete .qui { min-width: 0; flex: 1; }
+  .ch-entete .nom {
+    font-size: 16px; font-weight: 700;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .ch-entete .sous { font-size: 12px; color: var(--ch-txt-2); margin-top: 1px; }
+
+  .ch-fil {
+    flex: 1 1 auto; overflow-y: auto; -webkit-overflow-scrolling: touch;
+    padding: 14px 12px 6px; display: flex; flex-direction: column; gap: 7px;
+  }
+  .ch-jour {
+    align-self: center; margin: 8px 0 4px; padding: 4px 12px; border-radius: 999px;
+    background: rgba(255,255,255,0.06); color: var(--ch-txt-2);
+    font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.6px;
+  }
+  .ch-bulle {
+    max-width: 78%; padding: 9px 13px 7px; border-radius: 19px;
+    background: var(--ch-carte); border: 1px solid var(--ch-bordure);
+    font-size: 15px; line-height: 1.38; word-wrap: break-word;
+    overflow-wrap: anywhere; align-self: flex-start;
+    border-bottom-left-radius: 7px;
+    animation: chApparait 0.18s ease-out;
+  }
+  .ch-bulle.moi {
+    align-self: flex-end; background: var(--ch-moi); border-color: transparent;
+    border-bottom-left-radius: 19px; border-bottom-right-radius: 7px;
+  }
+  @keyframes chApparait { from { opacity: 0; transform: translateY(6px); } }
+  .ch-bulle .heure {
+    font-size: 10.5px; color: var(--ch-txt-2); text-align: right;
+    margin-top: 3px; font-variant-numeric: tabular-nums;
+  }
+  .ch-bulle.moi .heure { color: rgba(255,255,255,0.72); }
+  .ch-bulle img {
+    display: block; width: 100%; max-width: 260px; border-radius: 13px;
+    margin: -2px 0 2px; cursor: pointer; background: rgba(0,0,0,0.25);
+  }
+  .ch-bulle.envoi { opacity: 0.55; }
+
+  /* Message vocal : un bouton, une onde, une durée. */
+  .ch-audio { display: flex; align-items: center; gap: 10px; min-width: 168px; }
+  .ch-audio .play {
+    width: 36px; height: 36px; flex: 0 0 36px; border-radius: 50%; border: none;
+    background: rgba(255,255,255,0.16); color: #fff; font-size: 14px; cursor: pointer;
+  }
+  .ch-bulle:not(.moi) .ch-audio .play { background: rgba(124,58,237,0.35); }
+  .ch-audio .onde { flex: 1; display: flex; align-items: center; gap: 2.5px; height: 26px; }
+  .ch-audio .onde i {
+    flex: 1; border-radius: 2px; background: currentColor; opacity: 0.42;
+    min-height: 4px; display: block;
+  }
+  .ch-audio .onde i.lu { opacity: 1; }
+  .ch-audio .duree {
+    font-size: 12px; color: var(--ch-txt-2); font-variant-numeric: tabular-nums;
+    flex: 0 0 auto;
+  }
+  .ch-bulle.moi .ch-audio .duree { color: rgba(255,255,255,0.78); }
+
+  .ch-vide {
+    margin: auto; text-align: center; color: var(--ch-txt-2);
+    padding: 30px 20px; font-size: 14px; line-height: 1.5;
+  }
+  .ch-vide .emoji { font-size: 42px; margin-bottom: 10px; }
+
+  /* ── Zone d'écriture ─────────────────────────────────────────────── */
+  .ch-barre {
+    flex: 0 0 auto; display: flex; align-items: flex-end; gap: 8px;
+    padding: 9px 11px calc(9px + env(safe-area-inset-bottom, 0px));
+    background: rgba(23,23,42,0.98); border-top: 1px solid var(--ch-bordure);
+  }
+  .ch-barre .rond {
+    width: 42px; height: 42px; flex: 0 0 42px; border-radius: 50%; border: none;
+    display: flex; align-items: center; justify-content: center;
+    background: rgba(255,255,255,0.08); color: var(--ch-txt);
+    font-size: 19px; cursor: pointer; transition: transform 0.12s, background 0.15s;
+  }
+  .ch-barre .rond:active { transform: scale(0.9); }
+  .ch-barre .rond.envoyer { background: var(--ch-moi); color: #fff; }
+  .ch-barre .rond.micro.actif { background: #ef4444; color: #fff; animation: chPulse 1.1s infinite; }
+  @keyframes chPulse { 50% { box-shadow: 0 0 0 9px rgba(239,68,68,0); } 0% { box-shadow: 0 0 0 0 rgba(239,68,68,0.55); } }
+  .ch-saisie {
+    flex: 1; min-width: 0; resize: none; max-height: 120px;
+    padding: 11px 15px; border-radius: 21px; font: inherit; font-size: 15px;
+    background: rgba(255,255,255,0.07); border: 1px solid var(--ch-bordure);
+    color: var(--ch-txt); line-height: 1.35;
+  }
+  .ch-saisie::placeholder { color: var(--ch-txt-2); }
+  .ch-saisie:focus { outline: none; border-color: rgba(124,58,237,0.65); }
+
+  .ch-enreg {
+    flex: 1; display: flex; align-items: center; gap: 10px;
+    padding: 11px 15px; border-radius: 21px;
+    background: rgba(239,68,68,0.13); border: 1px solid rgba(239,68,68,0.4);
+    font-size: 14px; color: #fecaca;
+  }
+  .ch-enreg .point {
+    width: 9px; height: 9px; border-radius: 50%; background: #ef4444;
+    animation: chClignote 1s infinite;
+  }
+  @keyframes chClignote { 50% { opacity: 0.25; } }
+  .ch-enreg .chrono { font-variant-numeric: tabular-nums; font-weight: 700; }
+  .ch-enreg .annuler { margin-left: auto; color: #fca5a5; font-weight: 600; cursor: pointer; }
+
+  /* ── Liste des conversations (vendeur) ───────────────────────────── */
+  .ch-fils { display: flex; flex-direction: column; gap: 8px; }
+  .ch-item {
+    display: flex; align-items: center; gap: 12px; padding: 12px 14px;
+    border-radius: 17px; cursor: pointer;
+    background: var(--card-bg, rgba(255,255,255,0.05));
+    border: 1px solid rgba(255,255,255,0.08);
+  }
+  .ch-item:active { transform: scale(0.99); }
+  .ch-item .corps { flex: 1; min-width: 0; }
+  .ch-item .nom { font-size: 15px; font-weight: 700; }
+  .ch-item .apercu {
+    font-size: 13px; opacity: 0.62; margin-top: 2px;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .ch-item .droite { text-align: right; flex: 0 0 auto; }
+  .ch-item .quand { font-size: 11px; opacity: 0.5; }
+  .ch-pastille {
+    display: inline-block; min-width: 20px; padding: 1px 6px; margin-top: 5px;
+    border-radius: 999px; background: #ef4444; color: #fff;
+    font-size: 11px; font-weight: 800; text-align: center;
+  }
+  /* La barre de panier passerait par-dessus la zone d'écriture. */
+  body:has(#screen-chat.active) .cart-bar { display: none !important; }
 </style>
 
 <!-- HEADER (caché sur screen langue) -->
@@ -2851,6 +3022,14 @@
         <div class="info">
           <div class="name">Mes commandes</div>
           <div class="meta" id="clientHistoryCount">—</div>
+        </div>
+        <span class="arrow">›</span>
+      </div>
+      <div class="card" onclick="ouvrirChat('')">
+        <span class="emoji">💬</span>
+        <div class="info">
+          <div class="name">Discuter avec le vendeur</div>
+          <div class="meta" id="chatBadgeClient">Écrire au vendeur</div>
         </div>
         <span class="arrow">›</span>
       </div>
@@ -3130,6 +3309,16 @@
         <span class="arrow">›</span>
       </div>
     </div>
+    <div class="card" onclick="ouvrirListeChats()" style="margin-top:8px;">
+      <span class="emoji">💬</span>
+      <div class="info">
+        <div class="name">Messages
+          <span class="ch-pastille" id="chatPointOwner" style="display:none; margin:0 0 0 6px;"></span>
+        </div>
+        <div class="meta" id="chatBadgeOwner">Aucun nouveau message</div>
+      </div>
+      <span class="arrow">›</span>
+    </div>
     <div class="card" onclick="enterClientMode()" style="margin-top:8px;">
       <span class="emoji">🛍️</span>
       <div class="info">
@@ -3276,6 +3465,41 @@
   <div class="container" style="padding-top:0;">
     <button class="next-btn" onclick="contactSupport()">💬 Nous contacter</button>
     <button class="next-btn" style="background:#444; box-shadow:none; margin-top:10px;" onclick="closeTracking()">Fermer</button>
+  </div>
+</div>
+
+<!-- ÉCRAN MESSAGERIE : conversation -->
+<div class="screen" id="screen-chat">
+  <div class="ch-entete">
+    <div class="ch-retour" role="button" aria-label="Retour" onclick="fermerChat()">‹</div>
+    <div class="ch-avatar" id="chatAvatar">?</div>
+    <div class="qui">
+      <div class="nom" id="chatNom">Millésime Coffee</div>
+      <div class="sous" id="chatSous">Messagerie privée</div>
+    </div>
+  </div>
+
+  <div class="ch-fil" id="chatFil"></div>
+
+  <div class="ch-barre" id="chatBarre">
+    <button class="rond" id="chatPhotoBtn" aria-label="Envoyer une photo"
+            onclick="document.getElementById('chatFichier').click()">📷</button>
+    <textarea class="ch-saisie" id="chatSaisie" rows="1" placeholder="Votre message…"
+              autocomplete="off" oninput="chatAjusterHauteur(this)"></textarea>
+    <button class="rond micro" id="chatMicro" aria-label="Message vocal">🎤</button>
+    <button class="rond envoyer" id="chatEnvoyer" aria-label="Envoyer"
+            onclick="chatEnvoyerTexte()" style="display:none;">➤</button>
+  </div>
+
+  <input type="file" id="chatFichier" accept="image/*" style="display:none;"
+         onchange="chatChoisirPhoto(this)">
+</div>
+
+<!-- ÉCRAN MESSAGERIE : liste des conversations (vendeur) -->
+<div class="screen" id="screen-chat-list">
+  <div class="container">
+    <div class="section-title">💬 Messages</div>
+    <div class="ch-fils" id="chatFilsListe"></div>
   </div>
 </div>
 
@@ -5364,8 +5588,10 @@ function renderOrderDetail(o) {
           </div>
         </div>
         <div class="od2-actions-client">
+          <div class="od2-msg" role="button" aria-label="Discuter dans l'application"
+               onclick="ouvrirChat('${uidSafe}', ${JSON.stringify(nomClient)})">💬</div>
           <div class="od2-msg bleu" ${dataChat} onclick="contactClient(this)"
-               role="button" aria-label="Contacter le client">➤</div>
+               role="button" aria-label="Contacter sur Telegram">➤</div>
           ${o.selfie_b64 ? `<div class="od2-msg" role="button" aria-label="Enregistrer la photo"
                onclick="enregistrerSelfie('${oid}')">⬇︎</div>` : ""}
         </div>
@@ -5570,6 +5796,462 @@ async function askAndSendMessageToClient(client) {
 function openExternal(url) {
   try { tg.openLink(url); }
   catch { window.open(url, "_blank"); }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// MESSAGERIE — conversation privée vendeur ↔ client, dans l'application
+// ═══════════════════════════════════════════════════════════════════════════
+
+const CHAT_RAFRAICHIR_MS = 3000;
+
+const chatEtat = {
+  ouvert: false,
+  clientId: "",        // vide côté client : le serveur sait qui l'on est
+  role: "client",
+  messages: [],
+  timer: null,
+  enregistreur: null,
+  morceaux: [],
+  debutEnreg: 0,
+  chronoTimer: null,
+  audioEnCours: null,
+};
+
+function chatCorps(extra) {
+  const c = { initData: tg.initData || "", ...(extra || {}) };
+  if (chatEtat.clientId) c.client_id = chatEtat.clientId;
+  return JSON.stringify(c);
+}
+
+async function ouvrirChat(clientId, nom) {
+  hapticSelect();
+  chatEtat.clientId = clientId ? String(clientId) : "";
+  chatEtat.messages = [];
+  document.getElementById("chatNom").textContent = nom || (clientId ? "Client" : "Millésime Coffee");
+  document.getElementById("chatSous").textContent = "Chargement…";
+  document.getElementById("chatAvatar").textContent =
+    [...String(nom || "M").trim()][0]?.toUpperCase() || "?";
+  document.getElementById("chatFil").innerHTML =
+    `<div class="ch-vide"><span class="loader"></span></div>`;
+  setScreen("chat");
+  chatEtat.ouvert = true;
+  await chatCharger(true);
+  chatDemarrerBoucle();
+}
+
+function fermerChat() {
+  chatEtat.ouvert = false;
+  chatArreterBoucle();
+  chatArreterAudio();
+  if (chatEtat.enregistreur) chatAnnulerEnreg();
+  // Le retour arrière est porté par le bouton d'en-tête de l'application ;
+  // on le déclenche pour réutiliser sa pile d'écrans.
+  document.getElementById("backBtn").click();
+  majPastilleMessages();
+}
+
+function chatDemarrerBoucle() {
+  chatArreterBoucle();
+  chatEtat.timer = setInterval(() => {
+    if (chatEtat.ouvert && !document.hidden) chatCharger(false);
+  }, CHAT_RAFRAICHIR_MS);
+}
+
+function chatArreterBoucle() {
+  if (chatEtat.timer) { clearInterval(chatEtat.timer); chatEtat.timer = null; }
+}
+
+async function chatCharger(forcer) {
+  try {
+    const r = await apiFetch("/api/chat/thread", { method: "POST", body: chatCorps() });
+    const d = await r.json();
+    if (!d.ok) return;
+    chatEtat.role = d.role;
+    // On ne redessine que si quelque chose a changé : sinon le fil sauterait
+    // sous le doigt toutes les 3 secondes pendant la lecture.
+    const signature = (d.messages || []).map(m => m.id).join(",");
+    if (!forcer && signature === chatEtat._signature) return;
+    chatEtat._signature = signature;
+    chatEtat.messages = d.messages || [];
+    if (d.role === "vendeur") {
+      const p = d.profil || {};
+      document.getElementById("chatNom").textContent = p.user_name || `Client ${d.client_id}`;
+      document.getElementById("chatSous").textContent =
+        [p.username ? "@" + p.username : "", p.city].filter(Boolean).join(" · ") || "Client";
+      document.getElementById("chatAvatar").textContent =
+        [...String(p.user_name || "?").trim()][0]?.toUpperCase() || "?";
+    } else {
+      document.getElementById("chatSous").textContent = "Vendeur · réponse en général rapide";
+    }
+    chatDessiner();
+  } catch { /* réseau : on retentera au prochain tour */ }
+}
+
+function chatDessiner() {
+  const fil = document.getElementById("chatFil");
+  const enBas = fil.scrollHeight - fil.scrollTop - fil.clientHeight < 90;
+
+  if (!chatEtat.messages.length) {
+    fil.innerHTML = `<div class="ch-vide"><div class="emoji">💬</div>
+      ${chatEtat.role === "vendeur"
+        ? "Aucun message avec ce client.<br>Écrivez-lui le premier."
+        : "Une question sur votre commande ?<br>Écrivez-nous, photo et vocal acceptés."}</div>`;
+    return;
+  }
+
+  let jour = "";
+  fil.innerHTML = chatEtat.messages.map(m => {
+    const moi = (m.de === chatEtat.role);
+    const d = _parseServerDate(m.at);
+    const sonJour = d ? d.toDateString() : "";
+    let sep = "";
+    if (sonJour && sonJour !== jour) {
+      jour = sonJour;
+      sep = `<div class="ch-jour">${_jourLisible(d)}</div>`;
+    }
+    return sep + `<div class="ch-bulle ${moi ? "moi" : ""}">${chatContenu(m)}
+      <div class="heure">${_heureCourte(m.at)}</div></div>`;
+  }).join("");
+
+  if (enBas) chatAllerEnBas();
+}
+
+function chatContenu(m) {
+  if (m.type === "photo" && m.media) {
+    return `<img src="${chatUrlMedia(m.media)}" alt="Photo" loading="lazy"
+                 onclick="chatAgrandir('${m.media}')">`
+         + (m.texte ? escHtml(m.texte) : "");
+  }
+  if (m.type === "audio" && m.media) {
+    const barres = Array.from({ length: 22 }, (_, i) =>
+      `<i style="height:${6 + ((i * 7 + m.id.charCodeAt(0)) % 17)}px"></i>`).join("");
+    return `<div class="ch-audio" data-media="${m.media}">
+      <button class="play" onclick="chatJouer(this, '${m.media}')" aria-label="Écouter">▶</button>
+      <span class="onde">${barres}</span>
+      <span class="duree">${_dureeCourte(m.duree)}</span></div>`;
+  }
+  return escHtml(m.texte || "").replace(/\n/g, "<br>");
+}
+
+function chatUrlMedia(media) {
+  let u = `/api/chat/media/${encodeURIComponent(media)}`
+        + `?initData=${encodeURIComponent(tg.initData || "")}`;
+  if (chatEtat.clientId) u += `&client_id=${encodeURIComponent(chatEtat.clientId)}`;
+  return u;
+}
+
+function chatAllerEnBas() {
+  const fil = document.getElementById("chatFil");
+  fil.scrollTop = fil.scrollHeight;
+}
+
+function _jourLisible(d) {
+  if (!d) return "";
+  const auj = new Date(), hier = new Date(Date.now() - 86400000);
+  if (d.toDateString() === auj.toDateString())  return "Aujourd'hui";
+  if (d.toDateString() === hier.toDateString()) return "Hier";
+  return `${d.getDate()} ${_MOIS_FR[d.getMonth()]}`;
+}
+
+function _dureeCourte(s) {
+  const n = Math.max(0, Math.round(s || 0));
+  return `${Math.floor(n / 60)}:${String(n % 60).padStart(2, "0")}`;
+}
+
+function chatAjusterHauteur(el) {
+  el.style.height = "auto";
+  el.style.height = Math.min(el.scrollHeight, 120) + "px";
+  const vide = !el.value.trim();
+  document.getElementById("chatEnvoyer").style.display = vide ? "none" : "flex";
+  document.getElementById("chatMicro").style.display   = vide ? "flex" : "none";
+}
+
+// ── Envoi ───────────────────────────────────────────────────────────────────
+
+async function chatEnvoyer(charge, apercu) {
+  // Bulle optimiste : le message s'affiche tout de suite, en pâle, puis se
+  // confirme. Sans ça l'envoi paraît figé le temps de l'aller-retour.
+  const provisoire = {
+    id: "tmp" + Date.now(), de: chatEtat.role, at: new Date().toISOString(),
+    ...apercu,
+  };
+  chatEtat.messages.push(provisoire);
+  chatDessiner();
+  chatAllerEnBas();
+  const bulle = document.querySelector("#chatFil .ch-bulle:last-child");
+  if (bulle) bulle.classList.add("envoi");
+
+  try {
+    const r = await apiFetch("/api/chat/send", { method: "POST", body: chatCorps(charge) });
+    const d = await r.json();
+    if (!d.ok) {
+      chatEtat.messages = chatEtat.messages.filter(m => m.id !== provisoire.id);
+      chatDessiner();
+      showToast(chatErreur(d.error), true);
+      return false;
+    }
+    chatEtat.messages[chatEtat.messages.length - 1] = d.message;
+    chatEtat._signature = null;      // force le redessin au prochain tour
+    chatDessiner();
+    hapticSuccess();
+    return true;
+  } catch {
+    chatEtat.messages = chatEtat.messages.filter(m => m.id !== provisoire.id);
+    chatDessiner();
+    showToast(t("err_network"), true);
+    return false;
+  }
+}
+
+function chatErreur(code) {
+  return {
+    media_too_big: "Fichier trop lourd",
+    bad_photo:     "Photo illisible",
+    bad_audio:     "Enregistrement illisible",
+    too_fast:      "Doucement — trop de messages d'un coup",
+    empty:         "Message vide",
+  }[code] || "Envoi impossible";
+}
+
+async function chatEnvoyerTexte() {
+  const zone = document.getElementById("chatSaisie");
+  const texte = zone.value.trim();
+  if (!texte) return;
+  zone.value = "";
+  chatAjusterHauteur(zone);
+  await chatEnvoyer({ texte }, { type: "texte", texte });
+}
+
+async function chatChoisirPhoto(input) {
+  const f = input.files && input.files[0];
+  input.value = "";
+  if (!f) return;
+  if (f.size > 12 * 1024 * 1024) { showToast("Photo trop lourde", true); return; }
+  showToast("Envoi de la photo…");
+  const b64 = await new Promise(res => {
+    const fr = new FileReader();
+    fr.onload = () => res(String(fr.result || ""));
+    fr.onerror = () => res("");
+    fr.readAsDataURL(f);
+  });
+  if (!b64) { showToast("Photo illisible", true); return; }
+  await chatEnvoyer({ photo_b64: b64 }, { type: "photo", media: "", texte: "📷 Photo" });
+}
+
+// ── Message vocal ───────────────────────────────────────────────────────────
+
+function chatMicroSupporte() {
+  return !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia &&
+            window.MediaRecorder);
+}
+
+async function chatDemarrerEnreg() {
+  if (!chatMicroSupporte()) {
+    showToast("Micro non disponible sur cet appareil", true);
+    return;
+  }
+  let flux;
+  try {
+    flux = await navigator.mediaDevices.getUserMedia({ audio: true });
+  } catch {
+    showToast("Micro refusé — autorisez-le dans les réglages", true);
+    return;
+  }
+  let type = "";
+  for (const t of ["audio/ogg;codecs=opus", "audio/webm;codecs=opus", "audio/webm", "audio/mp4"]) {
+    if (window.MediaRecorder.isTypeSupported && MediaRecorder.isTypeSupported(t)) { type = t; break; }
+  }
+  const rec = new MediaRecorder(flux, type ? { mimeType: type } : undefined);
+  chatEtat.enregistreur = rec;
+  chatEtat.morceaux = [];
+  chatEtat.debutEnreg = Date.now();
+  rec.ondataavailable = e => { if (e.data && e.data.size) chatEtat.morceaux.push(e.data); };
+  rec.onstop = () => flux.getTracks().forEach(p => p.stop());
+  rec.start();
+  hapticMedium();
+  chatAfficherEnreg(true);
+}
+
+function chatAfficherEnreg(actif) {
+  const barre = document.getElementById("chatBarre");
+  if (actif) {
+    barre.dataset.avant = barre.innerHTML;
+    barre.innerHTML = `
+      <div class="ch-enreg">
+        <span class="point"></span>
+        <span>Enregistrement</span>
+        <span class="chrono" id="chatChrono">0:00</span>
+        <span class="annuler" role="button" onclick="chatAnnulerEnreg()">Annuler</span>
+      </div>
+      <button class="rond envoyer" onclick="chatFinirEnreg()" aria-label="Envoyer le vocal">➤</button>`;
+    chatEtat.chronoTimer = setInterval(() => {
+      const s = Math.floor((Date.now() - chatEtat.debutEnreg) / 1000);
+      const el = document.getElementById("chatChrono");
+      if (el) el.textContent = _dureeCourte(s);
+      if (s >= 180) chatFinirEnreg();       // plafond serveur
+    }, 250);
+  } else {
+    clearInterval(chatEtat.chronoTimer);
+    chatEtat.chronoTimer = null;
+    if (barre.dataset.avant) barre.innerHTML = barre.dataset.avant;
+    chatBrancherBarre();
+  }
+}
+
+function chatAnnulerEnreg() {
+  const rec = chatEtat.enregistreur;
+  chatEtat.enregistreur = null;
+  chatEtat.morceaux = [];
+  if (rec && rec.state !== "inactive") rec.stop();
+  chatAfficherEnreg(false);
+}
+
+async function chatFinirEnreg() {
+  const rec = chatEtat.enregistreur;
+  if (!rec) return;
+  chatEtat.enregistreur = null;
+  const duree = Math.round((Date.now() - chatEtat.debutEnreg) / 1000);
+  const fini = new Promise(res => { rec.onstop = () => res(); });
+  if (rec.state !== "inactive") rec.stop();
+  await fini;
+  try { rec.stream.getTracks().forEach(p => p.stop()); } catch {}
+  chatAfficherEnreg(false);
+
+  if (duree < 1 || !chatEtat.morceaux.length) {
+    showToast("Trop court — maintenez pour parler", true);
+    return;
+  }
+  const blob = new Blob(chatEtat.morceaux, { type: chatEtat.morceaux[0].type || "audio/webm" });
+  chatEtat.morceaux = [];
+  const b64 = await new Promise(res => {
+    const fr = new FileReader();
+    fr.onload = () => res(String(fr.result || ""));
+    fr.onerror = () => res("");
+    fr.readAsDataURL(blob);
+  });
+  if (!b64) { showToast("Enregistrement illisible", true); return; }
+  await chatEnvoyer({ audio_b64: b64, duree },
+                    { type: "audio", media: "", duree, texte: "" });
+}
+
+function chatBrancherBarre() {
+  const micro = document.getElementById("chatMicro");
+  if (!micro || micro.dataset.branche) return;
+  micro.dataset.branche = "1";
+  micro.addEventListener("click", () => {
+    if (chatEtat.enregistreur) chatFinirEnreg();
+    else chatDemarrerEnreg();
+  });
+  const zone = document.getElementById("chatSaisie");
+  if (zone && !zone.dataset.branche) {
+    zone.dataset.branche = "1";
+    zone.addEventListener("keydown", e => {
+      if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); chatEnvoyerTexte(); }
+    });
+  }
+}
+
+// ── Lecture d'un vocal ──────────────────────────────────────────────────────
+
+function chatArreterAudio() {
+  if (chatEtat.audioEnCours) {
+    try { chatEtat.audioEnCours.pause(); } catch {}
+    chatEtat.audioEnCours = null;
+  }
+  document.querySelectorAll("#chatFil .ch-audio .play").forEach(b => b.textContent = "▶");
+  document.querySelectorAll("#chatFil .ch-audio .onde i").forEach(b => b.classList.remove("lu"));
+}
+
+function chatJouer(bouton, media) {
+  const dejaCelui = chatEtat.audioEnCours && chatEtat.audioEnCours.dataset.media === media
+                 && !chatEtat.audioEnCours.paused;
+  chatArreterAudio();
+  if (dejaCelui) return;
+
+  const son = new Audio(chatUrlMedia(media));
+  son.dataset.media = media;
+  chatEtat.audioEnCours = son;
+  const barres = [...bouton.parentElement.querySelectorAll(".onde i")];
+  son.ontimeupdate = () => {
+    if (!son.duration || !isFinite(son.duration)) return;
+    const avance = son.currentTime / son.duration;
+    barres.forEach((b, i) => b.classList.toggle("lu", i / barres.length <= avance));
+  };
+  son.onended = () => chatArreterAudio();
+  son.onerror = () => { chatArreterAudio(); showToast("Audio indisponible", true); };
+  son.play().then(() => { bouton.textContent = "❚❚"; })
+            .catch(() => showToast("Lecture impossible", true));
+  hapticSelect();
+}
+
+function chatAgrandir(media) {
+  const fond = document.createElement("div");
+  fond.className = "od2-loupe";
+  fond.innerHTML = `<button class="fermer" aria-label="Fermer">✕</button>
+                    <img src="${chatUrlMedia(media)}" alt="">`;
+  fond.addEventListener("click", () => fond.remove());
+  document.body.appendChild(fond);
+}
+
+// ── Liste des conversations (vendeur) ───────────────────────────────────────
+
+async function ouvrirListeChats() {
+  hapticSelect();
+  setScreen("chat-list");
+  const liste = document.getElementById("chatFilsListe");
+  liste.innerHTML = `<div class="empty"><span class="loader"></span> Chargement…</div>`;
+  try {
+    const r = await apiFetch("/api/chat/threads", {
+      method: "POST", body: JSON.stringify({ initData: tg.initData || "" }) });
+    const d = await r.json();
+    if (!d.ok) { liste.innerHTML = `<div class="empty"><div class="text">Accès refusé</div></div>`; return; }
+    if (!d.threads.length) {
+      liste.innerHTML = `<div class="empty"><div class="emoji">💬</div>
+        <div class="text">Aucune conversation pour l'instant.<br>
+        Ouvrez une commande et écrivez au client.</div></div>`;
+      return;
+    }
+    liste.innerHTML = d.threads.map(f => {
+      const p = f.profil || {};
+      const nom = p.user_name || `Client ${f.client_id}`;
+      const prefixe = f.dernier.de === "vendeur" ? "Vous : " : "";
+      const apercu = f.dernier.type === "photo" ? "📷 Photo"
+                   : f.dernier.type === "audio" ? "🎤 Message vocal"
+                   : (f.dernier.texte || "");
+      return `<div class="ch-item" onclick="ouvrirChat('${f.client_id}', ${JSON.stringify(nom)})">
+        <div class="ch-avatar">${escHtml([...nom.trim()][0] || "?").toUpperCase()}</div>
+        <div class="corps">
+          <div class="nom">${escHtml(nom)}</div>
+          <div class="apercu">${escHtml(prefixe + apercu)}</div>
+        </div>
+        <div class="droite">
+          <div class="quand">${_heureCourte(f.dernier.at)}</div>
+          ${f.non_lus ? `<span class="ch-pastille">${f.non_lus}</span>` : ""}
+        </div>
+      </div>`;
+    }).join("");
+  } catch {
+    liste.innerHTML = `<div class="empty"><div class="text">${t("err_network")}</div></div>`;
+  }
+}
+
+// ── Pastille de messages non lus ────────────────────────────────────────────
+
+async function majPastilleMessages() {
+  try {
+    const r = await apiFetch("/api/chat/resume", {
+      method: "POST", body: JSON.stringify({ initData: tg.initData || "" }) });
+    const d = await r.json();
+    const n = d.non_lus || 0;
+    for (const id of ["chatBadgeOwner", "chatBadgeClient"]) {
+      const el = document.getElementById(id);
+      if (el) el.textContent = n ? `${n} non lu${n > 1 ? "s" : ""}` : "Écrire au vendeur";
+      if (el && id === "chatBadgeOwner") el.textContent = n ? `${n} non lu${n > 1 ? "s" : ""}` : "Aucun nouveau message";
+    }
+    const point = document.getElementById("chatPointOwner");
+    if (point) point.style.display = n ? "inline-block" : "none";
+    if (point) point.textContent = n;
+  } catch { /* sans importance */ }
 }
 
 async function setOrderStatus(orderId, newStatus) {
@@ -6031,9 +6713,20 @@ updateHeader = function(name) {
     try { tg.BackButton.hide(); } catch {}
   } else if (name === "client-home") {
     document.getElementById("header").style.display = "none";
+    majPastilleMessages();
   } else if (name === "client-history") {
     document.getElementById("headerTitle").textContent    = "📜 Mes commandes";
     document.getElementById("headerSubtitle").textContent = `${(state.clientData?.count || 0)} au total`;
+  } else if (name === "chat") {
+    // La conversation a son propre en-tête, en plein écran.
+    document.getElementById("header").style.display = "none";
+    chatBrancherBarre();
+  } else if (name === "chat-list") {
+    document.getElementById("headerTitle").textContent    = "💬 Messages";
+    document.getElementById("headerSubtitle").textContent = "Conversations clients";
+  } else if (name === "owner-home") {
+    _origUpdateHeader2(name);
+    majPastilleMessages();
   } else {
     _origUpdateHeader2(name);
   }

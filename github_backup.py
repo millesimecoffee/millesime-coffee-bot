@@ -26,7 +26,7 @@ _BRANCH = os.getenv("GITHUB_DATA_BRANCH", "main")
 _API    = "https://api.github.com"
 
 _DATA_DIR  = Path(os.getenv("DATA_DIR", str(Path(__file__).parent)))
-_FILES = ["orders.json", "blacklist.json", "blocked.json"]
+_FILES = ["orders.json", "blacklist.json", "blocked.json", "chats.json"]
 
 _sha_cache: dict[str, str] = {}
 _lock = threading.Lock()
@@ -157,6 +157,61 @@ def upload_file(filename: str) -> bool:
             with _lock:
                 _sha_cache.pop(filename, None)
             return False
+
+
+def envoyer_binaire(chemin_repo: str, donnees: bytes) -> bool:
+    """Dépose un fichier binaire (photo, audio) à `chemin_repo` dans le dépôt.
+
+    Contrairement aux JSON, chaque média a son propre chemin : on n'envoie que
+    lui, jamais l'ensemble. Un média n'est jamais modifié après coup, donc pas
+    de sha à gérer — s'il existe déjà, c'est le même contenu.
+    """
+    if not _TOKEN or not donnees:
+        return False
+    with _get_upload_lock(chemin_repo):
+        try:
+            r = httpx.put(
+                _file_url(chemin_repo), headers=_headers(), timeout=30.0,
+                json={
+                    "message": f"Media: {chemin_repo}",
+                    "content": base64.b64encode(donnees).decode("ascii"),
+                    "branch": _BRANCH,
+                },
+            )
+            if r.status_code in (200, 201):
+                return True
+            if r.status_code == 422:      # déjà présent
+                return True
+            logger.warning("Github media %s : HTTP %s", chemin_repo, r.status_code)
+            return False
+        except Exception as exc:
+            logger.warning("Github media %s : %s", chemin_repo, exc)
+            return False
+
+
+def backup_binaire_async(chemin_repo: str, donnees: bytes) -> None:
+    """Envoi d'un média en arrière-plan : le client n'attend pas GitHub."""
+    if not _TOKEN:
+        return
+    threading.Thread(target=envoyer_binaire, args=(chemin_repo, donnees),
+                     daemon=True).start()
+
+
+def telecharger_binaire(chemin_repo: str) -> bytes:
+    """Récupère un média du dépôt. Sert après un redéploiement, quand le
+    disque éphémère de Render a été remis à zéro."""
+    if not _TOKEN:
+        return b""
+    try:
+        r = httpx.get(_file_url(chemin_repo), headers=_headers(), timeout=30.0,
+                      params={"ref": _BRANCH})
+        if r.status_code != 200:
+            return b""
+        contenu = (r.json() or {}).get("content", "")
+        return base64.b64decode(contenu) if contenu else b""
+    except Exception as exc:
+        logger.warning("Github media download %s : %s", chemin_repo, exc)
+        return b""
 
 
 def restore_all() -> None:

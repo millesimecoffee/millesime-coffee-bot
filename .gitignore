@@ -113,3 +113,7 @@ cityimg_cache/
 
 # Archive locale : docs d'audit, rapports et scripts one-shot mis de cote
 _archive/
+
+# Messagerie : donnees et medias locaux, jamais versionnes
+chats.json
+chat_media/

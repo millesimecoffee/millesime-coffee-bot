@@ -14,6 +14,8 @@ import cv2
 import numpy as np
 from flask import Flask, jsonify, render_template, request
 
+import chat
+
 logger = logging.getLogger(__name__)
 
 # Les URL de l'API Telegram contiennent le token du bot : httpx les journalise
@@ -152,12 +154,14 @@ def _parse_dt(iso_str):
 def _security_headers(response):
     """En-têtes de sécurité + bypass ngrok.
     NB : on ne met PAS X-Frame-Options (la Mini App tourne dans l'iframe
-    Telegram), et on autorise la caméra pour le selfie (camera=self)."""
+    Telegram). La caméra sert au selfie, le micro aux messages vocaux de la
+    messagerie : sans microphone=(self), MediaRecorder est bloqué dans
+    l'iframe et l'enregistrement échoue sans message d'erreur."""
     response.headers["ngrok-skip-browser-warning"] = "true"
     response.headers["X-Content-Type-Options"] = "nosniff"
     response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
     response.headers["X-Robots-Tag"] = "noindex, nofollow, noarchive"
-    response.headers["Permissions-Policy"] = "camera=(self), microphone=(), geolocation=(self)"
+    response.headers["Permissions-Policy"] = "camera=(self), microphone=(self), geolocation=(self)"
     response.headers["Cross-Origin-Resource-Policy"] = "same-site"
     return response
 
@@ -3108,6 +3112,231 @@ def api_admin_photo(order_id, kind):
     if request.args.get("download"):
         entetes["Content-Disposition"] = f'attachment; filename="{kind}-{order_id}.jpg"'
     return Response(photo_bytes, mimetype="image/jpeg", headers=entetes)
+
+
+# ═════════════════════════════════════════════════════════════════════════════
+# Messagerie privée vendeur ↔ client, dans la Mini App
+# ═════════════════════════════════════════════════════════════════════════════
+
+def _qui_parle(req):
+    """Identifie l'appelant d'un endpoint de messagerie.
+
+    Renvoie (role, client_id, erreur). Le vendeur doit préciser le client avec
+    qui il discute ; un client ne peut jamais désigner que lui-même — sans
+    quoi il lirait la conversation des autres.
+    """
+    uid = _uid_authentifie(req)
+    if uid is None:
+        return None, None, (jsonify({"ok": False, "error": "auth_failed"}), 401)
+    data = _corps(req)
+    if _a_acces_admin(uid):
+        client_id = _entier(data.get("client_id"), 0, 0, 10 ** 15)
+        if not client_id:
+            return None, None, (jsonify({"ok": False, "error": "no_client"}), 400)
+        return chat.VENDEUR, client_id, None
+    return chat.CLIENT, uid, None
+
+
+def _profil_client(uid) -> dict:
+    """Nom et pseudo du client, repris de sa commande la plus récente."""
+    try:
+        from storage import _load as _load_all
+        siennes = [o for o in _load_all() if str(o.get("user_id") or "") == str(uid)]
+    except Exception:
+        siennes = []
+    siennes.sort(key=lambda o: o.get("created_at") or "")
+    dernier = siennes[-1] if siennes else {}
+    return {
+        "user_name": dernier.get("user_name") or "",
+        "username": dernier.get("username") or "",
+        "city": dernier.get("city") or "",
+        "country": dernier.get("country") or "",
+    }
+
+
+@app.route("/api/chat/thread", methods=["POST"])
+def api_chat_thread():
+    """Messages d'une conversation. POST {initData, client_id?}"""
+    role, client_id, erreur = _qui_parle(request)
+    if erreur:
+        return erreur
+    chat.marquer_lu(client_id, role)
+    profil = chat.profil(client_id) or (_profil_client(client_id) if role == chat.VENDEUR else {})
+    return jsonify({
+        "ok": True,
+        "role": role,
+        "client_id": str(client_id),
+        "messages": chat.messages(client_id),
+        "profil": profil,
+        "vendeur": os.getenv("SUPPORT_USERNAME", "") or "millesimecoffee",
+    })
+
+
+@app.route("/api/chat/send", methods=["POST"])
+def api_chat_send():
+    """Envoi d'un message. POST {initData, client_id?, texte?, photo_b64?,
+    audio_b64?, duree?}"""
+    role, client_id, erreur = _qui_parle(request)
+    if erreur:
+        return erreur
+    data = _corps(request)
+    texte = _texte(data.get("texte"), chat.MAX_TEXTE)
+
+    kind, media_id = "texte", ""
+    photo_b64 = data.get("photo_b64")
+    audio_b64 = data.get("audio_b64")
+    duree = 0.0
+
+    if isinstance(photo_b64, str) and photo_b64:
+        brut = chat.decoder_b64(photo_b64)
+        if not brut:
+            return jsonify({"ok": False, "error": "bad_photo"}), 400
+        # Recompressée comme les selfies : une photo de téléphone fait 3 Mo,
+        # une bulle de conversation n'en a pas besoin.
+        compresse = _compresser_jpeg(brut, max_dim=1280, quality=72)
+        media_id = chat.ecrire_media(compresse or brut, "photo")
+        if not media_id:
+            return jsonify({"ok": False, "error": "media_too_big"}), 413
+        kind = "photo"
+    elif isinstance(audio_b64, str) and audio_b64:
+        brut = chat.decoder_b64(audio_b64)
+        if not brut:
+            return jsonify({"ok": False, "error": "bad_audio"}), 400
+        media_id = chat.ecrire_media(brut, "audio")
+        if not media_id:
+            return jsonify({"ok": False, "error": "media_too_big"}), 413
+        kind = "audio"
+        duree = _entier(data.get("duree"), 0, 0, chat.MAX_DUREE_AUDIO)
+
+    if not texte and not media_id:
+        return jsonify({"ok": False, "error": "empty"}), 400
+
+    if _rate_limited(f"chat:{role}:{client_id}", 30, 60.0):
+        return jsonify({"ok": False, "error": "too_fast"}), 429
+
+    try:
+        msg = chat.ajouter(client_id, role, texte=texte, media_id=media_id,
+                           kind=kind, duree=duree,
+                           profil=_profil_client(client_id) if role == chat.CLIENT else None)
+    except ValueError as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 400
+    except Exception as exc:
+        logger.error("chat_send: %s", exc)
+        return jsonify({"ok": False, "error": "save_failed"}), 500
+
+    _signaler_message(client_id, role, msg)
+    return jsonify({"ok": True, "message": msg})
+
+
+@app.route("/api/chat/threads", methods=["POST"])
+def api_chat_threads():
+    """Liste des conversations, réservée au vendeur. POST {initData}"""
+    _refus = _guard_admin(request)
+    if _refus:
+        return _refus
+    fils = chat.fils(chat.VENDEUR)
+    for f in fils:
+        if not f["profil"].get("user_name"):
+            f["profil"] = _profil_client(f["client_id"])
+    return jsonify({"ok": True, "threads": fils,
+                    "non_lus": sum(f["non_lus"] for f in fils)})
+
+
+@app.route("/api/chat/resume", methods=["POST"])
+def api_chat_resume():
+    """Compteur de messages non lus, pour la pastille. POST {initData}"""
+    uid = _uid_authentifie(request)
+    if uid is None:
+        return jsonify({"ok": True, "non_lus": 0})
+    if _a_acces_admin(uid):
+        return jsonify({"ok": True, "role": chat.VENDEUR,
+                        "non_lus": chat.total_non_lus(chat.VENDEUR)})
+    return jsonify({"ok": True, "role": chat.CLIENT,
+                    "non_lus": chat.non_lus(uid, chat.CLIENT)})
+
+
+@app.route("/api/chat/media/<media_id>", methods=["GET"])
+def api_chat_media(media_id):
+    """Sert une photo ou un audio de la conversation.
+
+    L'identifiant seul ne suffit pas : il faut être partie prenante du fil qui
+    contient ce média.
+    """
+    uid = _uid_authentifie(request)
+    if uid is None:
+        return ("Forbidden", 403)
+    if _a_acces_admin(uid):
+        client_id = _entier(request.args.get("client_id"), 0, 0, 10 ** 15)
+        if not client_id:
+            return ("Bad request", 400)
+    else:
+        client_id = uid
+    if not chat.contient(media_id, client_id):
+        return ("Not found", 404)
+    donnees = chat.lire_media(media_id)
+    if not donnees:
+        return ("Not found", 404)
+    from flask import Response
+    return Response(donnees, mimetype=chat.type_mime(media_id),
+                    headers={"Cache-Control": "private, max-age=86400"})
+
+
+def _compresser_jpeg(brut: bytes, max_dim: int = 1280, quality: int = 72) -> bytes:
+    """Réduit une image ; renvoie b"" si elle est illisible ou démesurée."""
+    try:
+        img = cv2.imdecode(np.frombuffer(brut, np.uint8), cv2.IMREAD_COLOR)
+        if img is None:
+            return b""
+        h, w = img.shape[:2]
+        if h * w > _MAX_IMAGE_PIXELS:
+            return b""
+        echelle = min(1.0, max_dim / max(h, w))
+        if echelle < 1.0:
+            img = cv2.resize(img, (int(w * echelle), int(h * echelle)),
+                             interpolation=cv2.INTER_AREA)
+        ok, enc = cv2.imencode(".jpg", img, [int(cv2.IMWRITE_JPEG_QUALITY), quality])
+        return enc.tobytes() if ok else b""
+    except Exception as exc:
+        logger.warning("compression photo chat : %s", exc)
+        return b""
+
+
+def _signaler_message(client_id, de: str, msg: dict) -> None:
+    """Prévient le destinataire qu'un message l'attend dans l'application.
+
+    Rien n'est envoyé si le destinataire vient déjà d'être prévenu : sans ça,
+    dix bulles d'affilée feraient dix notifications.
+    """
+    if not chat.doit_signaler(client_id, de):
+        return
+    apercu = chat.resume(msg)
+    token = os.getenv("BOT_TOKEN", "")
+
+    if de == chat.CLIENT:
+        nom = (chat.profil(client_id) or {}).get("user_name") or f"#{client_id}"
+        try:
+            import pushover
+            pushover.envoyer(apercu, titre=f"💬 {nom} vous écrit")
+        except Exception as exc:
+            logger.warning("chat pushover : %s", exc)
+        destinataire = os.getenv("OWNER_CHAT_ID", "") or os.getenv("OWNER_USER_ID", "")
+        texte = f"💬 <b>{_html_escape(nom)}</b> vous a écrit dans l'application :\n\n{_html_escape(apercu)}"
+    else:
+        destinataire = str(client_id)
+        texte = ("💬 <b>Millésime Coffee</b> vous a répondu :\n\n"
+                 f"{_html_escape(apercu)}\n\nOuvrez l'application pour répondre.")
+
+    if not token or not destinataire:
+        return
+    try:
+        import httpx
+        httpx.post(
+            f"https://api.telegram.org/bot{token}/sendMessage",
+            json={"chat_id": destinataire, "text": texte, "parse_mode": "HTML"},
+            timeout=10.0,
+        )
+    except Exception as exc:
+        logger.warning("chat notification Telegram : %s", exc)
 
 
 _lock = threading.Lock()
