@@ -3521,6 +3521,9 @@ const T = {
     pwd_title: "Mot de passe", pwd_subtitle: "Entrez le mot de passe d'accès au catalogue.",
     pwd_btn: "Accéder au catalogue", pwd_wrong: "❌ Mot de passe incorrect.",
     pwd_blocked: "🚫 Trop d'essais. Réessayez plus tard.",
+    pwd_session: "⚠️ Session Telegram expirée — le mot de passe n'est pas en cause.\nFermez complètement l'application et rouvrez-la.",
+    pwd_rouvrir: "Fermer et rouvrir",
+    pwd_config: "⚠️ Boutique mal configurée côté serveur. Prévenez l'administrateur.",
     select_country: "Choisissez votre pays", select_city: "Choisissez votre ville",
     select_products: "Produits disponibles", your_cart: "Votre panier",
     view_cart: "Voir le panier", confirm_cart: "Continuer", cart_empty: "Votre panier est vide",
@@ -3583,6 +3586,9 @@ const T = {
     pwd_title: "Password", pwd_subtitle: "Enter the catalog access password.",
     pwd_btn: "Open catalog", pwd_wrong: "❌ Wrong password.",
     pwd_blocked: "🚫 Too many attempts. Try again later.",
+    pwd_session: "⚠️ Telegram session expired — your password is fine.\nFully close the app and open it again.",
+    pwd_rouvrir: "Close and reopen",
+    pwd_config: "⚠️ Shop misconfigured on the server. Tell the administrator.",
     select_country: "Choose your country", select_city: "Choose your city",
     select_products: "Available products", your_cart: "Your cart",
     view_cart: "View cart", confirm_cart: "Continue", cart_empty: "Your cart is empty",
@@ -3640,6 +3646,9 @@ const T = {
     pwd_title: "Contraseña", pwd_subtitle: "Introduce la contraseña para acceder al catálogo.",
     pwd_btn: "Abrir catálogo", pwd_wrong: "❌ Contraseña incorrecta.",
     pwd_blocked: "🚫 Demasiados intentos. Vuelve a intentarlo más tarde.",
+    pwd_session: "⚠️ Sesión de Telegram caducada — la contraseña no es el problema.\nCierra la aplicación por completo y vuelve a abrirla.",
+    pwd_rouvrir: "Cerrar y reabrir",
+    pwd_config: "⚠️ Tienda mal configurada en el servidor. Avisa al administrador.",
     select_country: "Elige tu país", select_city: "Elige tu ciudad",
     select_products: "Productos disponibles", your_cart: "Tu carrito",
     view_cart: "Ver carrito", confirm_cart: "Continuar", cart_empty: "Tu carrito está vacío",
@@ -3877,9 +3886,20 @@ async function checkPassword() {
     const r = await fetch("/api/auth", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ password: pwd, initData: tg.initData })
+      body: JSON.stringify({ password: pwd, initData: tg.initData || "" })
     });
     const data = await r.json();
+    // Un refus de session n'est PAS un mot de passe faux : le dire clairement,
+    // sinon on cherche pendant des heures une erreur de frappe qui n'existe pas.
+    if (r.status === 401 || data.error === "auth_failed") {
+      afficherSessionExpiree(errEl);
+      return;
+    }
+    if (data.error === "no_password_configured") {
+      errEl.textContent = t("pwd_config");
+      errEl.style.display = "block";
+      return;
+    }
     if (data.ok) {
       state.pwd = pwd;
       state.catalog = data.catalog;
@@ -3951,6 +3971,26 @@ async function checkPassword() {
 document.getElementById("pwdInput").addEventListener("keypress", e => {
   if (e.key === "Enter") checkPassword();
 });
+
+// Session Telegram refusée : message explicite + bouton pour repartir propre.
+// L'initData est signé au moment où Telegram ouvre la Mini App ; s'il a plus
+// de 24 h (application restée en arrière-plan, webview réutilisée), le serveur
+// le refuse. Le mot de passe n'y est pour rien, il faut refermer et rouvrir.
+function afficherSessionExpiree(errEl) {
+  errEl.innerHTML = "";
+  const texte = document.createElement("div");
+  texte.style.whiteSpace = "pre-line";
+  texte.textContent = t("pwd_session");
+  errEl.appendChild(texte);
+
+  const bouton = document.createElement("button");
+  bouton.className = "next-btn";
+  bouton.style.cssText = "margin-top:12px; padding:11px 18px; font-size:15px;";
+  bouton.textContent = t("pwd_rouvrir");
+  bouton.onclick = () => { try { tg.close(); } catch { location.reload(); } };
+  errEl.appendChild(bouton);
+  errEl.style.display = "block";
+}
 
 // ═══════════════════════════════════════════════════════════════════════════
 // ÉCRANS PAYS / VILLES / PRODUITS

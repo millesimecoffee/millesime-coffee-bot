@@ -703,18 +703,27 @@ def _verify_init_data(init_data: str, bot_token: str) -> dict | None:
     import hmac
     from urllib.parse import parse_qsl
 
-    if not init_data or not bot_token:
+    # Chaque refus est tracé avec sa raison : sans ça, une session Telegram
+    # périmée et un mauvais mot de passe se ressemblent dans les logs, et on
+    # cherche le problème du mauvais côté.
+    if not init_data:
+        logger.info("initData rejeté : absent (Mini App ouverte hors Telegram ?)")
+        return None
+    if not bot_token:
+        logger.error("initData rejeté : BOT_TOKEN absent côté serveur")
         return None
     try:
         pairs = dict(parse_qsl(init_data, keep_blank_values=True, strict_parsing=False))
         their_hash = pairs.pop("hash", "")
         if not their_hash:
+            logger.info("initData rejeté : signature absente")
             return None
         # Data-check-string : trier alphabétiquement et joindre par \n
         dcs = "\n".join(f"{k}={v}" for k, v in sorted(pairs.items()))
         secret = hmac.new(b"WebAppData", bot_token.encode(), hashlib.sha256).digest()
         my_hash = hmac.new(secret, dcs.encode(), hashlib.sha256).hexdigest()
         if not hmac.compare_digest(my_hash, their_hash):
+            logger.info("initData rejeté : signature invalide (token du bot changé ?)")
             return None
         # Anti-rejeu : refuser un initData trop ancien (jeton capturé/rejoué)
         if _INITDATA_MAX_AGE > 0:
@@ -722,8 +731,10 @@ def _verify_init_data(init_data: str, bot_token: str) -> dict | None:
                 auth_date = int(pairs.get("auth_date", "0"))
             except (ValueError, TypeError):
                 auth_date = 0
-            if auth_date <= 0 or (time.time() - auth_date) > _INITDATA_MAX_AGE:
-                logger.info("initData rejeté : auth_date périmé/absent")
+            age = time.time() - auth_date if auth_date > 0 else -1
+            if auth_date <= 0 or age > _INITDATA_MAX_AGE:
+                logger.info("initData rejeté : session ouverte il y a %.0f h (max %.0f h)",
+                            age / 3600 if age > 0 else -1, _INITDATA_MAX_AGE / 3600)
                 return None
         return pairs
     except Exception as exc:
