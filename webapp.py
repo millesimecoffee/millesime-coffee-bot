@@ -2949,6 +2949,121 @@ def api_admin_send_message():
     return jsonify({"ok": True})
 
 
+_bot_username_cache = {"nom": "", "at": 0.0}
+
+
+def _bot_username() -> str:
+    """@username du bot, mis en cache 1 h (getMe)."""
+    now = time.time()
+    if _bot_username_cache["nom"] and now - _bot_username_cache["at"] < 3600:
+        return _bot_username_cache["nom"]
+    token = os.getenv("BOT_TOKEN", "")
+    if not token:
+        return ""
+    try:
+        import httpx
+        r = httpx.get(f"https://api.telegram.org/bot{token}/getMe", timeout=10.0)
+        nom = (r.json().get("result") or {}).get("username", "") if r.status_code == 200 else ""
+    except Exception as exc:
+        logger.warning("getMe: %s", exc)
+        nom = ""
+    if nom:
+        _bot_username_cache.update(nom=nom, at=now)
+    return nom
+
+
+@app.route("/api/admin/contact", methods=["POST"])
+def api_admin_contact():
+    """Raccourci vers la conversation avec le client d'une commande.
+
+    POST {initData, order_id} ou {initData, user_id}
+
+    Un client sans @username n'a aucun lien t.me : la seule façon d'ouvrir sa
+    conversation est un lien `tg://user?id=` — que la Mini App ne peut pas
+    ouvrir elle-même, mais qu'un message du bot peut porter. On envoie donc à
+    l'admin connecté (n'importe quel compte, cf. mot de passe unifié) un message
+    avec ce lien, et on le renvoie vers le chat du bot où il n'a qu'à appuyer.
+    """
+    _refus = _guard_admin(request)
+    if _refus:
+        return _refus
+    admin_uid = _uid_authentifie(request)
+    data = request.get_json(force=True, silent=True) or {}
+    order_id = str(data.get("order_id") or "").strip()
+    try:
+        demande_uid = int(data.get("user_id") or 0)
+    except (ValueError, TypeError):
+        demande_uid = 0
+
+    from storage import get_order
+    order = get_order(order_id) if order_id else None
+    if not order and demande_uid:
+        # Répertoire clients : pas de commande précise, on prend la plus
+        # récente de ce client pour récupérer son pseudo et son nom.
+        from storage import _load as _load_all
+        siennes = [o for o in _load_all()
+                   if str(o.get("user_id") or "") == str(demande_uid)]
+        siennes.sort(key=lambda o: o.get("created_at") or "")
+        order = siennes[-1] if siennes else {"user_id": demande_uid}
+    if not order:
+        return jsonify({"ok": False, "error": "order_not_found"}), 404
+    order_id = str(order.get("order_id") or order_id or "")
+
+    try:
+        client_uid = int(order.get("user_id") or 0)
+    except (ValueError, TypeError):
+        client_uid = 0
+    username = (order.get("username") or "").lstrip("@").strip()
+    nom = (order.get("user_name") or "").strip() or (f"#{client_uid}" if client_uid else "client")
+
+    # Cas simple : un @username, donc un lien t.me directement ouvrable.
+    if username:
+        return jsonify({"ok": True, "mode": "username",
+                        "link": f"https://t.me/{username}", "name": nom})
+
+    if not client_uid:
+        return jsonify({"ok": False, "error": "no_user_id"}), 400
+    token = os.getenv("BOT_TOKEN", "")
+    if not token:
+        return jsonify({"ok": False, "error": "no_token"}), 500
+    if not admin_uid:
+        return jsonify({"ok": False, "error": "no_admin_uid"}), 400
+
+    ville = " · ".join(x for x in [order.get("city"), order.get("country")] if x)
+    texte = (
+        f"👤 <b>{_html_escape(nom)}</b>"
+        + (f"\nCommande N° <code>{_html_escape(order_id)}</code>" if order_id else "")
+        + (f"\n{_html_escape(ville)}" if ville else "")
+        + f"\n\n➤ <a href=\"tg://user?id={client_uid}\">Ouvrir la conversation</a>"
+    )
+    try:
+        import httpx
+        r = httpx.post(
+            f"https://api.telegram.org/bot{token}/sendMessage",
+            json={
+                "chat_id": admin_uid,
+                "text": texte,
+                "parse_mode": "HTML",
+                "reply_markup": {"inline_keyboard": [[
+                    {"text": f"💬 Écrire à {nom}"[:60],
+                     "url": f"tg://user?id={client_uid}"},
+                ]]},
+            },
+            timeout=10.0,
+        )
+        if r.status_code != 200:
+            logger.warning("admin_contact sendMessage %s: %s", r.status_code, r.text[:200])
+            return jsonify({"ok": False, "error": "send_failed",
+                            "detail": _telegram_error(r)}), 502
+    except Exception as exc:
+        logger.error("admin_contact: %s", exc)
+        return jsonify({"ok": False, "error": "exception"}), 500
+
+    bot_nom = _bot_username()
+    return jsonify({"ok": True, "mode": "bot", "name": nom,
+                    "link": f"https://t.me/{bot_nom}" if bot_nom else ""})
+
+
 @app.route("/api/admin/photo/<order_id>/<kind>", methods=["GET"])
 def api_admin_photo(order_id, kind):
     """Sert une photo (selfie ou proof) de la commande en JPEG.

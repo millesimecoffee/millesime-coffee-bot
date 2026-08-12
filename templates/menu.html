@@ -5279,7 +5279,8 @@ function renderOrderDetail(o) {
   const uidSafe   = Number(o.user_id) || 0;
   const dataChat  = `data-user-id="${uidSafe}" `
                   + `data-username="${escHtml(o.username || "")}" `
-                  + `data-user-name="${escHtml(nomClient)}"`;
+                  + `data-user-name="${escHtml(nomClient)}" `
+                  + `data-order-id="${escHtml(oid)}"`;
   const qs = "?initData=" + encodeURIComponent(tg.initData || "");
   // Le selfie affiché est celui de CETTE commande : la route est indexée par
   // order_id, un client qui recommande apparaît donc avec sa photo du jour.
@@ -5416,24 +5417,14 @@ function renderOrderDetail(o) {
   </div>`;
 }
 
-// Ouvre le chat Telegram avec un utilisateur par son ID numérique (sans @username).
-// tg.openTelegramLink() n'accepte que les liens https/t.me → pour le scheme tg://
-// on navigue directement, ce que le client Telegram intercepte pour ouvrir le chat.
-function openClientChatById(uid) {
-  uid = String(uid || "").trim();
-  if (!uid) return false;
-  // openmessage ouvre directement la conversation ; user ouvre la fiche profil (repli).
-  const deepLinks = [
-    "tg://openmessage?user_id=" + encodeURIComponent(uid),
-    "tg://user?id=" + encodeURIComponent(uid),
-  ];
-  // Certaines versions acceptent le scheme tg:// via openTelegramLink.
-  for (const l of deepLinks) {
-    try { tg.openTelegramLink(l); return true; } catch {}
-  }
-  // Sinon navigation directe (interceptée par l'app Telegram).
-  try { window.location.href = deepLinks[0]; return true; } catch {}
-  try { window.open(deepLinks[0], "_blank"); return true; } catch {}
+// Ouvre un lien Telegram. openTelegramLink() n'accepte que https://t.me/… :
+// les schemes tg:// sont refusés par le SDK ET bloqués dans la webview, c'est
+// pourquoi l'ancien bouton « contacter » ne faisait rien. Ils passent en
+// revanche dans un message envoyé par le bot (cf. /api/admin/contact).
+function ouvrirLienTelegram(url) {
+  if (!url) return false;
+  try { tg.openTelegramLink(url); return true; } catch {}
+  try { window.open(url, "_blank"); return true; } catch {}
   return false;
 }
 
@@ -5502,26 +5493,53 @@ function enregistrerSelfie(orderId) {
   window.open(url, "_blank");
 }
 
-function contactClient(elOrObj) {
-  // elOrObj peut être un élément DOM (data-*) OU un objet {user_id, username, user_name}
+// Raccourci vers la conversation avec un client, avec ou sans @pseudo.
+//  - avec pseudo   : lien t.me ouvert directement, une seule pression ;
+//  - sans pseudo   : le bot nous envoie un message porteur du lien
+//                    tg://user?id=… (seul moyen de joindre un compte sans
+//                    pseudo), et on atterrit dessus dans le chat du bot.
+async function contactClient(elOrObj) {
+  const d = (elOrObj && elOrObj.dataset) ? elOrObj.dataset : {};
   const client = (elOrObj && elOrObj.dataset) ? {
-    user_id:   elOrObj.dataset.userId,
-    username:  elOrObj.dataset.username || "",
-    user_name: elOrObj.dataset.userName || "",
+    user_id:   d.userId,
+    username:  d.username || "",
+    user_name: d.userName || "",
+    order_id:  d.orderId || "",
   } : (elOrObj || {});
+  hapticSelect();
 
-  // 1) Le client a un @username → chat direct via t.me
+  // 1) Pseudo public : le lien t.me suffit, aucun aller-retour serveur.
   if (client.username) {
-    const url = "https://t.me/" + client.username;
-    try { tg.openTelegramLink(url); return; } catch {}
-    try { window.open(url, "_blank"); return; } catch {}
+    if (ouvrirLienTelegram("https://t.me/" + client.username)) return;
   }
-  // 2) Pas de username → ouvrir quand même la conversation par ID
-  if (openClientChatById(client.user_id)) {
-    hapticSelect();
+
+  // 2) Sans pseudo : c'est le bot qui fabrique le raccourci.
+  showToast("Ouverture de la conversation…");
+  let r = {};
+  try {
+    r = await (await fetch("/api/admin/contact", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        initData: tg.initData || "",
+        order_id: client.order_id || "",
+        user_id:  client.user_id || "",
+      }),
+    })).json();
+  } catch (e) {
+    r = { ok: false };
+  }
+
+  if (r.ok && r.mode === "username" && ouvrirLienTelegram(r.link)) return;
+  if (r.ok && r.mode === "bot") {
+    showToast("💬 Appuyez sur « Écrire à " + (r.name || "ce client") + " »");
+    if (ouvrirLienTelegram(r.link)) return;
+    try { tg.close(); return; } catch {}
     return;
   }
-  // 3) Dernier recours (ID manquant / lien non supporté) → message via le bot
+
+  // 3) Le raccourci n'a pas pu être créé → envoi d'un message via le bot.
+  showToast("Conversation directe indisponible", true);
   askAndSendMessageToClient(client);
 }
 
@@ -5529,15 +5547,8 @@ function contactClient(elOrObj) {
 function contactSupport() {
   hapticSelect();
   const s = state.support || {};
-  // 1) Username public du vendeur → chat direct via t.me (le plus fiable)
-  if (s.username) {
-    const url = "https://t.me/" + s.username;
-    try { tg.openTelegramLink(url); return; } catch {}
-    try { window.open(url, "_blank"); return; } catch {}
-  }
-  // 2) Sinon deep-link par ID owner
-  if (s.user_id && openClientChatById(s.user_id)) return;
-  // 3) Rien de configuré
+  // Le vendeur a toujours un @username public : lien t.me direct.
+  if (s.username && ouvrirLienTelegram("https://t.me/" + s.username)) return;
   showToast("Contact vendeur indisponible", true);
 }
 
