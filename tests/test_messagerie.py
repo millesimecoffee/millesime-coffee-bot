@@ -30,6 +30,7 @@ import httpx
 httpx.post = lambda url, **kw: type("R", (), {"status_code": 200, "text": "{}",
                                               "json": lambda s: {"ok": True}})()
 import github_backup
+_vrai_envoyer_binaire = github_backup.envoyer_binaire
 github_backup.backup_file_async = lambda *a, **k: None
 github_backup.backup_binaire_async = lambda *a, **k: envois.append(a[0])
 github_backup.telecharger_binaire = lambda *a, **k: b""
@@ -194,6 +195,68 @@ chat.ajouter(CLIENT, "vendeur", texte="le dernier")
 restants = chat.messages(CLIENT)
 print(f"   apres {len(gros)} + 1 messages : {len(restants)} conserves, dernier = {restants[-1]['texte']!r}")
 assert len(restants) == chat.MAX_MESSAGES and restants[-1]["texte"] == "le dernier"
+
+titre(15, "Sauvegarde distante : jamais deux envois en meme temps")
+print("    (chaque envoi cree un commit sur la meme branche ; deux commits")
+print("     simultanes se soldent par un 409, meme sur des chemins differents)")
+import threading as _th
+import time as _t
+
+github_backup._TOKEN = "faux-jeton"
+en_cours, chevauchements, faits = [], [], []
+verrou_obs = _th.Lock()
+
+
+class ReponsePut:
+    status_code = 201
+
+    def json(self):
+        return {"content": {"sha": "abc"}}
+
+
+def faux_put(url, headers=None, json=None, timeout=None, **kw):
+    with verrou_obs:
+        if en_cours:
+            chevauchements.append(url)
+        en_cours.append(url)
+    _t.sleep(0.02)                      # le temps d'un aller-retour reseau
+    with verrou_obs:
+        en_cours.remove(url)
+        faits.append(url)
+    return ReponsePut()
+
+
+httpx.put = faux_put
+fils = [_th.Thread(target=github_backup.envoyer_binaire,
+                   args=(f"chat_media/{i}.jpg", b"x" * 100)) for i in range(12)]
+for f in fils:
+    f.start()
+for f in fils:
+    f.join()
+print(f"   {len(faits)} envois, {len(chevauchements)} chevauchement(s)")
+assert len(faits) == 12 and not chevauchements
+
+titre(16, "Un conflit GitHub est reessaye, pas abandonne")
+essais = {"n": 0}
+
+
+class Conflit:
+    def __init__(self, code):
+        self.status_code = code
+
+    def json(self):
+        return {}
+
+
+def put_capricieux(url, headers=None, json=None, timeout=None, **kw):
+    essais["n"] += 1
+    return Conflit(409) if essais["n"] < 3 else Conflit(201)
+
+
+httpx.put = put_capricieux
+ok = github_backup.envoyer_binaire("chat_media/retente.jpg", b"data")
+print(f"   deux conflits puis succes : envoi={ok} apres {essais['n']} tentatives")
+assert ok and essais["n"] == 3
 
 shutil.rmtree(DOSSIER, ignore_errors=True)
 fin()

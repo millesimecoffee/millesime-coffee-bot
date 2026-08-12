@@ -13,6 +13,7 @@ import json
 import logging
 import os
 import threading
+import time
 from pathlib import Path
 
 import httpx
@@ -31,18 +32,18 @@ _FILES = ["orders.json", "blacklist.json", "blocked.json", "chats.json"]
 _sha_cache: dict[str, str] = {}
 _lock = threading.Lock()
 
-# H11: un lock PAR fichier — sérialise les uploads concurrents pour éviter
-# les conflits SHA (409 GitHub) quand 5 commandes arrivent en 1 seconde
+# Un seul verrou pour TOUTES les écritures du dépôt.
+#
+# Un verrou par fichier ne suffit pas : chaque écriture crée un commit sur la
+# même branche, et deux commits simultanés — même sur des chemins différents —
+# se soldent par un 409 côté GitHub. C'est ce qui faisait échouer l'envoi des
+# photos et des vocaux, expédiés en même temps que chats.json.
 _upload_locks: dict[str, threading.Lock] = {}
+_lock_branche = threading.Lock()
 
 
 def _get_upload_lock(filename: str) -> threading.Lock:
-    with _lock:
-        lk = _upload_locks.get(filename)
-        if lk is None:
-            lk = threading.Lock()
-            _upload_locks[filename] = lk
-        return lk
+    return _lock_branche
 
 
 def is_enabled() -> bool:
@@ -168,25 +169,29 @@ def envoyer_binaire(chemin_repo: str, donnees: bytes) -> bool:
     """
     if not _TOKEN or not donnees:
         return False
-    with _get_upload_lock(chemin_repo):
-        try:
-            r = httpx.put(
-                _file_url(chemin_repo), headers=_headers(), timeout=30.0,
-                json={
-                    "message": f"Media: {chemin_repo}",
-                    "content": base64.b64encode(donnees).decode("ascii"),
-                    "branch": _BRANCH,
-                },
-            )
-            if r.status_code in (200, 201):
+    charge = {
+        "message": f"Media: {chemin_repo}",
+        "content": base64.b64encode(donnees).decode("ascii"),
+        "branch": _BRANCH,
+    }
+    with _lock_branche:
+        for essai in range(4):
+            try:
+                r = httpx.put(_file_url(chemin_repo), headers=_headers(),
+                              timeout=30.0, json=charge)
+            except Exception as exc:
+                logger.warning("Github media %s : %s", chemin_repo, exc)
+                return False
+            if r.status_code in (200, 201, 422):   # 422 = déjà présent
                 return True
-            if r.status_code == 422:      # déjà présent
-                return True
+            if r.status_code == 409:
+                # La branche a bougé entre-temps : on laisse GitHub se poser.
+                time.sleep(0.6 * (essai + 1))
+                continue
             logger.warning("Github media %s : HTTP %s", chemin_repo, r.status_code)
             return False
-        except Exception as exc:
-            logger.warning("Github media %s : %s", chemin_repo, exc)
-            return False
+    logger.warning("Github media %s : abandon après conflits répétés", chemin_repo)
+    return False
 
 
 def backup_binaire_async(chemin_repo: str, donnees: bytes) -> None:
