@@ -30,7 +30,6 @@ from telegram import (
     BotCommand,
     CopyTextButton,
     MenuButtonWebApp,
-    MenuButtonCommands,
 )
 from telegram.ext import (
     Application,
@@ -3086,21 +3085,23 @@ async def _post_init(app: Application) -> None:
     # Bouton de menu du chat (à gauche de la zone de saisie) : il devient
     # "CATALOGUE" et ouvre la Mini App. C'est le bouton visible en permanence,
     # même avant d'avoir écrit quoi que ce soit au bot.
+    #
+    # L'owner l'a lui aussi. Lui laisser le menu des commandes le privait du
+    # seul bouton qui ouvre la boutique DANS Telegram : il n'avait plus que le
+    # lien, qui s'ouvre dans le navigateur du téléphone, sans session Telegram
+    # — et le mot de passe était alors refusé sans qu'on comprenne pourquoi.
+    # Ses commandes restent accessibles en tapant « / » dans le chat.
     try:
         if WEBAPP_URL:
-            await app.bot.set_chat_menu_button(
-                menu_button=MenuButtonWebApp(
-                    text="CATALOGUE",
-                    web_app=WebAppInfo(url=f"{WEBAPP_URL}/menu"),
-                )
+            bouton = MenuButtonWebApp(
+                text="CATALOGUE",
+                web_app=WebAppInfo(url=f"{WEBAPP_URL}/menu"),
             )
-            logger.info("Bouton de menu → Mini App CATALOGUE")
-            # L'owner garde le menu des commandes à cet endroit.
+            await app.bot.set_chat_menu_button(menu_button=bouton)
             if OWNER_USER_ID:
                 await app.bot.set_chat_menu_button(
-                    chat_id=int(OWNER_USER_ID),
-                    menu_button=MenuButtonCommands(),
-                )
+                    chat_id=int(OWNER_USER_ID), menu_button=bouton)
+            logger.info("Bouton de menu → Mini App CATALOGUE (owner compris)")
         else:
             logger.warning("WEBAPP_URL absent — bouton de menu inchangé")
     except Exception as exc:

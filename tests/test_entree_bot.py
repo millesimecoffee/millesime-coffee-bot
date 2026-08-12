@@ -134,7 +134,34 @@ print(f"   {u.message.reponses[0][0]}")
 assert "WEBAPP_URL" in u.message.reponses[0][0]
 bot.WEBAPP_URL = "https://exemple.test"
 
-titre(10, "/app affiche exactement le meme bouton que /start")
+titre(10, "L'owner AUSSI a le bouton CATALOGUE dans son chat")
+print("    (sans lui, il ouvrait la boutique par un lien, donc hors de")
+print("     Telegram, donc sans session : mot de passe refuse sans raison)")
+poses = []
+
+
+class FauxBot:
+    async def set_my_commands(self, cmds, scope=None):
+        pass
+
+    async def set_chat_menu_button(self, menu_button=None, chat_id=None):
+        poses.append((chat_id, type(menu_button).__name__,
+                      getattr(menu_button, "text", "")))
+
+
+class FauxApp:
+    bot = FauxBot()
+
+
+lancer(bot._post_init(FauxApp()))
+for chat_id, genre, texte in poses:
+    print(f"   chat={chat_id if chat_id else 'tous'}  {genre}  {texte!r}")
+assert poses, "aucun bouton de menu configure"
+assert all(g == "MenuButtonWebApp" for _, g, _ in poses), \
+    "l'owner ne doit pas recevoir un bouton different"
+assert any(c == OWNER for c, _, _ in poses), "rien de pose sur le chat de l'owner"
+
+titre(11, "/app affiche exactement le meme bouton que /start")
 u1, u2 = FauxUpdate(AUTRE), FauxUpdate(AUTRE)
 lancer(bot.start(u1, FauxContext()))
 lancer(bot.cmd_app(u2, FauxContext()))

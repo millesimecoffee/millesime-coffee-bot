@@ -3524,6 +3524,8 @@ const T = {
     pwd_session: "⚠️ Session Telegram expirée — le mot de passe n'est pas en cause.\nFermez complètement l'application et rouvrez-la.",
     pwd_rouvrir: "Fermer et rouvrir",
     pwd_config: "⚠️ Boutique mal configurée côté serveur. Prévenez l'administrateur.",
+    pwd_hors_telegram: "⚠️ La boutique a été ouverte en dehors de Telegram — votre mot de passe est bon.\nRevenez dans le bot et appuyez sur le bouton CATALOGUE.",
+    pwd_ouvrir_bot: "Ouvrir le bot",
     select_country: "Choisissez votre pays", select_city: "Choisissez votre ville",
     select_products: "Produits disponibles", your_cart: "Votre panier",
     view_cart: "Voir le panier", confirm_cart: "Continuer", cart_empty: "Votre panier est vide",
@@ -3589,6 +3591,8 @@ const T = {
     pwd_session: "⚠️ Telegram session expired — your password is fine.\nFully close the app and open it again.",
     pwd_rouvrir: "Close and reopen",
     pwd_config: "⚠️ Shop misconfigured on the server. Tell the administrator.",
+    pwd_hors_telegram: "⚠️ The shop was opened outside Telegram — your password is fine.\nGo back to the bot and tap the CATALOGUE button.",
+    pwd_ouvrir_bot: "Open the bot",
     select_country: "Choose your country", select_city: "Choose your city",
     select_products: "Available products", your_cart: "Your cart",
     view_cart: "View cart", confirm_cart: "Continue", cart_empty: "Your cart is empty",
@@ -3649,6 +3653,8 @@ const T = {
     pwd_session: "⚠️ Sesión de Telegram caducada — la contraseña no es el problema.\nCierra la aplicación por completo y vuelve a abrirla.",
     pwd_rouvrir: "Cerrar y reabrir",
     pwd_config: "⚠️ Tienda mal configurada en el servidor. Avisa al administrador.",
+    pwd_hors_telegram: "⚠️ La tienda se abrió fuera de Telegram — tu contraseña es correcta.\nVuelve al bot y pulsa el botón CATALOGUE.",
+    pwd_ouvrir_bot: "Abrir el bot",
     select_country: "Elige tu país", select_city: "Elige tu ciudad",
     select_products: "Productos disponibles", your_cart: "Tu carrito",
     view_cart: "Ver carrito", confirm_cart: "Continuar", cart_empty: "Tu carrito está vacío",
@@ -3708,6 +3714,9 @@ const T = {
 // ÉTAT GLOBAL
 // ═══════════════════════════════════════════════════════════════════════════
 const tg     = window.Telegram.WebApp;
+// Sert au bouton de secours quand la boutique a été ouverte hors de Telegram :
+// il faut pouvoir renvoyer l'utilisateur vers le bot.
+const BOT_USERNAME = {{ (bot_username or "millesimecoffee")|tojson }};
 const state = {
   lang:    "fr",
   pwd:     "",
@@ -3972,25 +3981,65 @@ document.getElementById("pwdInput").addEventListener("keypress", e => {
   if (e.key === "Enter") checkPassword();
 });
 
-// Session Telegram refusée : message explicite + bouton pour repartir propre.
-// L'initData est signé au moment où Telegram ouvre la Mini App ; s'il a plus
-// de 24 h (application restée en arrière-plan, webview réutilisée), le serveur
-// le refuse. Le mot de passe n'y est pour rien, il faut refermer et rouvrir.
+// Deux situations très différentes se cachent derrière « session refusée » :
+//
+//  - hors Telegram : la page a été ouverte dans le navigateur du téléphone
+//    (lien tapé, lien d'une notification…). Le script telegram-web-app.js
+//    crée quand même un objet Telegram.WebApp, mais vide : platform vaut
+//    "unknown" et initData est une chaîne vide. Refermer n'y changera rien,
+//    il faut repasser par le bouton CATALOGUE du bot.
+//  - session périmée : on est bien dans Telegram, mais la signature a plus
+//    de 24 h. Là, refermer et rouvrir suffit.
+function horsDeTelegram() {
+  try {
+    const sansHote = !tg.platform || tg.platform === "unknown";
+    const sansUtilisateur = !(tg.initDataUnsafe && tg.initDataUnsafe.user);
+    return sansHote && sansUtilisateur;
+  } catch { return true; }
+}
+
 function afficherSessionExpiree(errEl) {
+  const dehors = horsDeTelegram();
   errEl.innerHTML = "";
   const texte = document.createElement("div");
   texte.style.whiteSpace = "pre-line";
-  texte.textContent = t("pwd_session");
+  texte.textContent = dehors ? t("pwd_hors_telegram") : t("pwd_session");
   errEl.appendChild(texte);
 
   const bouton = document.createElement("button");
   bouton.className = "next-btn";
   bouton.style.cssText = "margin-top:12px; padding:11px 18px; font-size:15px;";
-  bouton.textContent = t("pwd_rouvrir");
-  bouton.onclick = () => { try { tg.close(); } catch { location.reload(); } };
+  bouton.textContent = dehors ? t("pwd_ouvrir_bot") : t("pwd_rouvrir");
+  bouton.onclick = () => {
+    if (dehors) { window.location.href = "https://t.me/" + BOT_USERNAME; return; }
+    try { tg.close(); } catch { location.reload(); }
+  };
   errEl.appendChild(bouton);
+
+  const detail = document.createElement("div");
+  detail.style.cssText = "margin-top:10px; font-size:11px; opacity:0.55;";
+  detail.textContent = `${tg.platform || "?"} · v${tg.version || "?"} · session ${
+    (tg.initData || "").length} car.`;
+  errEl.appendChild(detail);
   errEl.style.display = "block";
 }
+
+// Envoi discret de ce que voit l'application : sans ça, diagnostiquer une
+// session absente demanderait des captures d'écran et des allers-retours.
+function signalerDiagnostic() {
+  try {
+    fetch("/api/diag", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        platform: tg.platform || "", version: tg.version || "",
+        has_init: !!(tg.initData || "").length, len: (tg.initData || "").length,
+        has_user: !!(tg.initDataUnsafe && tg.initDataUnsafe.user),
+        href: String(location.href).slice(0, 200),
+      }),
+    }).catch(() => {});
+  } catch {}
+}
+signalerDiagnostic();
 
 // ═══════════════════════════════════════════════════════════════════════════
 // ÉCRANS PAYS / VILLES / PRODUITS

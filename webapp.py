@@ -183,8 +183,36 @@ def health():
 
 @app.route("/menu")
 def menu_page():
-    """Point d'entrée de la Mini App."""
-    return render_template("menu.html")
+    """Point d'entrée de la Mini App.
+
+    On trace comment la page a été ouverte : un `initData` absent vient
+    presque toujours de là — page ouverte dans le navigateur du téléphone au
+    lieu du webview Telegram, auquel cas il n'y a aucune session à valider.
+    """
+    ua = (request.headers.get("User-Agent") or "")[:180]
+    logger.info("Mini App ouverte — UA=%r referer=%r site=%r",
+                ua,
+                (request.headers.get("Referer") or "")[:120],
+                request.headers.get("Sec-Fetch-Site") or "")
+    return render_template("menu.html", bot_username=_bot_username())
+
+
+@app.route("/api/diag", methods=["POST"])
+def api_diag():
+    """Ce que la Mini App voit de son côté, pour diagnostiquer une session
+    absente sans avoir à demander des captures d'écran."""
+    d = _corps(request)
+    logger.info(
+        "Diag Mini App — plateforme=%s version=%s initData=%s longueur=%s "
+        "user=%s host=%s",
+        _texte(d.get("platform"), 30) or "?",
+        _texte(d.get("version"), 20) or "?",
+        "present" if d.get("has_init") else "ABSENT",
+        _entier(d.get("len"), 0, 0, 100000),
+        "oui" if d.get("has_user") else "non",
+        _texte(d.get("href"), 200) or "?",
+    )
+    return jsonify({"ok": True})
 
 
 # ── Photos de ville : fichiers commités + fetch auto Pexels si manquant ──
