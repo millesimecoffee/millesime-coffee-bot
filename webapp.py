@@ -3131,9 +3131,11 @@ def _qui_parle(req):
     data = _corps(req)
     if _a_acces_admin(uid):
         client_id = _entier(data.get("client_id"), 0, 0, 10 ** 15)
-        if not client_id:
-            return None, None, (jsonify({"ok": False, "error": "no_client"}), 400)
-        return chat.VENDEUR, client_id, None
+        if client_id:
+            return chat.VENDEUR, client_id, None
+        # Admin sans destinataire : c'est le mode client (« Discuter avec le
+        # vendeur »). On lui ouvre son propre fil plutôt qu'une erreur.
+        return chat.CLIENT, uid, None
     return chat.CLIENT, uid, None
 
 

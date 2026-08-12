@@ -171,11 +171,18 @@ for route, corps in [("/api/chat/thread", {}), ("/api/chat/send", {"texte": "hop
     print(f"   {route:22s} HTTP {r.status_code}")
     assert r.status_code == 401
 
-titre(12, "Le vendeur doit designer un client")
+titre(12, "L'admin en mode client ouvre son propre fil, pas une erreur")
+print("    (la carte « Discuter avec le vendeur » n'envoie aucun destinataire)")
 uid["v"] = OWNER
-r = app.post("/api/chat/send", json={"initData": "x", "texte": "a qui ?"})
-print(f"   sans client_id : HTTP {r.status_code} ({r.get_json().get('error')})")
-assert r.status_code == 400
+d = fil().get_json()
+print(f"   role={d['role']} fil={d['client_id']} (le sien)")
+assert d["ok"] and d["role"] == "client" and d["client_id"] == str(OWNER)
+r = app.post("/api/chat/send", json={"initData": "x", "texte": "essai en mode client"})
+print(f"   envoi : HTTP {r.status_code}, de « {r.get_json()['message']['de']} »")
+assert r.status_code == 200 and r.get_json()["message"]["de"] == "client"
+d = app.post("/api/chat/thread", json={"initData": "x", "client_id": CLIENT}).get_json()
+print(f"   avec un destinataire, il redevient vendeur : role={d['role']}")
+assert d["role"] == "vendeur"
 
 titre(13, "Un media inconnu ou un chemin piege ne sort pas du dossier")
 uid["v"] = CLIENT

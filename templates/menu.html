@@ -4132,10 +4132,13 @@ function signalerParcours(country, city) {
 
 // HTML d'une carte-ville (photo + nom). subtitle = texte du pied.
 function cityTileHTML(country, city, subtitle) {
+  // Échappement en deux temps : d'abord pour la chaîne JavaScript, ensuite
+  // pour l'attribut HTML. Sans le second, un guillemet double dans la valeur
+  // referme l'attribut et le bouton devient inerte.
   const cAttr = country.replace(/\\/g,"\\\\").replace(/'/g,"\\'");
   const cyAttr = city.replace(/\\/g,"\\\\").replace(/'/g,"\\'");
   return `
-    <div class="city-tile" onclick="pickCity('${cAttr}','${cyAttr}')">
+    <div class="city-tile" onclick="${escHtml(`pickCity('${cAttr}','${cyAttr}')`)}">
       <div class="ct-scene">
         <div class="ct-stars"></div>
         <div class="ct-sun"></div>
@@ -5589,7 +5592,8 @@ function renderOrderDetail(o) {
         </div>
         <div class="od2-actions-client">
           <div class="od2-msg" role="button" aria-label="Discuter dans l'application"
-               onclick="ouvrirChat('${uidSafe}', ${JSON.stringify(nomClient)})">💬</div>
+               data-uid="${uidSafe}" data-nom="${escHtml(nomClient)}"
+               onclick="ouvrirChat(this.dataset.uid, this.dataset.nom)">💬</div>
           <div class="od2-msg bleu" ${dataChat} onclick="contactClient(this)"
                role="button" aria-label="Contacter sur Telegram">➤</div>
           ${o.selfie_b64 ? `<div class="od2-msg" role="button" aria-label="Enregistrer la photo"
@@ -5612,7 +5616,7 @@ function renderOrderDetail(o) {
       </div>
       <div class="od2-adresse">
         <div class="txt">${lignesAdr.length ? lignesAdr.map(escHtml).join("<br>") : "—"}</div>
-        ${aUneAdresse ? `<button class="od2-maps" onclick="${plansJs}">🗺️ Maps</button>` : ""}
+        ${aUneAdresse ? `<button class="od2-maps" onclick="${escHtml(plansJs)}">🗺️ Maps</button>` : ""}
       </div>
     </div>
 
@@ -6218,7 +6222,8 @@ async function ouvrirListeChats() {
       const apercu = f.dernier.type === "photo" ? "📷 Photo"
                    : f.dernier.type === "audio" ? "🎤 Message vocal"
                    : (f.dernier.texte || "");
-      return `<div class="ch-item" onclick="ouvrirChat('${f.client_id}', ${JSON.stringify(nom)})">
+      return `<div class="ch-item" data-uid="${escHtml(f.client_id)}" data-nom="${escHtml(nom)}"
+                   onclick="ouvrirChat(this.dataset.uid, this.dataset.nom)">
         <div class="ch-avatar">${escHtml([...nom.trim()][0] || "?").toUpperCase()}</div>
         <div class="corps">
           <div class="nom">${escHtml(nom)}</div>
