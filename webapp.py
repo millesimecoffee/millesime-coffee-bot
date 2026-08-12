@@ -65,6 +65,51 @@ def _ignorer_owner(uid) -> bool:
     return bool(owner_uid) and str(uid) == owner_uid
 
 
+def _corps(req) -> dict:
+    """Corps JSON de la requête, toujours sous forme de dictionnaire.
+
+    `request.get_json()` renvoie ce que contient le corps : sur `"texte"`,
+    `[]` ou `12`, ce n'est pas un dict et le `.get()` qui suit lève
+    AttributeError — y compris dans le contrôle d'authentification, donc sur
+    tous les endpoints à la fois.
+    """
+    try:
+        data = req.get_json(force=True, silent=True)
+    except Exception:
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+def _texte(valeur, maxi: int = 4000) -> str:
+    """Convertit une valeur reçue du client en chaîne propre.
+
+    Un `.strip()` appliqué directement au champ lève AttributeError dès qu'il
+    n'est pas une chaîne (liste, nombre, objet JSON) : réponse 500. Ici tout
+    devient du texte, tronqué à `maxi`.
+    """
+    if valeur is None or isinstance(valeur, (list, dict, tuple, set, bool)):
+        return ""
+    if not isinstance(valeur, str):
+        valeur = str(valeur)
+    return valeur.strip()[:maxi]
+
+
+def _entier(valeur, defaut: int, mini: int, maxi: int) -> int:
+    """Convertit une valeur reçue du client en entier borné.
+
+    Sans ce garde-fou, `int(data["limit"])` lève une exception sur "abc" ou
+    null (réponse 500), et une valeur négative découpe la liste à l'envers :
+    `orders[:-5]` masque silencieusement les 5 commandes les plus récentes.
+    """
+    if isinstance(valeur, bool) or isinstance(valeur, (list, dict, tuple, set)):
+        return defaut
+    try:
+        n = int(valeur)
+    except (TypeError, ValueError):
+        return defaut
+    return max(mini, min(maxi, n))
+
+
 def _telegram_error(resp) -> str:
     """Extrait la description d'erreur d'une réponse Bot API."""
     try:
@@ -425,10 +470,7 @@ def api_notify_city():
     choix dans les notifications de l'owner.
     """
     bot_token = os.getenv("BOT_TOKEN", "")
-    try:
-        data = request.get_json(force=True, silent=True) or {}
-    except Exception:
-        data = {}
+    data = _corps(request)
 
     parsed = _verify_init_data(data.get("initData", ""), bot_token)
     if not parsed:
@@ -446,8 +488,8 @@ def api_notify_city():
     if _ignorer_owner(uid):
         return jsonify({"ok": True, "skipped": "owner"})
 
-    country = (data.get("country") or "").strip()
-    city    = (data.get("city") or "").strip()
+    country = _texte(data.get("country"))
+    city    = _texte(data.get("city"))
     try:
         import catalog as catalog_mod
         importlib.reload(catalog_mod)
@@ -510,10 +552,7 @@ def api_auth():
         return jsonify({"ok": False, "error": "no_password_configured"}), 500
 
     bot_token = os.getenv("BOT_TOKEN", "")
-    try:
-        data = request.get_json(force=True) or {}
-    except Exception:
-        data = {}
+    data = _corps(request)
 
     # 1) Exiger un initData Telegram AUTHENTIQUE : seul un vrai client Telegram
     #    (impossible à forger sans le bot token) peut tenter le mot de passe.
@@ -536,13 +575,19 @@ def api_auth():
         keys.add(f"pwd:uid:{uid}")
 
     with _pwd_lock:
+        # Purge des clés périmées : une entrée par IP visiteuse s'accumulerait
+        # sinon indéfiniment dans un processus qui tourne des mois.
+        if len(_pwd_attempts) > 2000:
+            for k in [k for k, v in _pwd_attempts.items()
+                      if not any(now - t < _PWD_WINDOW for t in v)]:
+                del _pwd_attempts[k]
         for k in keys:
             recent = [t for t in _pwd_attempts.get(k, []) if now - t < _PWD_WINDOW]
             _pwd_attempts[k] = recent
             if len(recent) >= _PWD_MAX_ATTEMPTS:
                 return jsonify({"ok": False, "blocked": True, "error": "rate_limited"})
 
-    pwd = str(data.get("password", "")).strip()
+    pwd = _texte(data.get("password"), 200)
 
     # Une seule porte d'entrée, deux mots de passe. Le mot de passe admin est
     # testé en premier : il ouvre le panel depuis n'importe quel compte et
@@ -687,9 +732,8 @@ def api_submit_cart():
     """Reçoit le panier final de la Mini App.
     Valide initData → user_id authentique → stocke + envoie message paiement.
     """
-    try:
-        data = request.get_json(force=True) or {}
-    except Exception:
+    data = _corps(request)
+    if not data:
         return jsonify({"ok": False, "error": "bad_json"}), 400
 
     bot_token = os.getenv("BOT_TOKEN", "")
@@ -839,9 +883,8 @@ def _decode_b64_image(photo_b64: str):
 @app.route("/api/check_face", methods=["POST"])
 def api_check_face():
     """Détecte un visage dans la photo Mini App. Auth via initData."""
-    try:
-        data = request.get_json(force=True) or {}
-    except Exception:
+    data = _corps(request)
+    if not data:
         return jsonify({"ok": False, "error": "bad_json"}), 400
 
     bot_token = os.getenv("BOT_TOKEN", "")
@@ -869,12 +912,11 @@ def api_check_face():
 @app.route("/api/geocode", methods=["POST"])
 def api_geocode():
     """Geocode une adresse via OpenStreetMap Nominatim. Retourne format court + lat/lon."""
-    try:
-        data = request.get_json(force=True) or {}
-    except Exception:
+    data = _corps(request)
+    if not data:
         return jsonify({"ok": False, "error": "bad_json"}), 400
 
-    address = (data.get("address") or "").strip()
+    address = _texte(data.get("address"))
     if not address:
         return jsonify({"ok": False, "error": "empty"}), 400
 
@@ -1079,10 +1121,7 @@ def api_geocode_suggest():
     couverture), sinon repli Photon (OSM, gratuit).
     POST {q, lang?, bias_lat?, bias_lon?} → {ok, results:[...], provider}
     """
-    try:
-        data = request.get_json(force=True, silent=True) or {}
-    except Exception:
-        data = {}
+    data = _corps(request)
 
     # Auth : seul un vrai client Telegram peut consommer le geocoding (anti-abus
     # du quota Mapbox par des scripts externes).
@@ -1170,9 +1209,8 @@ def api_finalize_order():
     """Finalise une commande : valide tout, save_order, notifie owner.
     Retourne {ok: true, order_id: "DDMMSS"} ou {ok: false, error}.
     """
-    try:
-        data = request.get_json(force=True) or {}
-    except Exception:
+    data = _corps(request)
+    if not data:
         return jsonify({"ok": False, "error": "bad_json"}), 400
 
     bot_token = os.getenv("BOT_TOKEN", "")
@@ -1537,11 +1575,12 @@ def _normalise_mdp(s: str) -> str:
 
 def _admin_is_unlocked(uid) -> bool:
     with _admin_lock:
-        exp = _admin_unlocked.get(str(uid), 0)
-        if exp and exp > time.time():
-            return True
-        _admin_unlocked.pop(str(uid), None)
-        return False
+        maintenant = time.time()
+        # Les sessions d'autres comptes ne sont sinon effacées que si ce compte
+        # précis repasse : on purge tout ce qui est périmé au passage.
+        for k in [k for k, exp in _admin_unlocked.items() if exp <= maintenant]:
+            del _admin_unlocked[k]
+        return _admin_unlocked.get(str(uid), 0) > maintenant
 
 
 def _uid_authentifie(req) -> int | None:
@@ -1555,13 +1594,11 @@ def _uid_authentifie(req) -> int | None:
     """
     bot_token = os.getenv("BOT_TOKEN", "")
     if req.method == "POST":
-        try:
-            data = req.get_json(force=True, silent=True) or {}
-        except Exception:
-            data = {}
-        init_data = data.get("initData", "")
+        init_data = _corps(req).get("initData", "")
     else:
         init_data = req.args.get("initData", "")
+    if not isinstance(init_data, str):
+        return None
     parsed = _verify_init_data(init_data, bot_token)
     if not parsed:
         return None
@@ -1642,10 +1679,7 @@ def api_admin_unlock():
         return jsonify({"ok": False, "error": "too_many_attempts",
                         "retry_after": _ADMIN_LOCKOUT}), 429
 
-    try:
-        data = request.get_json(force=True, silent=True) or {}
-    except Exception:
-        data = {}
+    data = _corps(request)
     fourni = data.get("password") or ""
 
     # compare_digest : temps constant, pour ne pas laisser deviner le mot de
@@ -1685,11 +1719,8 @@ def api_admin_orders():
     if _refus:
         return _refus
 
-    try:
-        data = request.get_json(force=True, silent=True) or {}
-    except Exception:
-        data = {}
-    limit  = int(data.get("limit", 50))
+    data = _corps(request)
+    limit  = _entier(data.get("limit"), 50, 1, 1000)
     sfilt  = data.get("status_filter", "")  # "", "pending", "confirmed", "delivering", "delivered", "cancelled"
 
     try:
@@ -1875,11 +1906,8 @@ def api_admin_set_status(order_id):
     if _refus:
         return _refus
 
-    try:
-        data = request.get_json(force=True, silent=True) or {}
-    except Exception:
-        data = {}
-    new_status = (data.get("status") or "").strip()
+    data = _corps(request)
+    new_status = _texte(data.get("status"))
     if new_status not in ("confirmed", "delivering", "delivered", "cancelled"):
         return jsonify({"ok": False, "error": "bad_status"}), 400
 
@@ -2190,10 +2218,7 @@ def api_client_orders():
     POST {initData, limit?}
     """
     bot_token = os.getenv("BOT_TOKEN", "")
-    try:
-        data = request.get_json(force=True, silent=True) or {}
-    except Exception:
-        data = {}
+    data = _corps(request)
     init_data = data.get("initData", "")
     parsed = _verify_init_data(init_data, bot_token)
     if not parsed:
@@ -2208,7 +2233,7 @@ def api_client_orders():
     if not uid:
         return jsonify({"ok": False, "error": "no_user"}), 400
 
-    limit = int(data.get("limit", 50))
+    limit = _entier(data.get("limit"), 50, 1, 1000)
     try:
         from storage import _load as _load_all
         all_orders = _load_all() or []
@@ -2252,10 +2277,7 @@ def api_client_reorder():
     Retourne : {country, city, cart} (ou error si produit plus dispo)
     """
     bot_token = os.getenv("BOT_TOKEN", "")
-    try:
-        data = request.get_json(force=True, silent=True) or {}
-    except Exception:
-        data = {}
+    data = _corps(request)
     parsed = _verify_init_data(data.get("initData", ""), bot_token)
     if not parsed:
         return jsonify({"ok": False, "error": "auth_failed"}), 401
@@ -2266,7 +2288,7 @@ def api_client_reorder():
     except Exception:
         return jsonify({"ok": False, "error": "no_user"}), 400
 
-    order_id = (data.get("order_id") or "").strip()
+    order_id = _texte(data.get("order_id"))
     if not order_id:
         return jsonify({"ok": False, "error": "no_order_id"}), 400
     try:
@@ -2323,10 +2345,7 @@ def api_order_track():
     Auth : initData doit correspondre au user_id de la commande.
     """
     bot_token = os.getenv("BOT_TOKEN", "")
-    try:
-        data = request.get_json(force=True, silent=True) or {}
-    except Exception:
-        data = {}
+    data = _corps(request)
     init_data = data.get("initData", "")
     parsed = _verify_init_data(init_data, bot_token)
     if not parsed:
@@ -2339,7 +2358,7 @@ def api_order_track():
     except Exception:
         return jsonify({"ok": False, "error": "no_user"}), 400
 
-    order_id = (data.get("order_id") or "").strip()
+    order_id = _texte(data.get("order_id"))
     if not order_id:
         return jsonify({"ok": False, "error": "no_order_id"}), 400
 
@@ -2546,10 +2565,7 @@ def api_admin_client_note():
     _refus = _guard_admin(request)
     if _refus:
         return _refus
-    try:
-        data = request.get_json(force=True, silent=True) or {}
-    except Exception:
-        data = {}
+    data = _corps(request)
     try:
         uid = str(int(data.get("user_id", 0)))
     except (ValueError, TypeError):
@@ -2563,7 +2579,7 @@ def api_admin_client_note():
     if action == "get":
         return jsonify({"ok": True, "note": notes.get(uid, "")})
     if action == "set":
-        note = (data.get("note") or "").strip()
+        note = _texte(data.get("note"))
         if len(note) > 2000:
             return jsonify({"ok": False, "error": "too_long"}), 400
         with _client_notes_lock:
@@ -2591,10 +2607,7 @@ def api_admin_clients():
     if _refus:
         return _refus
 
-    try:
-        data = request.get_json(force=True, silent=True) or {}
-    except Exception:
-        data = {}
+    data = _corps(request)
     segment = (data.get("segment") or "all").strip()
 
     try:
@@ -2817,11 +2830,8 @@ def api_admin_broadcast():
     if _refus:
         return _refus
 
-    try:
-        data = request.get_json(force=True, silent=True) or {}
-    except Exception:
-        data = {}
-    text    = (data.get("text") or "").strip()
+    data = _corps(request)
+    text    = _texte(data.get("text"))
     segment = (data.get("segment") or "all").strip()
 
     if not text:
@@ -2910,15 +2920,12 @@ def api_admin_send_message():
     _refus = _guard_admin(request)
     if _refus:
         return _refus
-    try:
-        data = request.get_json(force=True, silent=True) or {}
-    except Exception:
-        data = {}
+    data = _corps(request)
     try:
         target_uid = int(data.get("user_id", 0))
     except (ValueError, TypeError):
         target_uid = 0
-    text = (data.get("text") or "").strip()
+    text = _texte(data.get("text"))
     if not target_uid or not text:
         return jsonify({"ok": False, "error": "missing_args"}), 400
     if len(text) > 3500:
@@ -2988,8 +2995,8 @@ def api_admin_contact():
     if _refus:
         return _refus
     admin_uid = _uid_authentifie(request)
-    data = request.get_json(force=True, silent=True) or {}
-    order_id = str(data.get("order_id") or "").strip()
+    data = _corps(request)
+    order_id = _texte(data.get("order_id"))
     try:
         demande_uid = int(data.get("user_id") or 0)
     except (ValueError, TypeError):
@@ -3130,10 +3137,12 @@ def selfie_page():
 @app.route("/verify", methods=["POST"])
 def verify():
     try:
-        data      = request.get_json(force=True)
-        user_id   = str(data.get("user_id", ""))
-        token     = str(data.get("token", ""))
+        data      = _corps(request)
+        user_id   = _texte(data.get("user_id"), 32)
+        token     = _texte(data.get("token"), 128)
         photo_b64 = data.get("photo", "")
+        if not isinstance(photo_b64, str):
+            photo_b64 = ""
 
         # C1: Valider le token avant tout traitement
         with _lock:

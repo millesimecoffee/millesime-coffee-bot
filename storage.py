@@ -39,6 +39,49 @@ def _use_supabase() -> bool:
     return _sb.is_enabled()
 
 
+# ── Découpage des journées ────────────────────────────────────────────────────
+# La boutique vit à l'heure de Paris ; le serveur Render, lui, tourne en UTC.
+# Comparer bêtement les 10 premiers caractères de created_at rangeait donc une
+# commande de 00h30 (Paris) dans la journée de la veille.
+try:
+    from zoneinfo import ZoneInfo
+    _PARIS = ZoneInfo("Europe/Paris")
+except Exception:                                  # pragma: no cover
+    _PARIS = timezone.utc
+
+# Une commande annulée n'a rapporté aucun argent : elle ne doit apparaître dans
+# aucun chiffre d'affaires. Le panel les excluait déjà, pas les rapports du bot.
+_ANNULEES = ("cancelled", "cancelled_by_client")
+
+
+def _jour_de(o: dict) -> str:
+    """Date « YYYY-MM-DD » à laquelle la commande compte, heure de Paris."""
+    brut = (o.get("created_at") or "").strip()
+    if not brut:
+        return ""
+    try:
+        d = datetime.fromisoformat(brut.replace("Z", "+00:00"))
+    except ValueError:
+        return brut[:10]
+    if d.tzinfo is None:                # ancien format sans fuseau : déjà local
+        return d.strftime("%Y-%m-%d")
+    return d.astimezone(_PARIS).strftime("%Y-%m-%d")
+
+
+def _aujourdhui_paris() -> str:
+    return datetime.now(_PARIS).strftime("%Y-%m-%d")
+
+
+def _encaisse(o: dict) -> float:
+    """Montant réellement encaissé : 0 pour une commande annulée."""
+    if (o.get("status") or "pending") in _ANNULEES:
+        return 0.0
+    try:
+        return float(o.get("total", 0))
+    except (TypeError, ValueError):
+        return 0.0
+
+
 # ═══════════════════════════════════════════════════════════════════════════════
 # Lecture / écriture orders — Supabase
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -297,12 +340,12 @@ def get_stats(date_str: str | None = None) -> dict:
     """Statistiques pour une date donnée (défaut = aujourd'hui)."""
     orders = _load()
     if date_str is None:
-        date_str = datetime.now().strftime("%Y-%m-%d")
+        date_str = _aujourdhui_paris()
 
-    day_orders = [o for o in orders if o.get("created_at", "").startswith(date_str)]
+    day_orders = [o for o in orders if _jour_de(o) == date_str]
 
-    ca_day = sum(float(o.get("total", 0)) for o in day_orders)
-    ca_all = sum(float(o.get("total", 0)) for o in orders)
+    ca_day = sum(_encaisse(o) for o in day_orders)
+    ca_all = sum(_encaisse(o) for o in orders)
 
     # Top villes du jour
     city_stats: dict[str, dict] = {}
@@ -328,8 +371,12 @@ def get_stats(date_str: str | None = None) -> dict:
             items_all[item] = items_all.get(item, 0) + qty
     top_items_all = sorted(items_all.items(), key=lambda x: x[1], reverse=True)[:5]
 
-    avg_day = (ca_day / len(day_orders)) if day_orders else 0.0
-    avg_all = (ca_all / len(orders))     if orders     else 0.0
+    # Panier moyen : rapporté aux seules commandes encaissées, sinon chaque
+    # annulation ferait mécaniquement baisser la moyenne.
+    payees_jour = [o for o in day_orders if _encaisse(o) > 0]
+    payees_tout = [o for o in orders if _encaisse(o) > 0]
+    avg_day = (ca_day / len(payees_jour)) if payees_jour else 0.0
+    avg_all = (ca_all / len(payees_tout)) if payees_tout else 0.0
 
     return {
         "orders_today":    len(day_orders),
@@ -351,11 +398,11 @@ def get_stats_period(start_date: str, end_date: str) -> dict:
     orders = _load()
     period_orders = [
         o for o in orders
-        if start_date <= o.get("created_at", "")[:10] <= end_date
+        if o.get("created_at") and start_date <= _jour_de(o) <= end_date
     ]
 
-    ca_period = sum(float(o.get("total", 0)) for o in period_orders)
-    ca_all    = sum(float(o.get("total", 0)) for o in orders)
+    ca_period = sum(_encaisse(o) for o in period_orders)
+    ca_all    = sum(_encaisse(o) for o in orders)
 
     city_stats: dict = {}
     for o in period_orders:
@@ -378,8 +425,10 @@ def get_stats_period(start_date: str, end_date: str) -> dict:
             items_all[item] = items_all.get(item, 0) + qty
     top_items_all = sorted(items_all.items(), key=lambda x: x[1], reverse=True)[:5]
 
-    avg_period = ca_period / len(period_orders) if period_orders else 0.0
-    avg_all    = ca_all    / len(orders)         if orders         else 0.0
+    payees_periode = [o for o in period_orders if _encaisse(o) > 0]
+    payees_tout    = [o for o in orders if _encaisse(o) > 0]
+    avg_period = ca_period / len(payees_periode) if payees_periode else 0.0
+    avg_all    = ca_all    / len(payees_tout)    if payees_tout    else 0.0
 
     return {
         "start_date":        start_date,

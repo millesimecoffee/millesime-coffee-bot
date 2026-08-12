@@ -5199,13 +5199,6 @@ function ouvrirDansPlans(lat, lon, libelle) {
   openExternal(url);
 }
 
-function _heureCourte(iso) {
-  const d = _parseServerDate(iso);
-  if (!d) return "";
-  const p = n => String(n).padStart(2, "0");
-  return `${p(d.getHours())}:${p(d.getMinutes())}`;
-}
-
 function renderOrderDetail(o) {
   const el = document.getElementById("ownerOrderDetail");
   const status = o.status || "pending";
