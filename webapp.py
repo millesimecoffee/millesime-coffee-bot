@@ -589,10 +589,18 @@ def api_auth():
     # 1) Exiger un initData Telegram AUTHENTIQUE : seul un vrai client Telegram
     #    (impossible à forger sans le bot token) peut tenter le mot de passe.
     #    Bloque tout accès script/navigateur direct hors de l'app Telegram.
-    parsed = _verify_init_data(data.get("initData", ""), bot_token)
+    #    Deux refus bien distincts, car ils n'ont pas le même remède :
+    #      - session absente : la boutique n'a pas été lancée comme Mini App
+    #        (lien ouvert dans le navigateur interne de Telegram). Rouvrir ne
+    #        sert à rien, il faut repasser par le bouton CATALOGUE.
+    #      - session présente mais refusée : signature périmée ou invalide,
+    #        là il faut refermer et rouvrir.
+    init_recu = _texte(data.get("initData"), 4096)
+    parsed = _verify_init_data(init_recu, bot_token)
     if not parsed:
         time.sleep(0.4)
-        return jsonify({"ok": False, "error": "auth_failed"}), 401
+        code = "no_session" if not init_recu else "auth_failed"
+        return jsonify({"ok": False, "error": code}), 401
 
     # Identité vérifiée → rate-limit par user_id (non spoofable) ET par IP réelle
     import json as _json

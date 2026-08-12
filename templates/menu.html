@@ -3524,7 +3524,7 @@ const T = {
     pwd_session: "⚠️ Session Telegram expirée — le mot de passe n'est pas en cause.\nFermez complètement l'application et rouvrez-la.",
     pwd_rouvrir: "Fermer et rouvrir",
     pwd_config: "⚠️ Boutique mal configurée côté serveur. Prévenez l'administrateur.",
-    pwd_hors_telegram: "⚠️ La boutique a été ouverte en dehors de Telegram — votre mot de passe est bon.\nRevenez dans le bot et appuyez sur le bouton CATALOGUE.",
+    pwd_hors_telegram: "⚠️ Votre mot de passe est bon — c'est la façon d'ouvrir la boutique qui pose problème.\nVous avez suivi un lien, ce qui ouvre le navigateur de Telegram : il n'y a alors aucune session, et aucun mot de passe ne peut fonctionner.\nOuvrez le bot, puis appuyez sur le bouton CATALOGUE en bas à gauche.",
     pwd_ouvrir_bot: "Ouvrir le bot",
     select_country: "Choisissez votre pays", select_city: "Choisissez votre ville",
     select_products: "Produits disponibles", your_cart: "Votre panier",
@@ -3875,6 +3875,16 @@ function setLang(lang) {
   applyI18n();
   setScreen("pwd");
   try { tg.BackButton.show(); } catch {}
+  // Sans session, aucun mot de passe ne peut aboutir : le dire tout de suite
+  // plutôt que de laisser taper, échouer, recommencer.
+  if (horsDeTelegram()) {
+    const errEl = document.getElementById("pwdError");
+    afficherSessionExpiree(errEl, "no_session");
+    const btn = document.getElementById("pwdBtn");
+    const champ = document.getElementById("pwdInput");
+    if (btn) btn.disabled = true;
+    if (champ) champ.disabled = true;
+  }
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -3900,8 +3910,8 @@ async function checkPassword() {
     const data = await r.json();
     // Un refus de session n'est PAS un mot de passe faux : le dire clairement,
     // sinon on cherche pendant des heures une erreur de frappe qui n'existe pas.
-    if (r.status === 401 || data.error === "auth_failed") {
-      afficherSessionExpiree(errEl);
+    if (r.status === 401 || data.error === "auth_failed" || data.error === "no_session") {
+      afficherSessionExpiree(errEl, data.error);
       return;
     }
     if (data.error === "no_password_configured") {
@@ -3990,16 +4000,18 @@ document.getElementById("pwdInput").addEventListener("keypress", e => {
 //    il faut repasser par le bouton CATALOGUE du bot.
 //  - session périmée : on est bien dans Telegram, mais la signature a plus
 //    de 24 h. Là, refermer et rouvrir suffit.
+// Le signal fiable n'est PAS la plateforme : le navigateur interne de
+// Telegram annonce bien « ios » et une version récente, il pose même
+// tgWebAppPlatform et tgWebAppThemeParams dans l'adresse. Ce qui manque, et
+// qui décide, c'est tgWebAppData — donc initData. S'il est vide, la boutique
+// n'a pas été lancée comme Mini App : rouvrir ne changera rien, il faut
+// repasser par le bouton CATALOGUE du bot.
 function horsDeTelegram() {
-  try {
-    const sansHote = !tg.platform || tg.platform === "unknown";
-    const sansUtilisateur = !(tg.initDataUnsafe && tg.initDataUnsafe.user);
-    return sansHote && sansUtilisateur;
-  } catch { return true; }
+  try { return !(tg.initData || "").length; } catch { return true; }
 }
 
-function afficherSessionExpiree(errEl) {
-  const dehors = horsDeTelegram();
+function afficherSessionExpiree(errEl, code) {
+  const dehors = code === "no_session" || horsDeTelegram();
   errEl.innerHTML = "";
   const texte = document.createElement("div");
   texte.style.whiteSpace = "pre-line";
@@ -4011,7 +4023,13 @@ function afficherSessionExpiree(errEl) {
   bouton.style.cssText = "margin-top:12px; padding:11px 18px; font-size:15px;";
   bouton.textContent = dehors ? t("pwd_ouvrir_bot") : t("pwd_rouvrir");
   bouton.onclick = () => {
-    if (dehors) { window.location.href = "https://t.me/" + BOT_USERNAME; return; }
+    if (dehors) {
+      // ?start= déclenche /start à l'arrivée : le bot renvoie aussitôt le
+      // grand bouton CATALOGUE, on n'a pas à le chercher.
+      const url = "https://t.me/" + BOT_USERNAME + "?start=catalogue";
+      try { tg.openTelegramLink(url); } catch { window.location.href = url; }
+      return;
+    }
     try { tg.close(); } catch { location.reload(); }
   };
   errEl.appendChild(bouton);

@@ -51,10 +51,15 @@ for mdp in ["PLATA O PLOMO", "RICH PORTER"]:
     assert r.status_code == 401 and d.get("error") == "auth_failed"
     assert d.get("error") != "wrong_password"
 
-titre(4, "Session absente -> auth_failed aussi")
+titre(4, "Session ABSENTE -> no_session, distinct d'une session refusee")
+print("    (absente = boutique ouverte par un lien, pas par le bouton")
+print("     CATALOGUE : refermer l'app n'y changerait rien)")
 r = auth("PLATA O PLOMO", init="")
 print(f"   HTTP {r.status_code} error={r.get_json().get('error')}")
-assert r.status_code == 401 and r.get_json().get("error") == "auth_failed"
+assert r.status_code == 401 and r.get_json().get("error") == "no_session"
+r = auth("PLATA O PLOMO", init="perime")
+print(f"   session presente mais refusee -> error={r.get_json().get('error')}")
+assert r.get_json().get("error") == "auth_failed"
 
 titre(5, "Trop d'essais -> blocked, distinct du mot de passe faux")
 webapp._rate_reset(f"pwd:uid:{AUTRE}")
