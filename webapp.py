@@ -1857,6 +1857,10 @@ def _course_pour_livreur(o: dict) -> dict:
         # Le prénom seul : de quoi s'adresser à la personne à la porte et dans
         # la conversation, sans aucun moyen de la recontacter par ailleurs.
         "client":     _prenom_seul(o),
+        # Le selfie sert à vérifier à qui l'on remet la commande. On n'envoie
+        # pas le base64 dans la liste (c'est lourd) : juste de quoi savoir
+        # qu'il existe, la photo est servie par sa propre route.
+        "has_selfie": bool(o.get("selfie_b64")),
         # Pour ouvrir la conversation sans jamais exposer le compte Telegram.
         "chat_ref":   _ref_chat(oid),
     }
@@ -1926,6 +1930,38 @@ def api_livreur_status(order_id):
                         "actuel": actuel}), 400
 
     return _appliquer_statut(order_id, order, nouveau, data, par="livreur")
+
+
+@app.route("/api/livreur/course/<order_id>/selfie", methods=["GET"])
+def api_livreur_selfie(order_id):
+    """Selfie du client, pour vérifier à qui l'on remet la commande.
+
+    Réservé aux courses de la zone du livreur. C'est une photo de contrôle à
+    la remise, pas un moyen de recontacter la personne : elle ne s'accompagne
+    d'aucun identifiant.
+    """
+    uid = _uid_authentifie(request)
+    if uid is None:
+        return ("Forbidden", 403)
+    if not _a_acces_livreur(uid):
+        return ("Forbidden", 403)
+    try:
+        from storage import get_order
+        order = get_order(order_id)
+    except Exception:
+        return ("Server error", 500)
+    if not order or not _dans_zone_livreur(order):
+        return ("Not found", 404)
+    b64 = order.get("selfie_b64") or ""
+    if not b64:
+        return ("No photo", 404)
+    try:
+        photo = base64.b64decode(b64)
+    except Exception:
+        return ("Bad photo", 500)
+    from flask import Response
+    return Response(photo, mimetype="image/jpeg",
+                    headers={"Cache-Control": "private, max-age=300"})
 
 
 @app.route("/api/livreur/status", methods=["POST"])

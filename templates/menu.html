@@ -330,10 +330,16 @@
   .lv-course .etat.annulee    { background: rgba(239,68,68,0.15); color: #fca5a5; }
   .lv-course .quand { margin-left: auto; font-size: 11.5px; color: var(--txt-secondary); }
 
-  /* Prénom seul : à qui remettre la commande. Aucun contact n'est affiché. */
+  /* À qui remettre la commande : sa photo et son prénom. Aucun contact. */
   .lv-course .pour {
-    font-size: 13.5px; font-weight: 650; margin-bottom: 9px;
+    display: flex; align-items: center; gap: 10px;
+    font-size: 13.5px; font-weight: 650; margin-bottom: 10px;
     color: var(--txt-primary);
+  }
+  .lv-course .pour .visage {
+    width: 38px; height: 38px; flex: 0 0 38px; border-radius: 50%;
+    object-fit: cover; cursor: pointer; background: rgba(255,255,255,0.06);
+    border: 1px solid rgba(139,92,246,0.35);
   }
   .lv-course .adresse {
     display: flex; gap: 9px; align-items: flex-start;
@@ -6342,7 +6348,12 @@ function dessinerCourses() {
           <span class="etat ${e.cls}">${e.txt}</span>
           <span class="quand">${_heureCourte(c.created_at)}</span>
         </div>
-        ${c.client ? `<div class="pour">👤 Pour ${escHtml(c.client)}</div>` : ""}
+        ${(c.client || c.has_selfie) ? `<div class="pour">
+          ${c.has_selfie ? `<img class="visage" alt="Photo du client"
+             src="/api/livreur/course/${encodeURIComponent(c.order_id)}/selfie?initData=${encodeURIComponent(tg.initData || "")}"
+             onclick="agrandirSelfieCourse('${escHtml(c.order_id)}')">` : ""}
+          <span>${c.client ? "Pour " + escHtml(c.client) : "Client"}</span>
+        </div>` : ""}
         <div class="adresse">
           <span>📍</span>
           <span>${escHtml(c.address || "Adresse non renseignée")}</span>
@@ -6398,6 +6409,20 @@ async function avancerCourse(orderId, statut, bouton) {
   }
   bouton.disabled = false;
   bouton.innerHTML = avant;
+}
+
+// Le selfie en grand : à la porte, un pouce de 38 px ne suffit pas pour
+// reconnaître quelqu'un.
+function agrandirSelfieCourse(orderId) {
+  hapticSelect();
+  const url = `/api/livreur/course/${encodeURIComponent(orderId)}/selfie`
+            + `?initData=${encodeURIComponent(tg.initData || "")}`;
+  const fond = document.createElement("div");
+  fond.className = "od2-loupe";
+  fond.innerHTML = `<button class="fermer" aria-label="Fermer">✕</button>
+                    <img src="${url}" alt="">`;
+  fond.addEventListener("click", () => fond.remove());
+  document.body.appendChild(fond);
 }
 
 function ouvrirChatCourse(bouton) {

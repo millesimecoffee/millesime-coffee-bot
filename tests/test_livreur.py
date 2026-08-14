@@ -3,6 +3,7 @@
 Le livreur doit pouvoir travailler seul — voir les commandes de sa zone, les
 faire avancer, parler au client — sans jamais apprendre qui est ce client.
 """
+import base64
 import json
 import os
 import shutil
@@ -33,8 +34,8 @@ CMD_BXL = {"order_id": "BXL01", "user_id": CLIENT_BXL, "status": "pending",
            "payment": "💵 Cash — EUR", "created_at": webapp._now_iso(),
            # Tout ce qui suit ne doit JAMAIS ressortir côté livreur.
            "user_name": "Jean Dupont", "username": "jean_dupont",
-           "selfie_b64": "AAAAPHOTO", "phone": "+32470112233",
-           "lang": "fr"}
+           "selfie_b64": base64.b64encode(b"\xff\xd8\xff-photo-du-client").decode(),
+           "phone": "+32470112233", "lang": "fr"}
 CMD_PARIS = dict(CMD_BXL, order_id="PAR01", user_id=CLIENT_PARIS, city="Paris",
                  country="🇫🇷 France", user_name="Marie Martin",
                  username="marie", address="3 rue de Rivoli, Paris")
@@ -78,8 +79,9 @@ webapp._verify_init_data = lambda i, t: (
 
 app = webapp.app.test_client()
 # Ce qui ne doit JAMAIS sortir : tout ce qui permettrait de recontacter le
-# client ailleurs que dans l'application. Le prénom, lui, est autorisé.
-PII = ["jean_dupont", "AAAAPHOTO", "+32470112233", str(CLIENT_BXL), "marie"]
+# client ailleurs que dans l'application. Le prénom et la photo de remise
+# sont autorisés — ils servent à livrer, pas à démarcher.
+PII = ["jean_dupont", "+32470112233", str(CLIENT_BXL), "marie"]
 
 
 def sans_identite(charge, ou=""):
@@ -127,6 +129,22 @@ for cas, attendu in [
     obtenu = webapp._prenom_seul(cas)
     print(f"   {str(cas)[:46]:48s} -> {obtenu!r}")
     assert obtenu == attendu
+
+titre("3c", "Le selfie : il doit voir à qui il remet la commande")
+print(f"   has_selfie : {c['has_selfie']}")
+assert c["has_selfie"] is True
+brut = json.dumps(d, ensure_ascii=False)
+assert CMD_BXL["selfie_b64"] not in brut, "le base64 n'a rien à faire dans la liste"
+print("   (la photo est servie par sa route, pas glissée dans la liste)")
+r = app.get(f"/api/livreur/course/BXL01/selfie?initData=x")
+print(f"   photo servie : HTTP {r.status_code} {r.headers.get('Content-Type')} "
+      f"{len(r.data)} octets")
+assert r.status_code == 200 and r.data == b"\xff\xd8\xff-photo-du-client"
+
+titre("3d", "Mais pas celle d'une commande hors de sa zone")
+r = app.get("/api/livreur/course/PAR01/selfie?initData=x")
+print(f"   Paris : HTTP {r.status_code}")
+assert r.status_code == 404
 
 titre(4, "Mais il a bien ce qu'il faut pour livrer")
 print(f"   adresse : {c['address']}")
@@ -253,6 +271,9 @@ for route in ["/api/livreur/courses", "/api/livreur/course/BXL01/status"]:
     r = app.post(route, json={"initData": "x", "status": "confirmed"})
     print(f"   {route:<38s} HTTP {r.status_code} ({r.json.get('error')})")
     assert r.status_code == 403
+r = app.get("/api/livreur/course/BXL01/selfie?initData=x")
+print(f"   {'photo du client':<38s} HTTP {r.status_code}")
+assert r.status_code == 403
 
 titre(14, "Le livreur n'entre pas dans le panel admin")
 qui["v"] = LIVREUR
