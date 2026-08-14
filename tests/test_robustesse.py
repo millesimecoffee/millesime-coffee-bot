@@ -63,6 +63,7 @@ ENDPOINTS = [
     ("/api/admin/client_note",       {"user_id": OWNER, "note": "ok"}),
     ("/api/admin/contact",           {"order_id": "R1", "user_id": OWNER}),
     ("/api/admin/send_message",      {"user_id": OWNER, "text": "coucou"}),
+    ("/api/admin/selfie/envoyer",    {"order_id": "R1"}),
     ("/api/client/orders",           {"limit": 10}),
     ("/api/order/track",             {"order_id": "R1"}),
     ("/api/notify/city",             {"country": "🇫🇷 France", "city": "Paris"}),

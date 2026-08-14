@@ -3753,6 +3753,54 @@ def api_admin_contact():
                     "link": f"https://t.me/{bot_nom}" if bot_nom else ""})
 
 
+@app.route("/api/admin/selfie/envoyer", methods=["POST"])
+def api_admin_selfie_envoyer():
+    """Envoie le selfie dans le chat Telegram de celui qui le demande.
+
+    Aucune page web ne peut écrire dans la pellicule d'un iPhone : c'est une
+    protection du système, pas une limite de l'application. Le chemin le plus
+    court reste donc la feuille de partage iOS ; quand elle n'est pas
+    disponible, on pousse la photo dans le chat, où l'appui long propose
+    « Enregistrer dans les photos ».
+    POST {initData, order_id}
+    """
+    _refus = _guard_admin(request)
+    if _refus:
+        return _refus
+    uid = _uid_authentifie(request)
+    order_id = _texte(_corps(request).get("order_id"), 64)
+    try:
+        from storage import get_order
+        order = get_order(order_id)
+    except Exception:
+        return jsonify({"ok": False, "error": "load_failed"}), 500
+    if not order:
+        return jsonify({"ok": False, "error": "not_found"}), 404
+    b64 = order.get("selfie_b64") or ""
+    if not b64:
+        return jsonify({"ok": False, "error": "no_photo"}), 404
+    token = os.getenv("BOT_TOKEN", "")
+    if not token or not uid:
+        return jsonify({"ok": False, "error": "no_token"}), 500
+    try:
+        photo = base64.b64decode(b64)
+        import httpx
+        r = httpx.post(
+            f"https://api.telegram.org/bot{token}/sendPhoto",
+            data={"chat_id": str(uid),
+                  "caption": f"📸 Selfie — commande {order_id}\n"
+                             "Appui long sur la photo → « Enregistrer dans les photos »."},
+            files={"photo": (f"selfie-{order_id}.jpg", photo, "image/jpeg")},
+            timeout=20.0)
+        if r.status_code != 200:
+            return jsonify({"ok": False, "error": "send_failed",
+                            "detail": _telegram_error(r)}), 502
+    except Exception as exc:
+        logger.error("selfie_envoyer: %s", exc)
+        return jsonify({"ok": False, "error": "exception"}), 500
+    return jsonify({"ok": True})
+
+
 @app.route("/api/admin/photo/<order_id>/<kind>", methods=["GET"])
 def api_admin_photo(order_id, kind):
     """Sert une photo (selfie ou proof) de la commande en JPEG.

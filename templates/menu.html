@@ -6247,28 +6247,53 @@ function copierBonDeCommande(orderId) {
   hapticSuccess();
 }
 
-// Enregistrer le selfie dans la pellicule. Telegram expose downloadFile
-// depuis Bot API 8.0 ; sur les versions plus anciennes on ouvre la photo dans
-// le navigateur, où un appui long permet de l'enregistrer.
-function enregistrerSelfie(orderId) {
-  const url = `${location.origin}/api/admin/photo/${encodeURIComponent(orderId)}/selfie`
-            + `?download=1&initData=${encodeURIComponent(tg.initData || "")}`;
-  const nom = `selfie-${orderId}.jpg`;
+// Enregistrer le selfie dans la PELLICULE, pas dans Fichiers.
+//
+// Aucune page web ne peut écrire directement dans les photos d'un iPhone :
+// le système l'interdit, quelle que soit l'application. Le chemin le plus
+// court est la feuille de partage iOS, qui propose « Enregistrer l'image » —
+// et cette entrée-là vise bien Photos. `tg.downloadFile`, lui, range dans
+// Fichiers : on ne l'utilise plus.
+async function enregistrerSelfie(orderId) {
   hapticMedium();
+  const url = `/api/admin/photo/${encodeURIComponent(orderId)}/selfie`
+            + `?initData=${encodeURIComponent(tg.initData || "")}`;
+
   try {
-    if (typeof tg.downloadFile === "function") {
-      tg.downloadFile({ url, file_name: nom }, (accepte) => {
-        if (accepte) showToast("💾 Enregistrement lancé");
-      });
+    const r = await fetch(url);
+    if (r.ok) {
+      const blob = await r.blob();
+      const fichier = new File([blob], `selfie-${orderId}.jpg`, { type: "image/jpeg" });
+      if (navigator.canShare && navigator.canShare({ files: [fichier] })) {
+        await navigator.share({ files: [fichier] });
+        showToast("Choisissez « Enregistrer l'image »");
+        return;
+      }
+    }
+  } catch (e) {
+    // L'utilisateur a fermé la feuille de partage : ce n'est pas un échec.
+    if (e && e.name === "AbortError") return;
+  }
+
+  // Repli : la photo arrive dans le chat du bot, où un appui long propose
+  // « Enregistrer dans les photos ». C'est le seul chemin qui marche partout
+  // dans Telegram, y compris sur les versions anciennes.
+  try {
+    const r = await apiFetch("/api/admin/selfie/envoyer", {
+      method: "POST",
+      body: JSON.stringify({ initData: tg.initData || "", order_id: orderId }),
+    });
+    const d = await r.json();
+    if (d.ok) {
+      hapticSuccess();
+      showToast("📸 Photo envoyée dans le bot — appui long pour l'enregistrer");
       return;
     }
-  } catch {}
-  try {
-    tg.openLink(url);
-    showToast("Appui long sur la photo pour l'enregistrer");
-    return;
-  } catch {}
-  window.open(url, "_blank");
+    showToast(d.error === "no_photo" ? "Pas de selfie sur cette commande"
+                                     : "Envoi impossible", true);
+  } catch {
+    showToast(t("err_network"), true);
+  }
 }
 
 // Raccourci vers la conversation avec un client, avec ou sans @pseudo.
