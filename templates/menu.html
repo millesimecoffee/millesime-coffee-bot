@@ -2771,23 +2771,6 @@
     color: var(--od2-txt); line-height: 1.05;
     font-variant-numeric: tabular-nums;
   }
-  /* Pastille visible de 36 px, mais zone tactile portée à 44 px : en dessous,
-     le bouton devient difficile à viser au pouce. */
-  .od2-copie-mini {
-    width: 44px; height: 44px; flex: 0 0 44px; position: relative;
-    display: flex; align-items: center; justify-content: center;
-    color: #C084FC; font-size: 15px; cursor: pointer; background: none;
-    transition: transform .12s;
-  }
-  .od2-copie-mini::before {
-    content: ""; position: absolute; top: 50%; left: 50%;
-    width: 36px; height: 36px; transform: translate(-50%, -50%);
-    border-radius: 11px; background: rgba(60,60,90,0.4);
-    border: 1px solid rgba(147,51,234,0.5); transition: background .15s;
-  }
-  .od2-copie-mini > * , .od2-copie-mini { position: relative; z-index: 1; }
-  .od2-copie-mini:active { transform: scale(0.9); }
-  .od2-copie-mini:active::before { background: rgba(147,51,234,0.3); }
   .od2-date { font-size: 15px; color: var(--od2-txt-2); margin-top: 9px; }
 
   .od2-badge {
@@ -3030,7 +3013,7 @@
 
   @media (prefers-reduced-motion: reduce) {
     .od2-carte, .od2-sous-entete, .od2-cta { animation: none; }
-    .od2-btn, .od2-msg, .od2-maps, .od2-pastille, .od2-nav-btn, .od2-copie-mini { transition: none; }
+    .od2-btn, .od2-act, .od2-maps, .od2-pastille, .od2-nav-btn { transition: none; }
   }
 
   /* ═══════════════════════════════════════════════════════════════════════
@@ -6153,10 +6136,7 @@ function renderOrderDetail(o) {
       <div class="od2-tete">
         <div style="min-width:0;">
           <div class="lbl">Commande</div>
-          <div class="od2-num">#${oid}
-            <span class="od2-copie-mini" role="button" aria-label="Copier le bon de commande"
-                  onclick="copierBonDeCommande('${oid}')">⧉</span>
-          </div>
+          <div class="od2-num">#${oid}</div>
           <div class="od2-date">${_dateLongue(o.created_at)}</div>
         </div>
         <span class="od2-badge ${st.cls}"><span class="rond">${st.ic}</span>${st.txt}</span>
