@@ -2389,6 +2389,92 @@ def api_client_reorder():
     })
 
 
+# ── Itinéraire routier ───────────────────────────────────────────────────────
+# Le trait droit entre le livreur et l'adresse ne ressemble à rien : on trace
+# le vrai chemin, rue par rue, via l'API Directions de Mapbox (même jeton que
+# l'autocomplétion d'adresse). Le calcul reste côté serveur pour ne pas
+# exposer le jeton, et il est mis en cache : recalculer à chaque relevé
+# épuiserait le quota pour un tracé quasi identique.
+_route_cache: dict[str, dict] = {}
+_route_lock = threading.Lock()
+_ROUTE_TTL = 75.0          # secondes avant de redemander le même trajet
+_ROUTE_ECART_M = 250.0     # le livreur s'est assez écarté pour recalculer
+
+
+def _itineraire_mapbox(depart, arrivee):
+    """Trajet routier depart → arrivee.
+
+    Renvoie (points, metres, secondes) où `points` est une liste [lat, lon],
+    ou (None, None, None) si le service n'a rien pu fournir — l'appelant
+    retombe alors sur la ligne droite, qui vaut mieux qu'une carte vide.
+    """
+    token = os.getenv("MAPBOX_TOKEN", "").strip()
+    if not token:
+        return None, None, None
+    url = ("https://api.mapbox.com/directions/v5/mapbox/driving/"
+           f"{depart[1]:.6f},{depart[0]:.6f};{arrivee[1]:.6f},{arrivee[0]:.6f}")
+    try:
+        import httpx
+        r = httpx.get(url, timeout=8.0, params={
+            "geometries": "geojson",
+            "overview": "full",       # tracé détaillé, pas simplifié
+            "access_token": token,
+        })
+        if r.status_code != 200:
+            logger.warning("Mapbox directions HTTP %s : %s", r.status_code, r.text[:150])
+            return None, None, None
+        routes = (r.json() or {}).get("routes") or []
+        if not routes:
+            return None, None, None
+        coords = routes[0].get("geometry", {}).get("coordinates") or []
+        if len(coords) < 2:
+            return None, None, None
+        # GeoJSON donne [lon, lat] ; Leaflet attend [lat, lon].
+        points = [[round(c[1], 6), round(c[0], 6)] for c in coords]
+        return points, routes[0].get("distance"), routes[0].get("duration")
+    except Exception as exc:
+        logger.warning("Mapbox directions : %s", exc)
+        return None, None, None
+
+
+def _route_pour(order_id: str, depart, arrivee):
+    """Itinéraire mis en cache par commande.
+
+    Recalculé seulement si le cache est vieux ou si le livreur s'est écarté
+    de plus de `_ROUTE_ECART_M` du point de départ du tracé : entre deux
+    calculs, le client se contente de raccourcir le tracé existant.
+    """
+    maintenant = time.time()
+    with _route_lock:
+        entree = _route_cache.get(order_id)
+        if entree:
+            ecart_km = _haversine_km(depart[0], depart[1],
+                                     entree["depart"][0], entree["depart"][1])
+            if (maintenant - entree["at"] < _ROUTE_TTL
+                    and ecart_km * 1000 < _ROUTE_ECART_M):
+                return entree["points"], entree["metres"], entree["secondes"]
+
+    points, metres, secondes = _itineraire_mapbox(depart, arrivee)
+    if not points:
+        return None, None, None
+
+    with _route_lock:
+        _route_cache[order_id] = {"points": points, "metres": metres,
+                                  "secondes": secondes, "depart": depart,
+                                  "at": maintenant}
+        # Purge : une commande livrée ne sera plus jamais demandée.
+        if len(_route_cache) > 200:
+            for k in [k for k, v in _route_cache.items()
+                      if maintenant - v["at"] > 3600]:
+                del _route_cache[k]
+    return points, metres, secondes
+
+
+def _oublier_route(order_id: str) -> None:
+    with _route_lock:
+        _route_cache.pop(order_id, None)
+
+
 @app.route("/api/order/track", methods=["POST"])
 def api_order_track():
     """Tracking d'une commande pour le client.
@@ -2509,6 +2595,23 @@ def api_order_track():
             if progress < 1.0 else None
         distance_km = _haversine_km(driver_lat, driver_lon, dest_lat, dest_lon)
 
+    # ── Itinéraire réel, rue par rue ────────────────────────────────────────
+    # Tant qu'on n'a pas le tracé, le client verra la ligne droite ; dès qu'il
+    # arrive, la distance et l'ETA passent en distance ROUTIÈRE, toujours plus
+    # longue que le vol d'oiseau et donc plus honnête.
+    route = None
+    if driver_lat is not None and dest_lat and dest_lon and status == "delivering":
+        route, metres, secondes = _route_pour(
+            order_id, (driver_lat, driver_lon), (dest_lat, dest_lon))
+        if route and metres:
+            distance_km = metres / 1000.0
+            if secondes:
+                eta_seconds = int(secondes)
+            far = _track_far_km(order_id, distance_km)
+            progress = max(0.0, min(1.0, 1.0 - (distance_km / far))) if far else 0.0
+    elif status == "delivered":
+        _oublier_route(order_id)
+
     # Étapes visuelles
     steps_status = {
         "received":    True,                                                        # reçue : toujours OK
@@ -2559,6 +2662,8 @@ def api_order_track():
         # Le client doit savoir s'il regarde une position réelle ou une estimation.
         "live":        is_live,
         "distance_km": round(distance_km, 2) if distance_km is not None else None,
+        # Tracé routier [[lat, lon], …]. Absent = le client trace la ligne droite.
+        "route":       route,
         "steps": steps_status,
         "step_times": step_times,
         "eta_at": eta_at,

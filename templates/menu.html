@@ -6538,6 +6538,9 @@ function openTracking(orderId) {
   state._trackDriverAt  = null;
   state._trackDriverHeading = null;
   state._trackEtaAt = null;
+  state._trackRoute = null;
+  state._trackRouteIdx = 0;
+  state._trackRouteSig = "";
   document.getElementById("trackMap").style.display = "none";
   document.getElementById("trackMapEmpty").style.display = "flex";
   const _lb = document.getElementById("trackLiveBadge");
@@ -6565,6 +6568,9 @@ function closeTracking() {
     state._trackDriverAt = null;
     state._trackDriverHeading = null;
     state._trackFitted = false;
+    state._trackRoute = null;
+    state._trackRouteIdx = 0;
+    state._trackRouteSig = "";
   }
   // Retour à success si on vient de finaliser, sinon close
   const prev = state.history.pop();
@@ -6858,10 +6864,30 @@ function _setDriverHeading(deg) {
   if (el) el.style.transform = `rotate(${deg}deg)`;
 }
 
+// Trace ce qu'il reste de chemin. Avec un itinéraire routier, on ne redessine
+// pas tout : on repart du point du tracé le plus proche du livreur et on garde
+// la suite. Le trait suit donc les rues et se raccourcit à mesure qu'il avance.
 function _updateRoute(lat, lon) {
   const dest = state._trackLastData?.dest;
   if (!dest || !state._trackPolyline) return;
-  state._trackPolyline.setLatLngs([[lat, lon], [dest.lat, dest.lon]]);
+  const route = state._trackRoute;
+  if (!route || route.length < 2) {
+    state._trackPolyline.setLatLngs([[lat, lon], [dest.lat, dest.lon]]);
+    return;
+  }
+  // Recherche vers l'avant seulement : le livreur ne recule pas, et repartir
+  // du début à chaque frame coûterait cher sur un tracé de plusieurs centaines
+  // de points.
+  let i = state._trackRouteIdx || 0;
+  let meilleur = i, distMin = Infinity;
+  const fin = Math.min(route.length, i + 60);
+  for (; i < fin; i++) {
+    const dLat = route[i][0] - lat, dLon = route[i][1] - lon;
+    const d = dLat * dLat + dLon * dLon;
+    if (d < distMin) { distMin = d; meilleur = i; }
+  }
+  state._trackRouteIdx = meilleur;
+  state._trackPolyline.setLatLngs([[lat, lon], ...route.slice(meilleur + 1)]);
 }
 
 function _haversineKm(lat1, lon1, lat2, lon2) {
@@ -6900,6 +6926,9 @@ function updateTrackingMap(data) {
       state._trackDriverAt = null;
       state._trackDriverHeading = null;
       state._trackFitted = false;
+      state._trackRoute = null;
+      state._trackRouteIdx = 0;
+      state._trackRouteSig = "";
     }
     return;
   }
@@ -6969,19 +6998,33 @@ function updateTrackingMap(data) {
         .addTo(state._trackMap);
       state._trackDriverAt = L.latLng(driver.lat, driver.lon);
     }
+    // Itinéraire routier fourni par le serveur. Quand il change (recalculé
+    // parce que le livreur s'est écarté), on repart du début du tracé.
+    const routeRecue = Array.isArray(data.route) && data.route.length > 1 ? data.route : null;
+    const signature = routeRecue ? routeRecue.length + ":" + routeRecue[0].join(",") : "";
+    if (signature !== state._trackRouteSig) {
+      state._trackRouteSig = signature;
+      state._trackRoute    = routeRecue;
+      state._trackRouteIdx = 0;
+    }
+
     if (!state._trackPolyline) {
       // Ligne foncée : c'est ce qui se lit le mieux sur un fond de carte clair.
       state._trackPolyline = L.polyline(
-        [[driver.lat, driver.lon], [dest.lat, dest.lon]],
+        state._trackRoute || [[driver.lat, driver.lon], [dest.lat, dest.lon]],
         { color: "#1f2430", weight: 4, opacity: 0.9, className: "route",
-          lineCap: "round" }
+          lineCap: "round", lineJoin: "round" }
       ).addTo(state._trackMap);
     }
     animateDriverTo(driver.lat, driver.lon, driver.heading);
 
     // Cadrage : une seule fois à l'ouverture, puis on suit doucement le livreur.
     // Recadrer à chaque relevé donnerait une carte qui sursaute toutes les 8 s.
-    const bounds = L.latLngBounds([[driver.lat, driver.lon], [dest.lat, dest.lon]]);
+    // Avec un itinéraire, on cadre sur le trajet entier plutôt que sur les deux
+    // extrémités : un détour par le périphérique sortirait sinon du cadre.
+    const bounds = state._trackRoute
+      ? L.latLngBounds(state._trackRoute)
+      : L.latLngBounds([[driver.lat, driver.lon], [dest.lat, dest.lon]]);
     if (!state._trackFitted) {
       state._trackMap.fitBounds(bounds, { padding: [50, 50], maxZoom: 16 });
       state._trackFitted = true;
