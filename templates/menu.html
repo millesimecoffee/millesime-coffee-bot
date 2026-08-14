@@ -3008,12 +3008,13 @@
      MESSAGERIE — conversation privée vendeur ↔ client
      ═══════════════════════════════════════════════════════════════════════ */
   #screen-chat {
-    --ch-fond:    #0b0b12;
-    --ch-carte:   #17172a;
-    --ch-moi:     linear-gradient(135deg, #7c3aed, #4f46e5);
-    --ch-txt:     #f4f4fb;
-    --ch-txt-2:   #a1a1c4;
-    --ch-bordure: rgba(255,255,255,0.09);
+    --ch-fond:    #0B1418;   /* bleu-nuit presque noir */
+    --ch-carte:   #1F2C33;   /* bulle reçue, capsule de date */
+    --ch-moi:     #1F6B44;   /* bulle envoyée, vert profond */
+    --ch-txt:     #E9EDEF;
+    --ch-txt-2:   #8696A0;
+    --ch-bordure: rgba(255,255,255,0.07);
+    --ch-vert:    #21A366;   /* bouton micro */
   }
   /* La conversation occupe tout l'écran : la zone d'écriture reste collée en
      bas, seule la liste des bulles défile. */
@@ -3031,21 +3032,21 @@
   .ch-entete {
     display: flex; align-items: center; gap: 11px; flex: 0 0 auto;
     padding: calc(10px + env(safe-area-inset-top, 0px)) 14px 10px;
-    background: rgba(23,23,42,0.96); border-bottom: 1px solid var(--ch-bordure);
-    backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
+    background: #101B20; border-bottom: 1px solid var(--ch-bordure);
   }
   .ch-retour {
-    width: 36px; height: 36px; flex: 0 0 36px; border-radius: 50%;
+    width: 34px; height: 34px; flex: 0 0 34px; border-radius: 50%;
     display: flex; align-items: center; justify-content: center;
-    background: rgba(255,255,255,0.07); border: 1px solid var(--ch-bordure);
-    color: var(--ch-txt); font-size: 19px; cursor: pointer;
+    background: none; border: none;
+    color: var(--ch-txt); font-size: 22px; cursor: pointer;
   }
   .ch-avatar {
     width: 38px; height: 38px; flex: 0 0 38px; border-radius: 50%;
     display: flex; align-items: center; justify-content: center;
-    background: linear-gradient(135deg,#7c3aed,#ec4899);
+    background: #2A3942;
     font-weight: 800; font-size: 16px; color: #fff;
     overflow: hidden;      /* le selfie remplit le rond sans déborder */
+    border: 1.5px solid rgba(33,163,102,0.75);
   }
   .ch-avatar img {
     width: 100%; height: 100%; object-fit: cover; display: block;
@@ -3069,37 +3070,48 @@
   }
   @media (prefers-reduced-motion: reduce) { .ch-enligne i { animation: none; } }
 
+  /* Fond texturé : petits motifs à peine perceptibles, dessinés en SVG
+     intégré — aucune image à télécharger, aucune dépendance. L'opacité est
+     volontairement très basse : c'est une texture, pas un décor. */
   .ch-fil {
     flex: 1 1 auto; overflow-y: auto; -webkit-overflow-scrolling: touch;
-    padding: 14px 12px 6px; display: flex; flex-direction: column; gap: 7px;
+    padding: 12px 10px 6px; display: flex; flex-direction: column; gap: 6px;
+    background-color: var(--ch-fond);
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='260' height='260' viewBox='0 0 260 260'%3E%3Cg fill='none' stroke='%23ffffff' stroke-opacity='0.013' stroke-width='1.4' stroke-linecap='round'%3E%3Ccircle cx='30' cy='34' r='9'/%3E%3Cpath d='M22 62h16l-2 12H24z'/%3E%3Cpath d='M74 22l4 9 9 1-7 6 2 9-8-5-8 5 2-9-7-6 9-1z'/%3E%3Cpath d='M120 40c6-7 16-3 16 5 0 6-8 11-16 17-8-6-16-11-16-17 0-8 10-12 16-5z'/%3E%3Cpath d='M170 26h18v14h-18z'/%3E%3Cpath d='M176 26v14'/%3E%3Ccircle cx='224' cy='36' r='10'/%3E%3Cpath d='M218 36h12M224 30v12'/%3E%3Cpath d='M20 116c8-10 20-10 28 0'/%3E%3Cpath d='M62 104l10 18H52z'/%3E%3Ccircle cx='110' cy='112' r='11'/%3E%3Cpath d='M104 112h12'/%3E%3Cpath d='M150 100c10 0 14 8 10 14-4 6-16 6-20 0-4-6 0-14 10-14z'/%3E%3Cpath d='M196 102h20v18h-20z'/%3E%3Cpath d='M196 108h20'/%3E%3Cpath d='M240 106l6 12-12 0z'/%3E%3Cpath d='M28 178l6 14 14 1-11 9 4 14-13-8-13 8 4-14-11-9 14-1z'/%3E%3Cpath d='M78 176c0 10 8 14 14 10s6-16-2-18-12 2-12 8z'/%3E%3Cpath d='M120 182h22M120 190h16M120 198h20'/%3E%3Ccircle cx='176' cy='188' r='12'/%3E%3Cpath d='M176 180v8l6 4'/%3E%3Cpath d='M212 176c8-4 18 2 16 10-2 8-14 10-18 4-4-6-2-12 2-14z'/%3E%3Cpath d='M40 236h20l-3 14H43z'/%3E%3Cpath d='M92 230l8 16H84z'/%3E%3Cpath d='M136 232c6-6 14-2 14 4 0 5-7 9-14 14-7-5-14-9-14-14 0-6 8-10 14-4z'/%3E%3Cpath d='M190 228h18v16h-18z'/%3E%3Ccircle cx='240' cy='238' r='9'/%3E%3C/g%3E%3C/svg%3E");
+    background-repeat: repeat;
   }
   .ch-jour {
-    align-self: center; margin: 8px 0 4px; padding: 4px 12px; border-radius: 999px;
-    background: rgba(255,255,255,0.06); color: var(--ch-txt-2);
-    font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.6px;
+    align-self: center; margin: 10px 0 8px; padding: 5px 13px; border-radius: 999px;
+    background: var(--ch-carte); color: var(--ch-txt-2);
+    font-size: 12px; font-weight: 500; letter-spacing: 0.2px;
   }
   .ch-bulle {
-    max-width: 78%; padding: 9px 13px 7px; border-radius: 19px;
-    background: var(--ch-carte); border: 1px solid var(--ch-bordure);
-    font-size: 15px; line-height: 1.38; word-wrap: break-word;
+    max-width: 82%; padding: 8px 11px 7px; border-radius: 13px;
+    background: var(--ch-carte); border: none;
+    font-size: 15.5px; line-height: 1.35; word-wrap: break-word;
     overflow-wrap: anywhere; align-self: flex-start;
-    border-bottom-left-radius: 7px;
+    border-top-left-radius: 4px;
     animation: chApparait 0.18s ease-out;
+    box-shadow: 0 1px 1px rgba(0,0,0,0.28);
   }
   .ch-bulle.moi {
-    align-self: flex-end; background: var(--ch-moi); border-color: transparent;
-    border-bottom-left-radius: 19px; border-bottom-right-radius: 7px;
+    align-self: flex-end; background: var(--ch-moi);
+    border-top-left-radius: 12px; border-top-right-radius: 4px;
   }
   @keyframes chApparait { from { opacity: 0; transform: translateY(6px); } }
+  /* Heure et coches sur la même ligne que la fin du texte, comme la
+     référence : la bulle épouse le texte au lieu d'ajouter une ligne. */
   .ch-bulle .heure {
-    font-size: 10.5px; color: var(--ch-txt-2); text-align: right;
-    margin-top: 3px; font-variant-numeric: tabular-nums;
-    display: flex; align-items: center; justify-content: flex-end; gap: 4px;
+    font-size: 11px; color: rgba(233,237,239,0.6);
+    float: right; margin: 6px -2px -2px 10px;
+    font-variant-numeric: tabular-nums;
+    display: inline-flex; align-items: center; gap: 3px;
   }
-  .ch-bulle.moi .heure { color: rgba(255,255,255,0.72); }
-  /* Accusés : une flèche = parti, deux = lu. */
-  .ch-bulle .coches { font-size: 11px; letter-spacing: -2px; }
-  .ch-bulle .coches.lu { color: #7dd3fc; }
+  .ch-bulle.moi .heure { color: rgba(233,237,239,0.65); }
+  .ch-bulle::after { content: ""; display: block; clear: both; }
+  /* Accusés : une coche = parti, deux = lu. */
+  .ch-bulle .coches { font-size: 13px; letter-spacing: -3px; padding-right: 2px; }
+  .ch-bulle .coches.lu { color: #53BDEB; }
 
   /* Message cité, au-dessus de la réponse. */
   .ch-rep {
@@ -3107,7 +3119,7 @@
     border-left: 3px solid rgba(255,255,255,0.45); border-radius: 8px;
     background: rgba(0,0,0,0.22); font-size: 12.5px; line-height: 1.3;
   }
-  .ch-bulle:not(.moi) .ch-rep { border-left-color: #a78bfa; background: rgba(0,0,0,0.28); }
+  .ch-bulle:not(.moi) .ch-rep { border-left-color: var(--ch-vert); background: rgba(0,0,0,0.28); }
   .ch-rep .qui { font-weight: 700; font-size: 11.5px; opacity: 0.85; }
   .ch-rep .txt {
     opacity: 0.8; display: -webkit-box; -webkit-line-clamp: 2;
@@ -3119,32 +3131,39 @@
   .ch-ligne.moi { align-self: flex-end; flex-direction: row-reverse; }
   .ch-ligne:not(.moi) { align-self: flex-start; }
   .ch-ligne .ch-bulle { max-width: 100%; align-self: auto; }
+  /* Le bouton « répondre » reste caché : la référence n'en montre aucun. Il
+     n'apparaît que sur la bulle qu'on vient de toucher, et disparaît dès
+     qu'on en touche une autre. */
   .ch-repondre {
-    flex: 0 0 auto; width: 27px; height: 27px; border-radius: 50%; border: none;
-    background: rgba(255,255,255,0.07); color: var(--ch-txt-2);
-    font-size: 13px; cursor: pointer; opacity: 0; transition: opacity 0.15s;
+    flex: 0 0 auto; width: 0; height: 28px; border-radius: 50%; border: none;
+    background: rgba(255,255,255,0.08); color: var(--ch-txt-2);
+    font-size: 13px; cursor: pointer; opacity: 0; padding: 0; overflow: hidden;
+    transition: opacity 0.15s, width 0.15s;
   }
-  .ch-ligne:hover .ch-repondre, .ch-ligne:focus-within .ch-repondre { opacity: 1; }
-  @media (hover: none) { .ch-repondre { opacity: 0.5; } }
+  .ch-ligne.ouverte .ch-repondre { opacity: 1; width: 28px; }
+  @media (hover: hover) {
+    .ch-ligne:hover .ch-repondre { opacity: 1; width: 28px; }
+  }
 
-  /* Traduction : marqueur discret, l'original reste à une pression. */
+  /* Traduction : un simple globe collé au texte ; l'original s'ouvre d'une
+     pression dessus. */
   .ch-trad {
-    display: inline-flex; align-items: center; gap: 4px; margin-top: 4px;
-    font-size: 10.5px; opacity: 0.6; cursor: pointer;
+    font-size: 12px; opacity: 0.5; cursor: pointer; margin-left: 4px;
+    vertical-align: baseline;
   }
   .ch-original {
-    margin-top: 5px; padding-top: 5px; font-size: 13px; opacity: 0.72;
-    border-top: 1px dashed rgba(255,255,255,0.22); font-style: italic;
+    margin-top: 6px; padding-top: 6px; font-size: 13.5px; opacity: 0.7;
+    border-top: 1px dashed rgba(255,255,255,0.2); font-style: italic;
   }
 
   /* Barre de citation au-dessus de la zone d'écriture. */
   .ch-cite {
     display: flex; align-items: center; gap: 10px; margin: 0 11px 8px;
     padding: 8px 11px; border-radius: 13px;
-    background: rgba(255,255,255,0.06); border-left: 3px solid #a78bfa;
+    background: rgba(255,255,255,0.06); border-left: 3px solid var(--ch-vert);
   }
   .ch-cite .corps { flex: 1; min-width: 0; font-size: 12.5px; }
-  .ch-cite .qui { font-weight: 700; font-size: 11.5px; color: #c4b5fd; }
+  .ch-cite .qui { font-weight: 700; font-size: 11.5px; color: var(--ch-vert); }
   .ch-cite .txt {
     opacity: 0.75; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   }
@@ -3186,27 +3205,41 @@
   /* ── Zone d'écriture ─────────────────────────────────────────────── */
   .ch-barre {
     flex: 0 0 auto; display: flex; align-items: flex-end; gap: 8px;
-    padding: 9px 11px calc(9px + env(safe-area-inset-bottom, 0px));
-    background: rgba(23,23,42,0.98); border-top: 1px solid var(--ch-bordure);
+    padding: 8px 10px calc(10px + env(safe-area-inset-bottom, 0px));
+    background: #101B20;
   }
+  /* Le « + » et le champ vivent dans la même barre sombre ; seul le bouton
+     de droite est vert et plein, comme sur la référence. */
   .ch-barre .rond {
-    width: 42px; height: 42px; flex: 0 0 42px; border-radius: 50%; border: none;
+    width: 44px; height: 44px; flex: 0 0 44px; border-radius: 50%; border: none;
     display: flex; align-items: center; justify-content: center;
-    background: rgba(255,255,255,0.08); color: var(--ch-txt);
-    font-size: 19px; cursor: pointer; transition: transform 0.12s, background 0.15s;
+    background: #2A3942; color: var(--ch-txt);
+    font-size: 22px; cursor: pointer; transition: transform 0.12s, background 0.15s;
   }
   .ch-barre .rond:active { transform: scale(0.9); }
-  .ch-barre .rond.envoyer { background: var(--ch-moi); color: #fff; }
-  .ch-barre .rond.micro.actif { background: #ef4444; color: #fff; animation: chPulse 1.1s infinite; }
+  .ch-barre .rond.envoyer, .ch-barre .rond.micro {
+    background: var(--ch-vert); color: #fff; font-size: 19px;
+  }
+  .ch-barre .rond.micro.actif { background: #ef4444; animation: chPulse 1.1s infinite; }
   @keyframes chPulse { 50% { box-shadow: 0 0 0 9px rgba(239,68,68,0); } 0% { box-shadow: 0 0 0 0 rgba(239,68,68,0.55); } }
+  /* Champ + micro secondaire : le micro est posé par-dessus la fin du champ,
+     donc le texte doit s'arrêter avant lui. */
+  .ch-champ { flex: 1; min-width: 0; position: relative; display: flex; }
   .ch-saisie {
     flex: 1; min-width: 0; resize: none; max-height: 120px;
-    padding: 11px 15px; border-radius: 21px; font: inherit; font-size: 15px;
-    background: rgba(255,255,255,0.07); border: 1px solid var(--ch-bordure);
-    color: var(--ch-txt); line-height: 1.35;
+    padding: 12px 44px 12px 16px; border-radius: 22px; font: inherit; font-size: 16px;
+    background: #2A3942; border: none;
+    color: var(--ch-txt); line-height: 1.3;
   }
   .ch-saisie::placeholder { color: var(--ch-txt-2); }
-  .ch-saisie:focus { outline: none; border-color: rgba(124,58,237,0.65); }
+  .ch-saisie:focus { outline: none; }
+  .ch-micro-champ {
+    position: absolute; right: 6px; bottom: 5px;
+    width: 34px; height: 34px; border-radius: 50%; border: none; background: none;
+    color: var(--ch-txt); font-size: 17px; cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .ch-micro-champ:active { transform: scale(0.9); }
 
   .ch-enreg {
     flex: 1; display: flex; align-items: center; gap: 10px;
@@ -3859,10 +3892,13 @@
 
   <div class="ch-barre" id="chatBarre">
     <button class="rond" id="chatPhotoBtn" aria-label="Envoyer une photo"
-            onclick="document.getElementById('chatFichier').click()">📷</button>
-    <textarea class="ch-saisie" id="chatSaisie" rows="1" placeholder="Votre message…"
-              autocomplete="off" oninput="chatAjusterHauteur(this)"></textarea>
-    <button class="rond micro" id="chatMicro" aria-label="Message vocal">🎤</button>
+            onclick="document.getElementById('chatFichier').click()">+</button>
+    <div class="ch-champ">
+      <textarea class="ch-saisie" id="chatSaisie" rows="1" placeholder="Votre message..."
+                autocomplete="off" oninput="chatAjusterHauteur(this)"></textarea>
+      <button class="ch-micro-champ" id="chatMicroChamp" aria-label="Message vocal">🎙</button>
+    </div>
+    <button class="rond micro" id="chatMicro" aria-label="Message vocal">🎙</button>
     <button class="rond envoyer" id="chatEnvoyer" aria-label="Envoyer"
             onclick="chatEnvoyerTexte()" style="display:none;">➤</button>
   </div>
@@ -6786,9 +6822,10 @@ function chatDessiner() {
     const provisoire = String(m.id).startsWith("tmp");
     const coches = moi && !provisoire
       ? `<span class="coches ${iLu >= 0 && i <= iLu ? "lu" : ""}">${
-           iLu >= 0 && i <= iLu ? "➤➤" : "➤"}</span>` : "";
+           iLu >= 0 && i <= iLu ? "✓✓" : "✓"}</span>` : "";
     return sep + `
-      <div class="ch-ligne ${moi ? "moi" : ""}">
+      <div class="ch-ligne ${moi ? "moi" : ""}"${
+          provisoire ? "" : ` onclick="chatToucherBulle(this, event)"`}>
         ${provisoire ? "" : `<button class="ch-repondre" aria-label="Répondre"
            onclick="chatCiter('${m.id}')">↩</button>`}
         <div class="ch-bulle ${moi ? "moi" : ""}">${chatRepCitee(m)}${chatContenu(m)}
@@ -6798,6 +6835,16 @@ function chatDessiner() {
   }).join("");
 
   if (enBas) chatAllerEnBas();
+}
+
+// Une pression sur une bulle révèle son bouton « répondre ». Une seule bulle
+// à la fois, pour que l'écran reste aussi net que la référence.
+function chatToucherBulle(ligne, ev) {
+  if (ev && ev.target.closest(".ch-repondre, .ch-trad, img, .ch-audio")) return;
+  const deja = ligne.classList.contains("ouverte");
+  document.querySelectorAll("#chatFil .ch-ligne.ouverte")
+          .forEach(l => l.classList.remove("ouverte"));
+  if (!deja) { ligne.classList.add("ouverte"); hapticSelect(); }
 }
 
 // Bloc « en réponse à », figé au moment de l'envoi.
@@ -6858,20 +6905,22 @@ function chatVoirOriginal(id, bouton) {
   if (!m) return;
   const bulle = bouton.closest(".ch-bulle");
   const deja = bulle.querySelector(".ch-original");
-  if (deja) { deja.remove(); bouton.querySelector("u").textContent = "voir l'original"; return; }
+  if (deja) { deja.remove(); return; }
   const bloc = document.createElement("div");
   bloc.className = "ch-original";
   bloc.textContent = m.texte || "";
-  bouton.after(bloc);
-  bouton.querySelector("u").textContent = "masquer l'original";
+  bulle.insertBefore(bloc, bulle.querySelector(".heure"));
+  hapticSelect();
 }
 
 function chatContenu(m) {
   const { texte, traduit } = chatTexteAffiche(m);
-  // Marqueur de traduction : discret, et l'original reste à une pression.
+  // Marqueur de traduction réduit à un globe collé au texte, comme sur la
+  // référence. Une pression dessus révèle l'original — le libellé en toutes
+  // lettres prenait une ligne entière dans chaque bulle.
   const marque = traduit
-    ? `<span class="ch-trad" onclick="chatVoirOriginal('${m.id}', this)">
-         🌐 traduit · <u>voir l'original</u></span>` : "";
+    ? `<span class="ch-trad" role="button" title="Voir l'original"
+             onclick="chatVoirOriginal('${m.id}', this)">🌐</span>` : "";
 
   if (m.type === "photo" && m.media) {
     return `<img src="${chatUrlMedia(m.media)}" alt="Photo" loading="lazy"
@@ -6918,9 +6967,14 @@ function _dureeCourte(s) {
 function chatAjusterHauteur(el) {
   el.style.height = "auto";
   el.style.height = Math.min(el.scrollHeight, 120) + "px";
+  // Champ vide : le micro (comme sur la référence). Dès qu'on tape, il laisse
+  // la place au bouton envoyer, et le micro du champ s'efface pour ne pas
+  // proposer deux actions contradictoires.
   const vide = !el.value.trim();
   document.getElementById("chatEnvoyer").style.display = vide ? "none" : "flex";
   document.getElementById("chatMicro").style.display   = vide ? "flex" : "none";
+  const microChamp = document.getElementById("chatMicroChamp");
+  if (microChamp) microChamp.style.display = vide ? "flex" : "none";
 }
 
 // ── Envoi ───────────────────────────────────────────────────────────────────
@@ -7108,10 +7162,16 @@ function chatBrancherBarre() {
   const micro = document.getElementById("chatMicro");
   if (!micro || micro.dataset.branche) return;
   micro.dataset.branche = "1";
-  micro.addEventListener("click", () => {
+  const basculerEnreg = () => {
     if (chatEtat.enregistreur) chatFinirEnreg();
     else chatDemarrerEnreg();
-  });
+  };
+  micro.addEventListener("click", basculerEnreg);
+  // Le micro posé dans le champ fait la même chose que le gros bouton vert :
+  // deux fois la même icône sur la référence, il serait déroutant que l'une
+  // des deux ne réponde pas.
+  const microChamp = document.getElementById("chatMicroChamp");
+  if (microChamp) microChamp.addEventListener("click", basculerEnreg);
   const zone = document.getElementById("chatSaisie");
   if (zone && !zone.dataset.branche) {
     zone.dataset.branche = "1";
