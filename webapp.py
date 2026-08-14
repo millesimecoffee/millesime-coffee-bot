@@ -1807,6 +1807,30 @@ def _resoudre_ref_chat(ref: str):
     return None, None
 
 
+def _prenom_seul(o: dict) -> str:
+    """Prénom affichable du client — jamais un moyen de le recontacter.
+
+    Le livreur a besoin de savoir à qui il remet la commande et à qui il
+    parle. Il ne doit pas pour autant repartir avec le pseudo Telegram ou le
+    numéro du client : ce sont eux qui permettraient de le démarcher en
+    dehors de la boutique.
+
+    Piège : `user_name` retombe sur le pseudo Telegram quand le compte n'a
+    pas de prénom. Dans ce cas on n'affiche rien plutôt que de livrer un
+    identifiant déguisé en prénom.
+    """
+    nom = (o.get("user_name") or "").strip()
+    pseudo = (o.get("username") or "").strip().lstrip("@")
+    if not nom or nom == "?":
+        return ""
+    if pseudo and nom.casefold() == pseudo.casefold():
+        return ""
+    # Un prénom ne commence pas par @ et n'est pas une suite de chiffres.
+    if nom.startswith("@") or nom.replace("+", "").replace(" ", "").isdigit():
+        return ""
+    return nom[:32]
+
+
 def _course_pour_livreur(o: dict) -> dict:
     """Vue d'une commande telle que le livreur a le droit de la voir.
 
@@ -1830,6 +1854,9 @@ def _course_pour_livreur(o: dict) -> dict:
         "_confirmed_at":        o.get("_confirmed_at"),
         "_delivery_started_at": o.get("_delivery_started_at"),
         "_delivered_at":        o.get("_delivered_at"),
+        # Le prénom seul : de quoi s'adresser à la personne à la porte et dans
+        # la conversation, sans aucun moyen de la recontacter par ailleurs.
+        "client":     _prenom_seul(o),
         # Pour ouvrir la conversation sans jamais exposer le compte Telegram.
         "chat_ref":   _ref_chat(oid),
     }
@@ -3602,12 +3629,19 @@ def api_chat_thread():
         _uid_authentifie(request))
     if livreur:
         _cid, commande = _resoudre_ref_chat(_corps(request).get("chat_ref"))
+        commande = commande or {}
+        prenom = _prenom_seul(commande)
+        # Le prénom, et rien d'autre : ni pseudo Telegram, ni numéro, ni
+        # identifiant. De quoi tenir une conversation, pas de quoi démarcher
+        # le client en dehors de la boutique.
         return jsonify({
             "ok": True,
             "role": role,
             "client_id": "",
-            "titre": f"Commande {(commande or {}).get('order_id', '')}",
-            "sous_titre": (commande or {}).get("city") or "",
+            "titre": prenom or "Client",
+            "sous_titre": " · ".join(x for x in [
+                f"Commande {commande.get('order_id', '')}".strip(),
+                commande.get("city") or ""] if x.strip()),
             "messages": chat.messages(client_id),
             "profil": {},
         })

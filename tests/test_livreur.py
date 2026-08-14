@@ -77,8 +77,9 @@ webapp._verify_init_data = lambda i, t: (
     {"user": json.dumps({"id": qui["v"], "first_name": "X"})} if i else None)
 
 app = webapp.app.test_client()
-PII = ["Jean Dupont", "jean_dupont", "AAAAPHOTO", "+32470112233",
-       str(CLIENT_BXL), "Marie Martin"]
+# Ce qui ne doit JAMAIS sortir : tout ce qui permettrait de recontacter le
+# client ailleurs que dans l'application. Le prénom, lui, est autorisé.
+PII = ["jean_dupont", "AAAAPHOTO", "+32470112233", str(CLIENT_BXL), "marie"]
 
 
 def sans_identite(charge, ou=""):
@@ -104,13 +105,28 @@ print(f"   zones : {d['zones']}")
 print(f"   courses visibles : {ids}  (à traiter : {d['a_traiter']})")
 assert ids == ["BXL01"], "Paris ne doit pas apparaître"
 
-titre(3, "Aucune identité de client dans la liste")
+titre(3, "Le prénom passe, aucun moyen de recontact ne passe")
 c = d["courses"][0]
 print(f"   champs reçus : {sorted(c)}")
+print(f"   client affiché : {c['client']!r}")
 sans_identite(d, "la liste des courses")
+assert c["client"] == "Jean Dupont", "le prénom doit être visible"
 for interdit in ("user_id", "user_name", "username", "selfie_b64", "phone"):
     assert interdit not in c, f"{interdit} ne doit pas être exposé"
-print("   ni nom, ni pseudo, ni user_id, ni selfie, ni téléphone")
+print("   ni pseudo @, ni user_id, ni selfie, ni téléphone")
+
+titre("3b", "Un compte sans prénom ne révèle pas son pseudo à la place")
+print("    (user_name retombe sur le pseudo Telegram : piège à éviter)")
+for cas, attendu in [
+    ({"user_name": "jean_dupont", "username": "jean_dupont"}, ""),
+    ({"user_name": "@contactme", "username": ""}, ""),
+    ({"user_name": "+32470112233", "username": ""}, ""),
+    ({"user_name": "?", "username": "x"}, ""),
+    ({"user_name": "Jean", "username": "jean_dupont"}, "Jean"),
+]:
+    obtenu = webapp._prenom_seul(cas)
+    print(f"   {str(cas)[:46]:48s} -> {obtenu!r}")
+    assert obtenu == attendu
 
 titre(4, "Mais il a bien ce qu'il faut pour livrer")
 print(f"   adresse : {c['address']}")
@@ -151,12 +167,14 @@ r = app.post("/api/chat/send", json={"initData": "x", "chat_ref": ref,
 print(f"   envoi : HTTP {r.status_code} — de « {r.json['message']['de']} »")
 assert r.status_code == 200 and r.json["message"]["de"] == "vendeur"
 
-titre(10, "La conversation ne lui révèle toujours rien")
+titre(10, "Dans la conversation : le prénom, et rien de plus")
 d = app.post("/api/chat/thread", json={"initData": "x", "chat_ref": ref}).json
-print(f"   titre affiché : {d.get('titre')} — {d.get('sous_titre')}")
+print(f"   en-tête : « {d.get('titre')} » — {d.get('sous_titre')}")
 print(f"   client_id renvoyé : {d.get('client_id')!r}  profil : {d.get('profil')}")
 sans_identite(d, "le fil de conversation")
+assert d.get("titre") == "Jean Dupont", "le prénom doit s'afficher"
 assert d.get("client_id") == "" and not d.get("profil")
+print("   il peut lui parler, il ne peut pas le recontacter ailleurs")
 
 titre(11, "Le client répond, le livreur le voit")
 qui["v"] = CLIENT_BXL

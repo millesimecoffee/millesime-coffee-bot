@@ -330,6 +330,11 @@
   .lv-course .etat.annulee    { background: rgba(239,68,68,0.15); color: #fca5a5; }
   .lv-course .quand { margin-left: auto; font-size: 11.5px; color: var(--txt-secondary); }
 
+  /* Prénom seul : à qui remettre la commande. Aucun contact n'est affiché. */
+  .lv-course .pour {
+    font-size: 13.5px; font-weight: 650; margin-bottom: 9px;
+    color: var(--txt-primary);
+  }
   .lv-course .adresse {
     display: flex; gap: 9px; align-items: flex-start;
     font-size: 14px; line-height: 1.4; margin-bottom: 10px;
@@ -6337,6 +6342,7 @@ function dessinerCourses() {
           <span class="etat ${e.cls}">${e.txt}</span>
           <span class="quand">${_heureCourte(c.created_at)}</span>
         </div>
+        ${c.client ? `<div class="pour">👤 Pour ${escHtml(c.client)}</div>` : ""}
         <div class="adresse">
           <span>📍</span>
           <span>${escHtml(c.address || "Adresse non renseignée")}</span>
@@ -6495,11 +6501,13 @@ async function chatCharger(forcer) {
     chatEtat._signature = signature;
     chatEtat.messages = d.messages || [];
     if (d.titre) {
-      // Vue livreur : la conversation porte le numéro de commande, pas une
-      // personne. Le serveur ne renvoie ni nom ni identifiant.
+      // Vue livreur : le prénom du client et le numéro de commande. Le serveur
+      // ne renvoie ni pseudo Telegram, ni numéro, ni identifiant — de quoi
+      // parler à la personne, pas de quoi la recontacter ailleurs.
       document.getElementById("chatNom").textContent = d.titre;
       document.getElementById("chatSous").textContent = d.sous_titre || "Client";
-      document.getElementById("chatAvatar").textContent = "📦";
+      document.getElementById("chatAvatar").textContent =
+        [...String(d.titre).trim()][0]?.toUpperCase() || "📦";
     } else if (d.role === "vendeur") {
       const p = d.profil || {};
       document.getElementById("chatNom").textContent = p.user_name || `Client ${d.client_id}`;
