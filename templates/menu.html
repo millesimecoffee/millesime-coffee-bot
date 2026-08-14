@@ -3068,8 +3068,64 @@
   .ch-bulle .heure {
     font-size: 10.5px; color: var(--ch-txt-2); text-align: right;
     margin-top: 3px; font-variant-numeric: tabular-nums;
+    display: flex; align-items: center; justify-content: flex-end; gap: 4px;
   }
   .ch-bulle.moi .heure { color: rgba(255,255,255,0.72); }
+  /* Accusés : une flèche = parti, deux = lu. */
+  .ch-bulle .coches { font-size: 11px; letter-spacing: -2px; }
+  .ch-bulle .coches.lu { color: #7dd3fc; }
+
+  /* Message cité, au-dessus de la réponse. */
+  .ch-rep {
+    display: block; margin: -1px 0 6px; padding: 6px 9px;
+    border-left: 3px solid rgba(255,255,255,0.45); border-radius: 8px;
+    background: rgba(0,0,0,0.22); font-size: 12.5px; line-height: 1.3;
+  }
+  .ch-bulle:not(.moi) .ch-rep { border-left-color: #a78bfa; background: rgba(0,0,0,0.28); }
+  .ch-rep .qui { font-weight: 700; font-size: 11.5px; opacity: 0.85; }
+  .ch-rep .txt {
+    opacity: 0.8; display: -webkit-box; -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical; overflow: hidden;
+  }
+
+  /* Bouton « répondre », discret, sur chaque bulle. */
+  .ch-ligne { display: flex; align-items: center; gap: 6px; max-width: 88%; }
+  .ch-ligne.moi { align-self: flex-end; flex-direction: row-reverse; }
+  .ch-ligne:not(.moi) { align-self: flex-start; }
+  .ch-ligne .ch-bulle { max-width: 100%; align-self: auto; }
+  .ch-repondre {
+    flex: 0 0 auto; width: 27px; height: 27px; border-radius: 50%; border: none;
+    background: rgba(255,255,255,0.07); color: var(--ch-txt-2);
+    font-size: 13px; cursor: pointer; opacity: 0; transition: opacity 0.15s;
+  }
+  .ch-ligne:hover .ch-repondre, .ch-ligne:focus-within .ch-repondre { opacity: 1; }
+  @media (hover: none) { .ch-repondre { opacity: 0.5; } }
+
+  /* Traduction : marqueur discret, l'original reste à une pression. */
+  .ch-trad {
+    display: inline-flex; align-items: center; gap: 4px; margin-top: 4px;
+    font-size: 10.5px; opacity: 0.6; cursor: pointer;
+  }
+  .ch-original {
+    margin-top: 5px; padding-top: 5px; font-size: 13px; opacity: 0.72;
+    border-top: 1px dashed rgba(255,255,255,0.22); font-style: italic;
+  }
+
+  /* Barre de citation au-dessus de la zone d'écriture. */
+  .ch-cite {
+    display: flex; align-items: center; gap: 10px; margin: 0 11px 8px;
+    padding: 8px 11px; border-radius: 13px;
+    background: rgba(255,255,255,0.06); border-left: 3px solid #a78bfa;
+  }
+  .ch-cite .corps { flex: 1; min-width: 0; font-size: 12.5px; }
+  .ch-cite .qui { font-weight: 700; font-size: 11.5px; color: #c4b5fd; }
+  .ch-cite .txt {
+    opacity: 0.75; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .ch-cite .fermer {
+    flex: 0 0 auto; width: 26px; height: 26px; border-radius: 50%; border: none;
+    background: rgba(255,255,255,0.08); color: var(--ch-txt); cursor: pointer;
+  }
   .ch-bulle img {
     display: block; width: 100%; max-width: 260px; border-radius: 13px;
     margin: -2px 0 2px; cursor: pointer; background: rgba(0,0,0,0.25);
@@ -3766,6 +3822,14 @@
   </div>
 
   <div class="ch-fil" id="chatFil"></div>
+
+  <div class="ch-cite" id="chatCite" style="display:none;">
+    <div class="corps">
+      <div class="qui" id="chatCiteQui">Réponse à</div>
+      <div class="txt" id="chatCiteTxt"></div>
+    </div>
+    <button class="fermer" onclick="chatAnnulerCitation()" aria-label="Annuler">✕</button>
+  </div>
 
   <div class="ch-barre" id="chatBarre">
     <button class="rond" id="chatPhotoBtn" aria-label="Envoyer une photo"
@@ -6463,10 +6527,37 @@ const chatEtat = {
   debutEnreg: 0,
   chronoTimer: null,
   audioEnCours: null,
+  ref: "",             // conversation désignée par référence (côté livreur)
+  repondA: "",         // message auquel la prochaine bulle répond
+  maLangue: "",        // langue dans laquelle je lis le fil
+  luParAutre: "",      // dernier message que l'autre a lu
 };
+
+// ── Répondre à un message ───────────────────────────────────────────────────
+function chatCiter(id) {
+  const m = chatEtat.messages.find(x => x.id === id);
+  if (!m) return;
+  hapticSelect();
+  chatEtat.repondA = id;
+  const { texte } = chatTexteAffiche(m);
+  document.getElementById("chatCiteQui").textContent =
+    (m.de === chatEtat.role) ? "Vous" : chatNomAutre();
+  document.getElementById("chatCiteTxt").textContent =
+    m.type === "photo" ? "📷 Photo"
+    : m.type === "audio" ? "🎤 Message vocal"
+    : (texte || "").slice(0, 90);
+  document.getElementById("chatCite").style.display = "flex";
+  document.getElementById("chatSaisie")?.focus();
+}
+
+function chatAnnulerCitation() {
+  chatEtat.repondA = "";
+  document.getElementById("chatCite").style.display = "none";
+}
 
 function chatCorps(extra) {
   const c = { initData: tg.initData || "", ...(extra || {}) };
+  if (chatEtat.repondA) c.repond_a = chatEtat.repondA;
   if (chatEtat.clientId) c.client_id = chatEtat.clientId;
   // Le livreur désigne la conversation par une référence opaque : il n'a pas
   // — et ne doit pas avoir — l'identifiant du client.
@@ -6479,6 +6570,9 @@ async function ouvrirChat(clientId, nom, ref) {
   chatEtat.clientId = clientId ? String(clientId) : "";
   chatEtat.ref = ref || "";
   chatEtat.messages = [];
+  chatEtat.repondA = "";
+  chatEtat.luParAutre = "";
+  chatAnnulerCitation();
   document.getElementById("chatNom").textContent = nom || (clientId ? "Client" : "Millésime Coffee");
   document.getElementById("chatSous").textContent = "Chargement…";
   document.getElementById("chatAvatar").textContent =
@@ -6519,9 +6613,13 @@ async function chatCharger(forcer) {
     const d = await r.json();
     if (!d.ok) return;
     chatEtat.role = d.role;
+    chatEtat.maLangue = d.ma_langue || "";
+    chatEtat.luParAutre = d.lu_par_autre || "";
     // On ne redessine que si quelque chose a changé : sinon le fil sauterait
-    // sous le doigt toutes les 3 secondes pendant la lecture.
-    const signature = (d.messages || []).map(m => m.id).join(",");
+    // sous le doigt toutes les 3 secondes pendant la lecture. Le repère de
+    // lecture entre dans la signature, sinon les coches ne bougeraient jamais.
+    const signature = (d.messages || []).map(m => m.id).join(",")
+                    + "|" + chatEtat.luParAutre;
     if (!forcer && signature === chatEtat._signature) return;
     chatEtat._signature = signature;
     chatEtat.messages = d.messages || [];
@@ -6559,8 +6657,13 @@ function chatDessiner() {
     return;
   }
 
+  // Jusqu'où l'autre a lu : tous mes messages jusqu'à ce repère portent la
+  // double coche. Le repère est un identifiant, pas une heure — deux messages
+  // de la même seconde ne se distinguent pas autrement.
+  const iLu = chatEtat.messages.findIndex(m => m.id === chatEtat.luParAutre);
+
   let jour = "";
-  fil.innerHTML = chatEtat.messages.map(m => {
+  fil.innerHTML = chatEtat.messages.map((m, i) => {
     const moi = (m.de === chatEtat.role);
     const d = _parseServerDate(m.at);
     const sonJour = d ? d.toDateString() : "";
@@ -6569,18 +6672,68 @@ function chatDessiner() {
       jour = sonJour;
       sep = `<div class="ch-jour">${_jourLisible(d)}</div>`;
     }
-    return sep + `<div class="ch-bulle ${moi ? "moi" : ""}">${chatContenu(m)}
-      <div class="heure">${_heureCourte(m.at)}</div></div>`;
+    const provisoire = String(m.id).startsWith("tmp");
+    const coches = moi && !provisoire
+      ? `<span class="coches ${iLu >= 0 && i <= iLu ? "lu" : ""}">${
+           iLu >= 0 && i <= iLu ? "➤➤" : "➤"}</span>` : "";
+    return sep + `
+      <div class="ch-ligne ${moi ? "moi" : ""}">
+        ${provisoire ? "" : `<button class="ch-repondre" aria-label="Répondre"
+           onclick="chatCiter('${m.id}')">↩</button>`}
+        <div class="ch-bulle ${moi ? "moi" : ""}">${chatRepCitee(m)}${chatContenu(m)}
+          <div class="heure">${_heureCourte(m.at)}${coches}</div>
+        </div>
+      </div>`;
   }).join("");
 
   if (enBas) chatAllerEnBas();
 }
 
+// Bloc « en réponse à », figé au moment de l'envoi.
+function chatRepCitee(m) {
+  if (!m.rep) return "";
+  const moi = m.rep.de === chatEtat.role;
+  return `<span class="ch-rep">
+    <span class="qui">${moi ? "Vous" : chatNomAutre()}</span>
+    <span class="txt">${escHtml(m.rep.apercu || "")}</span></span>`;
+}
+
+function chatNomAutre() {
+  return chatEtat.role === "vendeur"
+    ? (document.getElementById("chatNom")?.textContent || "Client")
+    : "Millésime Coffee";
+}
+
+// Texte affiché : celui de ma langue s'il existe, l'original sinon.
+function chatTexteAffiche(m) {
+  const t = m.trad && chatEtat.maLangue ? m.trad[chatEtat.maLangue] : "";
+  return t ? { texte: t, traduit: true } : { texte: m.texte || "", traduit: false };
+}
+
+function chatVoirOriginal(id, bouton) {
+  const m = chatEtat.messages.find(x => x.id === id);
+  if (!m) return;
+  const bulle = bouton.closest(".ch-bulle");
+  const deja = bulle.querySelector(".ch-original");
+  if (deja) { deja.remove(); bouton.querySelector("u").textContent = "voir l'original"; return; }
+  const bloc = document.createElement("div");
+  bloc.className = "ch-original";
+  bloc.textContent = m.texte || "";
+  bouton.after(bloc);
+  bouton.querySelector("u").textContent = "masquer l'original";
+}
+
 function chatContenu(m) {
+  const { texte, traduit } = chatTexteAffiche(m);
+  // Marqueur de traduction : discret, et l'original reste à une pression.
+  const marque = traduit
+    ? `<span class="ch-trad" onclick="chatVoirOriginal('${m.id}', this)">
+         🌐 traduit · <u>voir l'original</u></span>` : "";
+
   if (m.type === "photo" && m.media) {
     return `<img src="${chatUrlMedia(m.media)}" alt="Photo" loading="lazy"
                  onclick="chatAgrandir('${m.media}')">`
-         + (m.texte ? escHtml(m.texte) : "");
+         + (texte ? escHtml(texte) + marque : "");
   }
   if (m.type === "audio" && m.media) {
     const barres = Array.from({ length: 22 }, (_, i) =>
@@ -6590,7 +6743,7 @@ function chatContenu(m) {
       <span class="onde">${barres}</span>
       <span class="duree">${_dureeCourte(m.duree)}</span></div>`;
   }
-  return escHtml(m.texte || "").replace(/\n/g, "<br>");
+  return escHtml(texte).replace(/\n/g, "<br>") + marque;
 }
 
 function chatUrlMedia(media) {
@@ -6653,6 +6806,7 @@ async function chatEnvoyer(charge, apercu) {
     }
     chatEtat.messages[chatEtat.messages.length - 1] = d.message;
     chatEtat._signature = null;      // force le redessin au prochain tour
+    chatAnnulerCitation();
     chatDessiner();
     hapticSuccess();
     return true;

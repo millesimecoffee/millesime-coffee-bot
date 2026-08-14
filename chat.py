@@ -163,8 +163,26 @@ def type_mime(media_id: str) -> str:
 
 # ── API ──────────────────────────────────────────────────────────────────────
 
+def apercu_reponse(fil: dict, msg_id: str) -> dict:
+    """Extrait de quoi citer un message auquel on répond.
+
+    On fige un aperçu au moment de la réponse plutôt que de renvoyer vers
+    l'original : celui-ci peut sortir du fil quand la conversation dépasse le
+    plafond, et la citation deviendrait vide.
+    """
+    for m in fil.get("messages") or []:
+        if m.get("id") == msg_id:
+            kind = m.get("type", "texte")
+            apercu = ("📷 Photo" if kind == "photo"
+                      else "🎤 Message vocal" if kind == "audio"
+                      else (m.get("texte") or "")[:90])
+            return {"id": msg_id, "de": m.get("de"), "type": kind, "apercu": apercu}
+    return {}
+
+
 def ajouter(client_id, de: str, texte: str = "", media_id: str = "",
-            kind: str = "texte", duree: float = 0.0, profil: dict | None = None) -> dict:
+            kind: str = "texte", duree: float = 0.0, profil: dict | None = None,
+            lang: str = "", trad: dict | None = None, repond_a: str = "") -> dict:
     """Ajoute un message au fil de `client_id` et le renvoie."""
     if de not in (VENDEUR, CLIENT):
         raise ValueError("expéditeur inconnu")
@@ -186,10 +204,20 @@ def ajouter(client_id, de: str, texte: str = "", media_id: str = "",
         msg["media"] = media_id
     if kind == "audio" and duree:
         msg["duree"] = round(min(float(duree), MAX_DUREE_AUDIO), 1)
+    if lang:
+        msg["lang"] = lang
+    if trad:
+        # {langue: texte} — chacun lit dans la sienne, l'original reste
+        # consultable d'une pression.
+        msg["trad"] = {k: v for k, v in trad.items() if v}
 
     with _lock:
         data = _lire()
         fil = _fil(data, client_id, creer=True)
+        if repond_a:
+            citation = apercu_reponse(fil, repond_a)
+            if citation:
+                msg["rep"] = citation
         fil["messages"].append(msg)
         if len(fil["messages"]) > MAX_MESSAGES:
             fil["messages"] = fil["messages"][-MAX_MESSAGES:]
@@ -203,6 +231,16 @@ def ajouter(client_id, de: str, texte: str = "", media_id: str = "",
 
 def messages(client_id) -> list:
     return list(_fil(_lire(), client_id).get("messages", []))
+
+
+def lu_par(client_id, qui: str) -> str:
+    """Identifiant du dernier message que `qui` a lu.
+
+    Sert aux accusés de lecture : l'expéditeur voit d'un coup d'œil jusqu'où
+    l'autre est arrivé.
+    """
+    fil = _fil(_lire(), client_id)
+    return fil.get("lu_vendeur" if qui == VENDEUR else "lu_client") or ""
 
 
 def profil(client_id) -> dict:

@@ -3778,6 +3778,52 @@ def _qui_parle(req):
     return chat.CLIENT, uid, None
 
 
+def _langue_client(client_id) -> str:
+    """Langue du client, telle qu'il l'a choisie à l'entrée de la boutique."""
+    try:
+        from storage import _load as _load_all
+        siennes = [o for o in _load_all()
+                   if str(o.get("user_id") or "") == str(client_id)]
+    except Exception:
+        siennes = []
+    siennes.sort(key=lambda o: o.get("created_at") or "")
+    for o in reversed(siennes):
+        lg = (o.get("lang") or "").strip().lower()
+        if lg in ("fr", "en", "es"):
+            return lg
+    return ""
+
+
+def _traduire_message(texte: str, role: str, client_id):
+    """(langue détectée, {langue: traduction}) pour un message qui part.
+
+    Le côté boutique (owner et livreur) travaille en français ; le client,
+    dans la langue qu'il a choisie — anglais par défaut quand on l'ignore.
+    Une traduction qui échoue n'empêche jamais l'envoi : le message part dans
+    sa langue d'origine.
+    """
+    texte = (texte or "").strip()
+    if not texte:
+        return "", {}
+    try:
+        import traduction
+    except Exception:
+        return "", {}
+
+    source = traduction.detecter(texte)
+    if role == chat.CLIENT:
+        cibles = ["fr"]                      # la boutique lit en français
+    else:
+        cibles = [_langue_client(client_id) or "en"]
+    trads = {}
+    for cible in cibles:
+        if cible and cible != source:
+            resultat = traduction.traduire(texte, cible, source)
+            if resultat:
+                trads[cible] = resultat
+    return source, trads
+
+
 def _filtrer_contacts(req, client_id) -> bool:
     """Faut-il empêcher l'échange de coordonnées dans ce fil ?
 
@@ -3852,6 +3898,8 @@ def api_chat_thread():
                 commande.get("city") or ""] if x.strip()),
             "messages": chat.messages(client_id),
             "profil": {},
+            "ma_langue": "fr",
+            "lu_par_autre": chat.lu_par(client_id, chat.CLIENT),
         })
 
     profil = chat.profil(client_id) or (_profil_client(client_id) if role == chat.VENDEUR else {})
@@ -3862,6 +3910,11 @@ def api_chat_thread():
         "messages": chat.messages(client_id),
         "profil": profil,
         "vendeur": os.getenv("SUPPORT_USERNAME", "") or "millesimecoffee",
+        # Langue de lecture de celui qui regarde, et jusqu'où l'autre a lu :
+        # de quoi afficher chaque message traduit et poser les accusés.
+        "ma_langue": "fr" if role == chat.VENDEUR else (_langue_client(client_id) or "en"),
+        "lu_par_autre": chat.lu_par(
+            client_id, chat.CLIENT if role == chat.VENDEUR else chat.VENDEUR),
     })
 
 
@@ -3916,9 +3969,15 @@ def api_chat_send():
     if _rate_limited(f"chat:{role}:{client_id}", 30, 60.0):
         return jsonify({"ok": False, "error": "too_fast"}), 429
 
+    # Chacun lit dans sa langue : le client écrit en anglais, la boutique lit
+    # en français ; la boutique répond en français, le client lit dans la
+    # sienne. La traduction est faite ici, une fois, et rangée avec le message.
+    langue, trads = _traduire_message(texte, role, client_id)
+
     try:
         msg = chat.ajouter(client_id, role, texte=texte, media_id=media_id,
-                           kind=kind, duree=duree,
+                           kind=kind, duree=duree, lang=langue, trad=trads,
+                           repond_a=_texte(data.get("repond_a"), 32),
                            profil=_profil_client(client_id) if role == chat.CLIENT else None)
     except ValueError as exc:
         return jsonify({"ok": False, "error": str(exc)}), 400
