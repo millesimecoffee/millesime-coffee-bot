@@ -2,6 +2,11 @@
 .env
 *.env.local
 .env.*.local
+# Toute variante de .env : .env.bak, .env.avant-rotation, .env.prod…
+# `.env` seul ne couvre que le fichier exact, et une copie de secours faite
+# a la main serait partie au premier `git add -A`.
+.env*
+!.env.example
 
 # Sessions Telethon
 *.session
