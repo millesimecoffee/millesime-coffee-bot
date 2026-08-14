@@ -572,6 +572,16 @@ def api_notify_city():
         except Exception as exc:
             logger.warning("Pushover (ville) ignore : %s", exc)
 
+    # Le livreur de la zone est prévenu qu'un client regarde chez lui : il peut
+    # se tenir prêt. Même anti-répétition que pour l'owner.
+    if city and _dans_zone_livreur({"country": country, "city": city}):
+        drapeau, _ = pushover._separer_drapeau(country)
+        if _prevenir_livreur(
+                f"👀 Un client consulte le catalogue <b>{_html_escape(city)}</b> "
+                f"{drapeau}\nTenez-vous prêt.",
+                cle_anti_repetition=f"lv:vue:{uid}:{city}"):
+            envoyes.append("livreur")
+
     return jsonify({"ok": True, "sent": envoyes})
 
 
@@ -659,6 +669,9 @@ def api_auth():
     if est_livreur and uid:
         with _livreur_lock:
             _livreur_unlocked[uid] = time.time() + _ADMIN_SESSION_TTL
+        # Sa première connexion suffit à l'inscrire : plus besoin de relever
+        # son identifiant Telegram à la main pour lui envoyer les courses.
+        _retenir_livreur(uid)
         logger.info("panel livreur ouvert pour %s (zones %s)", uid, _zones_livreur())
 
     # OK — recharger le catalogue (au cas où on l'aurait modifié)
@@ -1454,6 +1467,26 @@ def api_finalize_order():
     except Exception as exc:
         logger.warning("Pushover (mini app) ignore : %s", exc)
 
+    # Le livreur de la zone reçoit la course directement : plus besoin que
+    # l'owner lui transmette le bon de commande à chaque fois. Comme partout
+    # côté livreur, aucune identité — juste de quoi livrer.
+    try:
+        if _dans_zone_livreur(order_dict):
+            lignes = "\n".join(f"  • {_html_escape(p)} × {q}"
+                               for p, q in safe_cart.items())
+            adresse_lv = (address.get("short") or address.get("formatted")
+                          or address.get("text") or "—")
+            prenom = _prenom_seul(order_dict)
+            _prevenir_livreur(
+                f"🛵 <b>NOUVELLE COURSE</b>  N° <code>{_html_escape(order_id)}</code>\n"
+                f"📍 {_html_escape(adresse_lv)}\n"
+                + (f"👤 Pour {_html_escape(prenom)}\n" if prenom else "")
+                + f"{lignes}\n"
+                f"💰 {total:,.0f} {_html_escape(disp_cur)} · {_html_escape(pay_label)}\n\n"
+                "Ouvrez la boutique pour l'accepter.")
+    except Exception as exc:
+        logger.warning("notif course livreur : %s", exc)
+
     # Notifier owner via Bot API
     owner_chat = os.getenv("OWNER_CHAT_ID", "")
     if not owner_chat:
@@ -1753,6 +1786,92 @@ def _dans_zone_livreur(order: dict) -> bool:
             continue
         return True
     return False
+
+
+# ── À qui envoyer les notifications de courses ───────────────────────────────
+# Deux façons de connaître le Telegram du livreur, dans cet ordre :
+#   1. LIVREUR_CHAT_ID, si on veut le fixer explicitement ;
+#   2. sinon, le compte retenu automatiquement lors de sa connexion au panel.
+# La seconde évite d'avoir à relever un identifiant à la main : il se connecte
+# une fois avec son mot de passe, et il est inscrit.
+_LIVREURS_FICHIER = None
+_livreurs_connus: dict[str, float] = {}
+_livreurs_lock = threading.Lock()
+_LIVREUR_OUBLI = 90 * 24 * 3600      # inactif 90 jours → on ne le notifie plus
+
+
+def _fichier_livreurs():
+    global _LIVREURS_FICHIER
+    if _LIVREURS_FICHIER is None:
+        from pathlib import Path
+        base = os.getenv("DATA_DIR", os.path.dirname(os.path.abspath(__file__)))
+        _LIVREURS_FICHIER = Path(base) / "livreurs.json"
+        try:
+            import json as _json
+            with _LIVREURS_FICHIER.open(encoding="utf-8") as f:
+                donnees = _json.load(f)
+            if isinstance(donnees, dict):
+                _livreurs_connus.update({str(k): float(v) for k, v in donnees.items()})
+        except (OSError, ValueError):
+            pass
+    return _LIVREURS_FICHIER
+
+
+def _retenir_livreur(uid) -> None:
+    """Mémorise le compte Telegram d'un livreur qui vient de se connecter."""
+    if not uid:
+        return
+    chemin = _fichier_livreurs()
+    with _livreurs_lock:
+        maintenant = time.time()
+        _livreurs_connus[str(uid)] = maintenant
+        for k in [k for k, t in _livreurs_connus.items()
+                  if maintenant - t > _LIVREUR_OUBLI]:
+            del _livreurs_connus[k]
+        copie = dict(_livreurs_connus)
+    try:
+        from storage import _ecrire_json_atomique
+        _ecrire_json_atomique(chemin, copie, indent=2)
+        import github_backup
+        github_backup.backup_file_async("livreurs.json")
+    except Exception as exc:
+        logger.warning("enregistrement livreur : %s", exc)
+
+
+def _destinataires_livreur() -> list[str]:
+    fixe = os.getenv("LIVREUR_CHAT_ID", "").strip()
+    if fixe:
+        return [x.strip() for x in fixe.split(",") if x.strip()]
+    _fichier_livreurs()
+    with _livreurs_lock:
+        return list(_livreurs_connus)
+
+
+def _prevenir_livreur(texte: str, cle_anti_repetition: str = "") -> int:
+    """Envoie un message Telegram aux livreurs de la zone. Renvoie le nombre
+    d'envois réussis. Silencieux si personne n'est enregistré."""
+    token = os.getenv("BOT_TOKEN", "")
+    cibles = _destinataires_livreur()
+    if not token or not cibles:
+        return 0
+    if cle_anti_repetition and _rate_limited(cle_anti_repetition, 1, _VILLE_COOLDOWN):
+        return 0
+    envoyes = 0
+    import httpx
+    for cible in cibles:
+        try:
+            r = httpx.post(
+                f"https://api.telegram.org/bot{token}/sendMessage",
+                json={"chat_id": cible, "text": texte, "parse_mode": "HTML",
+                      "disable_web_page_preview": True},
+                timeout=8.0)
+            if r.status_code == 200 and (r.json() or {}).get("ok"):
+                envoyes += 1
+            else:
+                logger.warning("notif livreur %s : %s", cible, _telegram_error(r))
+        except Exception as exc:
+            logger.warning("notif livreur %s : %s", cible, exc)
+    return envoyes
 
 
 def _livreur_is_unlocked(uid) -> bool:

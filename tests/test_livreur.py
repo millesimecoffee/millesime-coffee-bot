@@ -259,6 +259,35 @@ print(f"   owner -> client : HTTP {r.status_code}")
 assert r.status_code == 200, "l'owner ne doit pas être filtré"
 qui["v"] = LIVREUR
 
+titre("11f", "Sa connexion suffit à l'inscrire pour les notifications")
+print("    (pas besoin de relever son identifiant Telegram à la main)")
+print(f"   destinataires connus : {webapp._destinataires_livreur()}")
+assert str(LIVREUR) in webapp._destinataires_livreur()
+
+titre("11g", "Une commande dans sa zone lui arrive directement")
+envois.clear()
+r = webapp._prevenir_livreur("🛵 test de course", cle_anti_repetition="")
+recus = [j for u, j in envois if "sendMessage" in u]
+print(f"   {r} envoi(s) — destinataire {recus[0]['chat_id'] if recus else '—'}")
+assert r == 1 and str(recus[0]["chat_id"]) == str(LIVREUR)
+
+titre("11h", "Le message de course ne contient aucune identité")
+envois.clear()
+webapp._prevenir_livreur(
+    f"🛵 NOUVELLE COURSE N° BXL01\n📍 12 rue Neuve\n👤 Pour "
+    f"{webapp._prenom_seul(CMD_BXL)}\n💰 200 €")
+texte = envois[-1][1]["text"]
+for ligne in texte.splitlines():
+    print(f"   | {ligne}")
+sans_identite({"t": texte}, "la notification de course")
+assert "Jean Dupont" in texte, "le prénom, lui, est utile au livreur"
+
+titre("11i", "LIVREUR_CHAT_ID a le dernier mot s'il est défini")
+os.environ["LIVREUR_CHAT_ID"] = "424242, 434343"
+print(f"   destinataires : {webapp._destinataires_livreur()}")
+assert webapp._destinataires_livreur() == ["424242", "434343"]
+os.environ["LIVREUR_CHAT_ID"] = ""
+
 titre(12, "Une référence inventée ne donne accès à rien")
 for faux in ["0" * 24, "", webapp._ref_chat("PAR01")]:
     r = app.post("/api/chat/thread", json={"initData": "x", "chat_ref": faux})
