@@ -2891,44 +2891,51 @@
   .od2-cta:active { transform: scale(0.97); filter: brightness(1.15); }
 
   /* ── Client ──────────────────────────────────────────────────────── */
-  .od2-client { display: flex; align-items: center; gap: 13px; }
+  .od2-client { display: flex; align-items: center; gap: 12px; }
   .od2-avatar {
-    width: 62px; height: 62px; border-radius: 50%; flex: 0 0 62px;
+    width: 50px; height: 50px; border-radius: 50%; flex: 0 0 50px;
     display: flex; align-items: center; justify-content: center; overflow: hidden;
-    font-size: 24px; font-weight: 700; color: #fff;
+    font-size: 20px; font-weight: 700; color: #fff;
     background: linear-gradient(140deg, #9333EA, #2563EB);
-    border: 2px solid rgba(147,51,234,0.85);
-    box-shadow: 0 0 26px rgba(147,51,234,0.55);
+    border: 1.5px solid rgba(147,51,234,0.7);
+    box-shadow: 0 0 16px rgba(147,51,234,0.35);
   }
   .od2-avatar.photo { cursor: pointer; background: #171523; }
   .od2-avatar img { width: 100%; height: 100%; object-fit: cover; display: block; }
   .od2-nom-ligne { display: flex; align-items: center; gap: 6px; min-width: 0; }
+  /* Le nom a maintenant toute la largeur de la carte : les boutons sont
+     passés sur leur propre rangée en dessous. */
   .od2-client .nom  {
-    font-size: 19px; font-weight: 700; color: var(--od2-txt); letter-spacing: -0.4px;
+    font-size: 17px; font-weight: 700; color: var(--od2-txt); letter-spacing: -0.3px;
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0;
   }
   .od2-client .sous {
-    font-size: 14px; color: var(--od2-txt-2); margin-top: 2px;
+    font-size: 13px; color: var(--od2-txt-2); margin-top: 2px;
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   }
   .od2-verif {
     display: inline-flex; align-items: center; justify-content: center;
-    width: 20px; height: 20px; border-radius: 50%; vertical-align: middle;
-    background: var(--od2-vert); color: #0A0A0F; font-size: 12px; font-weight: 800;
-    flex: 0 0 20px; box-shadow: 0 0 12px rgba(125,255,0,0.7);
+    width: 18px; height: 18px; border-radius: 50%; vertical-align: middle;
+    background: var(--od2-vert); color: #0A0A0F; font-size: 11px; font-weight: 800;
+    flex: 0 0 18px; box-shadow: 0 0 8px rgba(125,255,0,0.5);
   }
-  .od2-actions-client { display: flex; gap: 8px; flex: 0 0 auto; }
-  .od2-msg {
-    width: 50px; height: 50px; flex: 0 0 50px; border-radius: 15px;
-    display: flex; align-items: center; justify-content: center;
-    background: rgba(60,60,90,0.4); border: 1px solid rgba(147,51,234,0.5);
-    color: #C084FC; font-size: 20px; cursor: pointer;
-    box-shadow: 0 0 18px rgba(147,51,234,0.22);
+  /* Rangée d'actions sous les infos client : boutons fins, répartis à parts
+     égales, avec icône + libellé. Fini les trois carrés qui écrasaient le nom. */
+  .od2-actions-client {
+    display: flex; gap: 8px; margin-top: 13px;
+  }
+  .od2-act {
+    flex: 1; min-width: 0; height: 40px; border-radius: 13px;
+    display: flex; align-items: center; justify-content: center; gap: 6px;
+    background: rgba(60,60,90,0.32); border: 1px solid rgba(147,51,234,0.4);
+    color: #C084FC; font-size: 13.5px; font-weight: 650; cursor: pointer;
+    font-family: inherit; letter-spacing: -0.2px;
     transition: transform .12s, background .15s;
   }
-  .od2-msg:active { transform: scale(0.92); background: rgba(147,51,234,0.3); }
-  .od2-msg.bleu { color: #60A5FA; border-color: rgba(37,99,235,0.55); box-shadow: 0 0 18px rgba(37,99,235,0.3); }
-  .od2-msg.bleu:active { background: rgba(37,99,235,0.3); }
+  .od2-act .ic { font-size: 15px; line-height: 1; }
+  .od2-act:active { transform: scale(0.96); background: rgba(147,51,234,0.28); }
+  .od2-act.bleu { color: #60A5FA; border-color: rgba(37,99,235,0.45); }
+  .od2-act.bleu:active { background: rgba(37,99,235,0.28); }
 
   /* ── Articles ────────────────────────────────────────────────────── */
   .od2-art {
@@ -6171,19 +6178,22 @@ function renderOrderDetail(o) {
             ${o.username ? '<span class="od2-verif">✓</span>' : ""}
           </div>
           <div class="sous">${o.username ? "@" + escHtml(o.username) : "sans pseudo"}</div>
-          <div class="sous" style="font-size:14px;">
+          <div class="sous">
             ${escHtml(langues[o.lang] || (o.lang || "fr").toUpperCase())} · ${escHtml(o.user_id)}
           </div>
         </div>
-        <div class="od2-actions-client">
-          <div class="od2-msg" role="button" aria-label="Discuter dans l'application"
-               data-uid="${uidSafe}" data-nom="${escHtml(nomClient)}"
-               onclick="ouvrirChat(this.dataset.uid, this.dataset.nom)">💬</div>
-          <div class="od2-msg bleu" ${dataChat} onclick="contactClient(this)"
-               role="button" aria-label="Contacter sur Telegram">➤</div>
-          ${o.selfie_b64 ? `<div class="od2-msg" role="button" aria-label="Enregistrer la photo"
-               onclick="enregistrerSelfie('${oid}')">⬇︎</div>` : ""}
-        </div>
+      </div>
+      <div class="od2-actions-client">
+        <button class="od2-act" aria-label="Discuter dans l'application"
+             data-uid="${uidSafe}" data-nom="${escHtml(nomClient)}"
+             onclick="ouvrirChat(this.dataset.uid, this.dataset.nom)">
+          <span class="ic">💬</span>Chat</button>
+        <button class="od2-act bleu" ${dataChat} onclick="contactClient(this)"
+             aria-label="Contacter sur Telegram">
+          <span class="ic">➤</span>Telegram</button>
+        ${o.selfie_b64 ? `<button class="od2-act" aria-label="Enregistrer la photo"
+             onclick="enregistrerSelfie('${oid}')">
+          <span class="ic">⬇︎</span>Selfie</button>` : ""}
       </div>
       <div style="margin-top:12px;">${noteHtml}</div>
     </div>
