@@ -72,6 +72,8 @@ ENDPOINTS = [
     ("/api/chat/send",               {"client_id": OWNER, "texte": "coucou",
                                       "repond_a": "abc", "duree": 3,
                                       "photo_b64": "", "audio_b64": ""}),
+    ("/api/chat/supprimer",          {"client_id": OWNER, "chat_ref": "x",
+                                      "message_id": "abc"}),
     ("/api/chat/threads",            {}),
     ("/api/chat/resume",             {}),
     ("/api/livreur/courses",         {}),

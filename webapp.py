@@ -4156,6 +4156,31 @@ def api_chat_send():
     return jsonify({"ok": True, "message": msg})
 
 
+@app.route("/api/chat/supprimer", methods=["POST"])
+def api_chat_supprimer():
+    """Efface un message pour les deux côtés. POST {initData, client_id?,
+    chat_ref?, message_id}
+
+    Chacun ne peut effacer que ses propres messages : le client les siens, la
+    boutique les siens. Rien ne permet d'effacer la parole de l'autre.
+    """
+    role, client_id, erreur = _qui_parle(request)
+    if erreur:
+        return erreur
+    _marquer_presence(_uid_authentifie(request))
+    message_id = _texte(_corps(request).get("message_id"), 32)
+    try:
+        msg = chat.supprimer(client_id, message_id, role)
+    except chat.Interdit:
+        return jsonify({"ok": False, "error": "pas_mon_message"}), 403
+    except Exception as exc:
+        logger.error("chat_supprimer: %s", exc)
+        return jsonify({"ok": False, "error": "save_failed"}), 500
+    if not msg:
+        return jsonify({"ok": False, "error": "introuvable"}), 404
+    return jsonify({"ok": True, "message": msg})
+
+
 @app.route("/api/chat/threads", methods=["POST"])
 def api_chat_threads():
     """Liste des conversations, réservée au vendeur. POST {initData}"""

@@ -3144,6 +3144,13 @@
   @media (hover: hover) {
     .ch-ligne:hover .ch-repondre { opacity: 1; width: 28px; }
   }
+  /* Corbeille : mêmes règles d'apparition, sur mes messages seulement. */
+  .ch-effacer { color: #F4796B; font-size: 14px; }
+
+  /* Message effacé : la ligne reste, le contenu part. */
+  .ch-bulle.vide { font-style: italic; opacity: 0.72; }
+  .ch-bulle.vide .fantome { display: inline-flex; align-items: center; gap: 5px; }
+  .ch-bulle.vide .fantome i { font-style: normal; opacity: 0.75; }
 
   /* Traduction : un simple globe collé au texte ; l'original s'ouvre d'une
      pression dessus. */
@@ -6685,6 +6692,33 @@ function chatCiter(id) {
   document.getElementById("chatSaisie")?.focus();
 }
 
+// Supprime un message des deux côtés. Le serveur n'accepte que les miens.
+async function chatSupprimer(id) {
+  const ok = await new Promise((res) => {
+    try {
+      tg.showConfirm("Supprimer ce message pour tout le monde ?\n\n"
+                   + "Il disparaîtra aussi de l'écran de votre correspondant.",
+                     r => res(!!r));
+    } catch { res(confirm("Supprimer ce message pour tout le monde ?")); }
+  });
+  if (!ok) return;
+  hapticMedium();
+  // Si on répondait justement à ce message, la citation n'a plus d'objet.
+  if (chatEtat.repondA === id) chatAnnulerCitation();
+  try {
+    const r = await apiFetch("/api/chat/supprimer",
+                             { method: "POST", body: chatCorps({ message_id: id }) });
+    const d = await r.json();
+    if (!d.ok) { showToast(d.error === "pas_mon_message"
+      ? "Vous ne pouvez supprimer que vos messages"
+      : "Suppression impossible", true); return; }
+    const m = chatEtat.messages.find(x => x.id === id);
+    if (m) { delete m.media; delete m.trad; delete m.rep;
+             m.texte = ""; m.type = "texte"; m.supprime = true; }
+    chatDessiner();
+  } catch { showToast("Réseau indisponible", true); }
+}
+
 function chatAnnulerCitation() {
   chatEtat.repondA = "";
   document.getElementById("chatCite").style.display = "none";
@@ -6760,7 +6794,10 @@ async function chatCharger(forcer) {
     // sauterait sous le doigt toutes les 3 secondes pendant la lecture. Le
     // repère de lecture entre dans la signature, sinon les coches ne
     // bougeraient jamais.
-    const signature = (d.messages || []).map(m => m.id).join(",")
+    // `supprime` entre dans la signature : une suppression ne change aucun
+    // identifiant, et sans ça l'autre côté garderait le message à l'écran
+    // jusqu'au message suivant.
+    const signature = (d.messages || []).map(m => m.id + (m.supprime ? "!" : "")).join(",")
                     + "|" + chatEtat.luParAutre;
     if (!forcer && signature === chatEtat._signature) return;
     chatEtat._signature = signature;
@@ -6820,15 +6857,22 @@ function chatDessiner() {
       sep = `<div class="ch-jour">${_jourLisible(d)}</div>`;
     }
     const provisoire = String(m.id).startsWith("tmp");
-    const coches = moi && !provisoire
+    const efface = !!m.supprime;
+    const coches = moi && !provisoire && !efface
       ? `<span class="coches ${iLu >= 0 && i <= iLu ? "lu" : ""}">${
            iLu >= 0 && i <= iLu ? "✓✓" : "✓"}</span>` : "";
+    // On ne répond pas à un message effacé, et on n'efface que les siens.
+    const actions = (provisoire || efface) ? ""
+      : `<button class="ch-repondre" aria-label="Répondre"
+           onclick="chatCiter('${m.id}')">↩</button>`
+        + (moi ? `<button class="ch-repondre ch-effacer" aria-label="Supprimer"
+           onclick="chatSupprimer('${m.id}')">🗑</button>` : "");
     return sep + `
       <div class="ch-ligne ${moi ? "moi" : ""}"${
           provisoire ? "" : ` onclick="chatToucherBulle(this, event)"`}>
-        ${provisoire ? "" : `<button class="ch-repondre" aria-label="Répondre"
-           onclick="chatCiter('${m.id}')">↩</button>`}
-        <div class="ch-bulle ${moi ? "moi" : ""}">${chatRepCitee(m)}${chatContenu(m)}
+        ${actions}
+        <div class="ch-bulle ${moi ? "moi" : ""} ${efface ? "vide" : ""}">${
+          chatRepCitee(m)}${chatContenu(m)}
           <div class="heure">${_heureCourte(m.at)}${coches}</div>
         </div>
       </div>`;
@@ -6851,9 +6895,12 @@ function chatToucherBulle(ligne, ev) {
 function chatRepCitee(m) {
   if (!m.rep) return "";
   const moi = m.rep.de === chatEtat.role;
+  // Le message cité a pu être supprimé après coup : la citation figée ne doit
+  // pas continuer d'en montrer le texte.
+  const txt = m.rep.supprime ? "🚫 Message supprimé" : (m.rep.apercu || "");
   return `<span class="ch-rep">
     <span class="qui">${moi ? "Vous" : chatNomAutre()}</span>
-    <span class="txt">${escHtml(m.rep.apercu || "")}</span></span>`;
+    <span class="txt">${escHtml(txt)}</span></span>`;
 }
 
 // Photo de profil du fil : le selfie du client quand il existe, sinon son
@@ -6914,6 +6961,11 @@ function chatVoirOriginal(id, bouton) {
 }
 
 function chatContenu(m) {
+  if (m.supprime) {
+    return `<span class="fantome"><i>🚫</i>${
+      (m.de === chatEtat.role) ? "Vous avez supprimé ce message"
+                               : "Ce message a été supprimé"}</span>`;
+  }
   const { texte, traduit } = chatTexteAffiche(m);
   // Marqueur de traduction réduit à un globe collé au texte, comme sur la
   // référence. Une pression dessus révèle l'original — le libellé en toutes
@@ -7245,7 +7297,8 @@ async function ouvrirListeChats() {
       const p = f.profil || {};
       const nom = p.user_name || `Client ${f.client_id}`;
       const prefixe = f.dernier.de === "vendeur" ? "Vous : " : "";
-      const apercu = f.dernier.type === "photo" ? "📷 Photo"
+      const apercu = f.dernier.supprime ? "🚫 Message supprimé"
+                   : f.dernier.type === "photo" ? "📷 Photo"
                    : f.dernier.type === "audio" ? "🎤 Message vocal"
                    : (f.dernier.texte || "");
       const avatar = f.avatar_path

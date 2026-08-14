@@ -157,6 +157,17 @@ def lire_media(media_id: str) -> bytes:
     return donnees
 
 
+def effacer_media(media_id: str) -> None:
+    """Efface un média du disque et de la sauvegarde."""
+    if not media_id or "/" in media_id or "\\" in media_id or media_id.startswith("."):
+        return
+    try:
+        _chemin_media(media_id).unlink()
+    except OSError:
+        pass                                # déjà parti : c'est le but
+    _gh.supprimer_binaire_async(f"chat_media/{media_id}")
+
+
 def type_mime(media_id: str) -> str:
     return "image/jpeg" if media_id.endswith(".jpg") else "audio/ogg"
 
@@ -172,6 +183,8 @@ def apercu_reponse(fil: dict, msg_id: str) -> dict:
     """
     for m in fil.get("messages") or []:
         if m.get("id") == msg_id:
+            if m.get("supprime"):
+                return {}                   # rien à citer d'un message effacé
             kind = m.get("type", "texte")
             apercu = ("📷 Photo" if kind == "photo"
                       else "🎤 Message vocal" if kind == "audio"
@@ -227,6 +240,63 @@ def ajouter(client_id, de: str, texte: str = "", media_id: str = "",
         fil["lu_vendeur" if de == VENDEUR else "lu_client"] = msg["id"]
         _ecrire(data)
     return msg
+
+
+class Interdit(Exception):
+    """Suppression d'un message dont on n'est pas l'auteur."""
+
+
+def supprimer(client_id, message_id: str, par: str) -> dict:
+    """Efface un message pour les deux côtés de la conversation.
+
+    On laisse une trace (« Ce message a été supprimé ») plutôt que de retirer
+    la ligne : l'autre l'a peut-être déjà lu, et une conversation où un message
+    s'évapore sans laisser de trace se relit mal. Le contenu, lui, disparaît
+    vraiment — texte, traductions, et le média jusque dans la sauvegarde.
+
+    Renvoie le message devenu vide, ou {} s'il n'existe pas.
+    """
+    message_id = str(message_id or "")
+    if not message_id:
+        return {}
+    a_effacer = ""
+    with _lock:
+        data = _lire()
+        if str(client_id) not in data:
+            return {}
+        fil = _fil(data, client_id)
+        cible = None
+        for m in fil.get("messages") or []:
+            if m.get("id") == message_id:
+                cible = m
+                break
+        if cible is None:
+            return {}
+        if cible.get("supprime"):
+            return dict(cible)              # déjà fait, on ne re-signale rien
+        if cible.get("de") != par:
+            raise Interdit(message_id)
+
+        a_effacer = cible.get("media") or ""
+        garde = {c: cible.get(c) for c in ("id", "de", "at", "ts")}
+        cible.clear()
+        cible.update(garde)
+        cible["type"] = "texte"
+        cible["texte"] = ""
+        cible["supprime"] = True
+
+        # Les citations figent un extrait au moment de la réponse : sans ce
+        # nettoyage, le texte supprimé resterait lisible dans les réponses.
+        for m in fil.get("messages") or []:
+            rep = m.get("rep")
+            if isinstance(rep, dict) and rep.get("id") == message_id:
+                rep["apercu"] = ""
+                rep["supprime"] = True
+        _ecrire(data)
+
+    if a_effacer:
+        effacer_media(a_effacer)
+    return dict(cible)
 
 
 def messages(client_id) -> list:
@@ -320,6 +390,7 @@ def fils(pour: str = VENDEUR) -> list:
                 "type": dernier.get("type", "texte"),
                 "texte": dernier.get("texte", ""),
                 "at": dernier.get("at", ""),
+                "supprime": bool(dernier.get("supprime")),
             },
             "non_lus": non_lus(cle, pour),
             "total": len(msgs),

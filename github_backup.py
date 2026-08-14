@@ -195,6 +195,47 @@ def envoyer_binaire(chemin_repo: str, donnees: bytes) -> bool:
     return False
 
 
+def supprimer_binaire(chemin_repo: str) -> bool:
+    """Retire un média du dépôt. Sert quand un message est effacé : sans ça,
+    la photo « supprimée » resterait consultable dans la sauvegarde.
+    """
+    if not _TOKEN:
+        return False
+    with _lock_branche:
+        try:
+            r = httpx.get(_file_url(chemin_repo), headers=_headers(), timeout=10.0,
+                          params={"ref": _BRANCH})
+            if r.status_code == 404:
+                return True                     # déjà absent : rien à faire
+            r.raise_for_status()
+            sha = r.json().get("sha")
+            if not sha:
+                return False
+            for essai in range(4):
+                d = httpx.request(
+                    "DELETE", _file_url(chemin_repo), headers=_headers(), timeout=30.0,
+                    json={"message": f"Suppression: {chemin_repo}", "sha": sha,
+                          "branch": _BRANCH})
+                if d.status_code == 200:
+                    return True
+                if d.status_code == 409:
+                    time.sleep(0.6 * (essai + 1))
+                    continue
+                logger.warning("Github suppression %s : HTTP %s",
+                               chemin_repo, d.status_code)
+                return False
+        except Exception as exc:
+            logger.warning("Github suppression %s : %s", chemin_repo, exc)
+        return False
+
+
+def supprimer_binaire_async(chemin_repo: str) -> None:
+    if not _TOKEN:
+        return
+    threading.Thread(target=supprimer_binaire, args=(chemin_repo,),
+                     daemon=True).start()
+
+
 def backup_binaire_async(chemin_repo: str, donnees: bytes) -> None:
     """Envoi d'un média en arrière-plan : le client n'attend pas GitHub."""
     if not _TOKEN:
