@@ -1998,6 +1998,7 @@ def _course_pour_livreur(o: dict) -> dict:
         "_confirmed_at":        o.get("_confirmed_at"),
         "_delivery_started_at": o.get("_delivery_started_at"),
         "_delivered_at":        o.get("_delivered_at"),
+        "_eta_minutes":         o.get("_eta_minutes"),
         # Le prénom seul : de quoi s'adresser à la personne à la porte et dans
         # la conversation, sans aucun moyen de la recontacter par ailleurs.
         "client":     _prenom_seul(o),

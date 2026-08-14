@@ -152,11 +152,33 @@ print(f"   panier  : {c['cart']}  —  {c['total']} {c['display_currency']}  ({c
 assert c["address"] and c["cart"] and c["total"]
 
 titre(5, "Il fait avancer la course, étape par étape")
-for etape, attendu in [("confirmed", 200), ("delivering", 200), ("delivered", 200)]:
+for etape, corps, attendu in [
+        ("confirmed", {}, 200),
+        ("delivering", {"eta_minutes": 25}, 200),
+        ("delivered", {}, 200)]:
     r = app.post(f"/api/livreur/course/BXL01/status",
-                 json={"initData": "x", "status": etape})
+                 json={"initData": "x", "status": etape, **corps})
     print(f"   {etape:<11s} HTTP {r.status_code}  statut réel : {storage.get_order('BXL01')['status']}")
     assert r.status_code == attendu
+
+titre("5b", "Le minuteur du livreur arrive jusqu'au client")
+o = storage.get_order("BXL01")
+print(f"   _eta_minutes enregistré : {o.get('_eta_minutes')} (25 attendu)")
+assert o.get("_eta_minutes") == 25
+# C'est cette valeur que l'écran de suivi du client utilise pour afficher
+# « Arrivée estimée » : 25 min de course -> ~25 min annoncées.
+o_suivi = dict(o, status="delivering",
+               _delivery_started_at=webapp._now_iso(),
+               address_lat=50.8466, address_lon=4.3528)
+storage.get_order = lambda oid: dict(o_suivi) if oid == "BXL01" else next(
+    (dict(x) for x in BASE if x["order_id"] == oid), None)
+qui["v"] = CLIENT_BXL
+d = app.post("/api/order/track", json={"initData": "x", "order_id": "BXL01"}).json
+print(f"   suivi client : eta {d['eta_seconds'] // 60} min — arrivée {d.get('eta_at', '')[11:16]}")
+assert 23 <= d["eta_seconds"] // 60 <= 25 and d.get("eta_at")
+qui["v"] = LIVREUR
+storage.get_order = lambda oid: next(
+    (dict(x) for x in BASE if x["order_id"] == oid), None)
 
 titre(6, "Il ne peut pas faire reculer une course")
 r = app.post("/api/livreur/course/BXL01/status",

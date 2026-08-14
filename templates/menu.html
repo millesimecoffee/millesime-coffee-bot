@@ -6474,6 +6474,8 @@ function dessinerCourses() {
         <div class="haut">
           <span class="num">${escHtml(c.order_id)}</span>
           <span class="etat ${e.cls}">${e.txt}</span>
+          ${c.status === "delivering" && c._eta_minutes
+            ? `<span class="etat route">⏱️ ~${escHtml(c._eta_minutes)} min</span>` : ""}
           <span class="quand">${_heureCourte(c.created_at)}</span>
         </div>
         ${(c.client || c.has_selfie) ? `<div class="pour">
@@ -6508,6 +6510,12 @@ function dessinerCourses() {
 }
 
 async function avancerCourse(orderId, statut, bouton) {
+  // « Je pars » passe par le minuteur : le client doit savoir dans combien
+  // de temps ça sonne. C'est ce temps qui alimente son écran de suivi.
+  if (statut === "delivering") {
+    showEtaModal(orderId, bouton, true);
+    return;
+  }
   if (statut === "delivered") {
     const ok = await new Promise(res => {
       try { tg.showConfirm("Confirmer la livraison de cette commande ?", r => res(!!r)); }
@@ -7976,10 +7984,14 @@ function openClientHistory() {
 // ═══════════════════════════════════════════════════════════════════════════
 state._etaPendingOrderId = null;
 state._etaPendingBtn     = null;
+state._etaPendingLivreur = false;
 
-function showEtaModal(orderId, btn) {
+// Le même modal sert à l'owner et au livreur : seul le point d'arrivée du
+// POST change. Deux modals identiques finiraient par diverger.
+function showEtaModal(orderId, btn, pourLivreur) {
   state._etaPendingOrderId = orderId;
   state._etaPendingBtn     = btn;
+  state._etaPendingLivreur = !!pourLivreur;
   document.getElementById("etaInput").value = "15";
   document.getElementById("etaModal").style.display = "flex";
   hapticSelect();
@@ -8006,6 +8018,7 @@ async function confirmEta() {
   }
   const orderId = state._etaPendingOrderId;
   const btn     = state._etaPendingBtn;
+  const livreur = state._etaPendingLivreur;
   closeEtaModal();
   if (!orderId) return;
 
@@ -8016,7 +8029,10 @@ async function confirmEta() {
     btn.innerHTML = '<span class="loader"></span>';
   }
   try {
-    const r = await fetch(`/api/admin/order/${encodeURIComponent(orderId)}/status`, {
+    const route = livreur
+      ? `/api/livreur/course/${encodeURIComponent(orderId)}/status`
+      : `/api/admin/order/${encodeURIComponent(orderId)}/status`;
+    const r = await fetch(route, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -8026,6 +8042,14 @@ async function confirmEta() {
       })
     });
     const data = await r.json();
+    if (data.ok && livreur) {
+      hapticSuccess();
+      showToast(data.notified === false
+        ? `⏱️ ${minutes} min — client non prévenu`
+        : `🛵 C'est parti ! Le client voit ~${minutes} min`, data.notified === false);
+      await chargerCourses(false);
+      return;
+    }
     if (data.ok) {
       _statusToast(data, `🚚 Livraison démarrée (${minutes} min)`);
       await loadOwnerData(false);
