@@ -3042,6 +3042,18 @@
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   }
   .ch-entete .sous { font-size: 12px; color: var(--ch-txt-2); margin-top: 1px; }
+  /* Présence dans l'application, pas le statut Telegram (inaccessible aux bots). */
+  .ch-enligne { display: inline-flex; align-items: center; gap: 5px; color: #4ade80; }
+  .ch-enligne i {
+    width: 7px; height: 7px; border-radius: 50%; background: #4ade80;
+    box-shadow: 0 0 0 0 rgba(74,222,128,0.6); animation: chVit 2s ease-out infinite;
+  }
+  @keyframes chVit {
+    0%   { box-shadow: 0 0 0 0 rgba(74,222,128,0.55); }
+    70%  { box-shadow: 0 0 0 6px rgba(74,222,128,0); }
+    100% { box-shadow: 0 0 0 0 rgba(74,222,128,0); }
+  }
+  @media (prefers-reduced-motion: reduce) { .ch-enligne i { animation: none; } }
 
   .ch-fil {
     flex: 1 1 auto; overflow-y: auto; -webkit-overflow-scrolling: touch;
@@ -6615,34 +6627,43 @@ async function chatCharger(forcer) {
     chatEtat.role = d.role;
     chatEtat.maLangue = d.ma_langue || "";
     chatEtat.luParAutre = d.lu_par_autre || "";
-    // On ne redessine que si quelque chose a changé : sinon le fil sauterait
-    // sous le doigt toutes les 3 secondes pendant la lecture. Le repère de
-    // lecture entre dans la signature, sinon les coches ne bougeraient jamais.
+    // L'en-tête est rafraîchi à chaque relevé : la présence change alors même
+    // qu'aucun message n'arrive, et resterait figée si on sortait plus tôt.
+    chatEnteteAutre(d);
+    // On ne redessine le fil que si quelque chose a changé : sinon il
+    // sauterait sous le doigt toutes les 3 secondes pendant la lecture. Le
+    // repère de lecture entre dans la signature, sinon les coches ne
+    // bougeraient jamais.
     const signature = (d.messages || []).map(m => m.id).join(",")
                     + "|" + chatEtat.luParAutre;
     if (!forcer && signature === chatEtat._signature) return;
     chatEtat._signature = signature;
     chatEtat.messages = d.messages || [];
+    chatDessiner();
+  } catch { /* réseau : on retentera au prochain tour */ }
+}
+
+// En-tête : qui est en face, et depuis quand on ne l'a plus vu.
+function chatEnteteAutre(d) {
     if (d.titre) {
       // Vue livreur : le prénom du client et le numéro de commande. Le serveur
       // ne renvoie ni pseudo Telegram, ni numéro, ni identifiant — de quoi
       // parler à la personne, pas de quoi la recontacter ailleurs.
       document.getElementById("chatNom").textContent = d.titre;
-      document.getElementById("chatSous").textContent = d.sous_titre || "Client";
+      document.getElementById("chatSous").innerHTML =
+        chatPresence(d.presence, d.sous_titre || "Client");
       document.getElementById("chatAvatar").textContent =
         [...String(d.titre).trim()][0]?.toUpperCase() || "📦";
     } else if (d.role === "vendeur") {
       const p = d.profil || {};
       document.getElementById("chatNom").textContent = p.user_name || `Client ${d.client_id}`;
-      document.getElementById("chatSous").textContent =
-        [p.username ? "@" + p.username : "", p.city].filter(Boolean).join(" · ") || "Client";
+      document.getElementById("chatSous").innerHTML = chatPresence(d.presence,
+        [p.username ? "@" + p.username : "", p.city].filter(Boolean).join(" · ") || "Client");
       document.getElementById("chatAvatar").textContent =
         [...String(p.user_name || "?").trim()][0]?.toUpperCase() || "?";
     } else {
       document.getElementById("chatSous").textContent = "Vendeur · réponse en général rapide";
     }
-    chatDessiner();
-  } catch { /* réseau : on retentera au prochain tour */ }
 }
 
 function chatDessiner() {
@@ -6696,6 +6717,21 @@ function chatRepCitee(m) {
   return `<span class="ch-rep">
     <span class="qui">${moi ? "Vous" : chatNomAutre()}</span>
     <span class="txt">${escHtml(m.rep.apercu || "")}</span></span>`;
+}
+
+// Présence : « en ligne » quand la personne est active dans l'application à
+// l'instant, sinon depuis combien de temps on ne l'a plus vue. Ce n'est pas le
+// statut Telegram — l'API des bots ne le donne pas — mais c'est ce qui compte
+// pendant une livraison : est-ce qu'elle lit ?
+function chatPresence(secondes, defaut) {
+  if (secondes == null) return escHtml(defaut || "");
+  if (secondes < 45) return `<span class="ch-enligne"><i></i>En ligne</span>`;
+  const m = Math.floor(secondes / 60);
+  const quand = m < 1 ? "à l'instant"
+              : m < 60 ? `il y a ${m} min`
+              : m < 1440 ? `il y a ${Math.floor(m / 60)} h`
+              : `il y a ${Math.floor(m / 1440)} j`;
+  return `vu ${quand}`;
 }
 
 function chatNomAutre() {

@@ -3778,6 +3778,34 @@ def _qui_parle(req):
     return chat.CLIENT, uid, None
 
 
+# ── Présence dans l'application ──────────────────────────────────────────────
+# L'API des bots ne donne pas le statut « en ligne » de Telegram : aucun bot ne
+# peut le connaître. On montre donc ce qui compte vraiment pendant une
+# livraison — la personne est-elle dans l'application, en train de lire.
+# En mémoire seulement : une présence n'a aucun intérêt après un redémarrage.
+_presences: dict[str, float] = {}
+_presence_lock = threading.Lock()
+_PRESENCE_EN_LIGNE = 45          # secondes : au-delà, on n'est plus « en ligne »
+
+
+def _marquer_presence(uid) -> None:
+    if not uid:
+        return
+    with _presence_lock:
+        _presences[str(uid)] = time.time()
+        if len(_presences) > 3000:
+            limite = time.time() - 86400
+            for k in [k for k, t in _presences.items() if t < limite]:
+                del _presences[k]
+
+
+def _presence(uid):
+    """Secondes depuis la dernière activité, ou None si jamais vue."""
+    with _presence_lock:
+        vu = _presences.get(str(uid))
+    return int(time.time() - vu) if vu else None
+
+
 def _langue_client(client_id) -> str:
     """Langue du client, telle qu'il l'a choisie à l'entrée de la boutique."""
     try:
@@ -3875,6 +3903,8 @@ def api_chat_thread():
     role, client_id, erreur = _qui_parle(request)
     if erreur:
         return erreur
+    # Celui qui consulte le fil est, par définition, présent.
+    _marquer_presence(_uid_authentifie(request))
     chat.marquer_lu(client_id, role)
 
     # Le livreur ne reçoit ni profil ni identifiant : ni nom, ni pseudo, ni
@@ -3900,6 +3930,7 @@ def api_chat_thread():
             "profil": {},
             "ma_langue": "fr",
             "lu_par_autre": chat.lu_par(client_id, chat.CLIENT),
+            "presence": _presence(client_id),
         })
 
     profil = chat.profil(client_id) or (_profil_client(client_id) if role == chat.VENDEUR else {})
@@ -3915,6 +3946,9 @@ def api_chat_thread():
         "ma_langue": "fr" if role == chat.VENDEUR else (_langue_client(client_id) or "en"),
         "lu_par_autre": chat.lu_par(
             client_id, chat.CLIENT if role == chat.VENDEUR else chat.VENDEUR),
+        # Présence de l'autre : secondes depuis sa dernière activité dans
+        # l'application, None si on ne l'a jamais vu.
+        "presence": _presence(client_id) if role == chat.VENDEUR else None,
     })
 
 
@@ -3925,6 +3959,7 @@ def api_chat_send():
     role, client_id, erreur = _qui_parle(request)
     if erreur:
         return erreur
+    _marquer_presence(_uid_authentifie(request))
     data = _corps(request)
     texte = _texte(data.get("texte"), chat.MAX_TEXTE)
 
@@ -4009,6 +4044,9 @@ def api_chat_resume():
     uid = _uid_authentifie(request)
     if uid is None:
         return jsonify({"ok": True, "non_lus": 0})
+    # Le client qui suit sa commande consulte ce compteur toutes les 8 s :
+    # c'est le signal le plus fiable de sa présence dans l'application.
+    _marquer_presence(uid)
     if _a_acces_admin(uid):
         return jsonify({"ok": True, "role": chat.VENDEUR,
                         "non_lus": chat.total_non_lus(chat.VENDEUR)})
