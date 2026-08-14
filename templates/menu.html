@@ -159,6 +159,121 @@
   .card .meta { font-size: 12px; opacity: 0.55; }
   .card .arrow { font-size: 18px; opacity: 0.3; }
 
+  /* ═══════════════════════════════════════════════════════════════════════
+     ACCUEIL CLIENT — commande en cours + raccourcis
+     ═══════════════════════════════════════════════════════════════════════ */
+  /* Carte de la commande active. Bordure dégradée obtenue par deux fonds :
+     l'un s'arrête au padding, l'autre déborde sur la bordure. Pas de halo,
+     juste un liseré cyan → violet discret. */
+  .ch-cmd {
+    display: flex; gap: 13px; align-items: flex-start;
+    padding: 15px 16px; margin-bottom: 12px; cursor: pointer;
+    border: 1px solid transparent; border-radius: 22px;
+    background:
+      linear-gradient(var(--bg-card), var(--bg-card)) padding-box,
+      linear-gradient(135deg, rgba(34,211,238,0.55), rgba(139,92,246,0.55) 55%,
+                      rgba(255,45,155,0.35)) border-box;
+    transition: transform 0.15s ease;
+  }
+  .ch-cmd:active { transform: scale(0.985); }
+  .ch-cmd .rond {
+    width: 46px; height: 46px; flex: 0 0 46px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center; font-size: 22px;
+    background: rgba(139,92,246,0.16); border: 1px solid rgba(139,92,246,0.28);
+  }
+  .ch-cmd .corps { flex: 1; min-width: 0; }
+  .ch-cmd .l1 { display: flex; align-items: center; gap: 9px; flex-wrap: wrap; }
+  .ch-cmd .num {
+    font-size: 19px; font-weight: 800; letter-spacing: -0.3px;
+    background: var(--accent-grad);
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+    font-variant-numeric: tabular-nums;
+  }
+  .ch-cmd .etat {
+    display: inline-flex; align-items: center; gap: 5px;
+    padding: 4px 10px; border-radius: 999px;
+    font-size: 11px; font-weight: 800; letter-spacing: 0.4px;
+    text-transform: uppercase; white-space: nowrap;
+  }
+  .ch-cmd .etat.vert  { background: rgba(16,185,129,0.15); color: #4ade80;
+                        border: 1px solid rgba(16,185,129,0.3); }
+  .ch-cmd .etat.bleu  { background: rgba(59,130,246,0.15); color: #7dd3fc;
+                        border: 1px solid rgba(59,130,246,0.3); }
+  .ch-cmd .etat.ambre { background: rgba(245,158,11,0.15); color: #fcd34d;
+                        border: 1px solid rgba(245,158,11,0.3); }
+  .ch-cmd .l2 {
+    display: flex; align-items: baseline; justify-content: space-between;
+    gap: 12px; margin-top: 7px;
+  }
+  .ch-cmd .ville {
+    font-size: 22px; font-weight: 800; letter-spacing: -0.5px;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .ch-cmd .prix {
+    font-size: 22px; font-weight: 800; letter-spacing: -0.5px; flex: 0 0 auto;
+    background: var(--accent-grad);
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+    font-variant-numeric: tabular-nums;
+  }
+  /* Les deux textes partagent la ligne quand ils tiennent ; sinon « Suivre »
+     passe dessous. Mieux vaut une ligne de plus qu'un moyen de paiement
+     coupé en « Cash … ». */
+  .ch-cmd .l3 {
+    display: flex; align-items: center; justify-content: space-between;
+    gap: 10px; margin-top: 6px; font-size: 12.5px; flex-wrap: wrap;
+  }
+  .ch-cmd .detail { color: var(--txt-secondary); }
+  .ch-cmd .suivre { color: #c084fc; font-weight: 650; margin-left: auto; }
+
+  /* Deux raccourcis côte à côte, avec pastille violette. */
+  .ch-raccourcis {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 11px; margin-bottom: 16px;
+  }
+  /* Deux cartes sur une largeur de téléphone laissent très peu de place au
+     texte : la pastille et le chevron sont donc taillés au plus juste, et
+     « Mes commandes » doit tenir en entier — jamais « Mes co… ». */
+  .ch-rac {
+    display: flex; align-items: center; gap: 9px; min-width: 0;
+    padding: 13px 11px; cursor: pointer;
+    background: var(--bg-card); border: 1px solid var(--border);
+    border-radius: 20px; transition: transform 0.15s ease, background 0.15s;
+  }
+  .ch-rac:active { transform: scale(0.97); background: var(--bg-card-hover); }
+  .ch-rac .ic {
+    width: 33px; height: 33px; flex: 0 0 33px; border-radius: 12px;
+    display: flex; align-items: center; justify-content: center; font-size: 16px;
+    background: rgba(139,92,246,0.16); border: 1px solid rgba(139,92,246,0.26);
+  }
+  .ch-rac .txt { flex: 1; min-width: 0; }
+  /* Mesuré : « Mes commandes » réclame 120 px et « 1 commande passée » 145 px,
+     alors qu'une demi-largeur de téléphone n'en laisse que ~93. Le texte passe
+     donc à la ligne plutôt que d'être rogné — deux lignes valent mieux qu'un
+     « Mes co… ». Les deux cartes gardent la même hauteur grâce à la grille. */
+  .ch-rac .t1 { font-size: 13.5px; font-weight: 650; line-height: 1.25; }
+  .ch-rac .t2 {
+    font-size: 11px; color: var(--txt-secondary); margin-top: 3px; line-height: 1.25;
+  }
+  /* Le chevron n'apparaît que s'il reste de la place : la carte entière est
+     cliquable, il n'apporte rien au prix d'un libellé rogné. */
+  .ch-rac .fl { display: none; font-size: 16px; opacity: 0.3; flex: 0 0 auto; }
+  /* Très petits écrans (iPhone SE) : « commandes » est plus large que la
+     demi-carte et débordait. On resserre typographie et pastille. */
+  @media (max-width: 359px) {
+    .ch-rac { padding: 12px 10px; gap: 8px; }
+    .ch-rac .ic { width: 30px; height: 30px; flex-basis: 30px; font-size: 15px; }
+    .ch-rac .t1 { font-size: 12px; }
+    .ch-rac .t2 { font-size: 10.5px; }
+  }
+  /* Sur les grands iPhone, la place existe : chevron et libellés sur une
+     seule ligne, comme sur la maquette. */
+  @media (min-width: 424px) {
+    .ch-rac { padding: 14px 13px; gap: 10px; }
+    .ch-rac .fl { display: block; }
+    .ch-rac .ic { width: 36px; height: 36px; flex-basis: 36px; font-size: 17px; }
+    .ch-rac .t1 { font-size: 13.5px; white-space: nowrap; }
+    .ch-rac .t2 { white-space: nowrap; }
+  }
+
   /* Section title */
   .section-title {
     font-size: 13px;
@@ -4226,49 +4341,79 @@ function renderClientHomeShortcuts() {
   let html = "";
 
   if (active) {
-    const statusLabels = {
-      pending:    "⏳ En attente de confirmation",
-      confirmed:  "☕ Préparation en cours",
-      delivering: "🛵 Livreur en route",
+    // Libellé + couleur de pastille par étape. Le vert est réservé au livreur
+    // en route : c'est l'information qu'on cherche du regard.
+    const etats = {
+      pending:    { txt: "⏳ En attente",       cls: "ambre", ic: "🧾" },
+      confirmed:  { txt: "☕ En préparation",   cls: "bleu",  ic: "☕" },
+      delivering: { txt: "🛵 Livreur en route", cls: "vert",  ic: "🛵" },
     };
     const status = active.status || "pending";
-    const total  = (active.total || 0).toLocaleString('fr-FR');
+    const e      = etats[status] || etats.pending;
+    const total  = (active.total || 0).toLocaleString("fr-FR");
     const cur    = active.display_currency || "€";
+    const nbArt  = active.cart_count || 0;
+    const detail = [`${nbArt} article${nbArt > 1 ? "s" : ""}`, active.payment || ""]
+                     .filter(Boolean).join(" • ");
     html += `
       <div class="section-title" style="margin-top:4px;">🔥 Commande en cours</div>
-      <div class="order-card2 status-${status}" style="margin-bottom:8px;" onclick="openTracking('${active.order_id}')">
-        <div class="oc-top">
-          <div class="oc-left">
-            <span class="oc-oid">${escHtml(active.order_id)}</span>
-            <span class="age-badge age-fresh">${statusLabels[status] || escHtml(status)}</span>
+      <div class="ch-cmd" role="button" onclick="openTracking('${escHtml(active.order_id)}')">
+        <div class="rond">${e.ic}</div>
+        <div class="corps">
+          <div class="l1">
+            <span class="num">${escHtml(active.order_id)}</span>
+            <span class="etat ${e.cls}">${e.txt}</span>
           </div>
-        </div>
-        <div class="oc-info">
-          <div class="oc-line">
-            <span class="oc-client">${escHtml(active.city || '?')}</span>
-            <span class="oc-total">${total} ${escHtml(cur)}</span>
+          <div class="l2">
+            <span class="ville">${escHtml(active.city || "—")}</span>
+            <span class="prix">${total} ${escHtml(cur)}</span>
           </div>
-          <div class="oc-meta">
-            <span>${active.cart_count || 0} article(s) · ${escHtml(active.payment || '')}</span>
-            <span>Suivre en direct →</span>
+          <div class="l3">
+            <span class="detail">${escHtml(detail)}</span>
+            <span class="suivre">Suivre en direct →</span>
           </div>
         </div>
       </div>`;
   }
 
+  // Raccourcis côte à côte. « Mes commandes » n'apparaît qu'avec un historique ;
+  // « Rechercher » est toujours utile, il amène à la barre de recherche.
+  const raccourcis = [];
   if (count > 0) {
-    html += `
-      <div class="card" style="margin-bottom:16px;" onclick="openClientHistory()">
-        <span class="emoji">📜</span>
-        <div class="info">
-          <div class="name">Mes commandes</div>
-          <div class="meta">${count} commande${count > 1 ? 's' : ''} passée${count > 1 ? 's' : ''}</div>
+    raccourcis.push(`
+      <div class="ch-rac" role="button" onclick="openClientHistory()">
+        <span class="ic">🧾</span>
+        <div class="txt">
+          <div class="t1">Mes commandes</div>
+          <div class="t2">${count} commande${count > 1 ? "s" : ""} passée${count > 1 ? "s" : ""}</div>
         </div>
-        <span class="arrow">›</span>
-      </div>`;
+        <span class="fl">›</span>
+      </div>`);
   }
+  raccourcis.push(`
+      <div class="ch-rac" role="button" onclick="focusRechercheVille()">
+        <span class="ic">📍</span>
+        <div class="txt">
+          <div class="t1">Rechercher</div>
+          <div class="t2">Trouver une ville</div>
+        </div>
+        <span class="fl">›</span>
+      </div>`);
+  // Seul, le raccourci occupe toute la largeur plutôt qu'une demi-carte perdue.
+  html += `<div class="ch-raccourcis"${raccourcis.length === 1
+             ? ' style="grid-template-columns:1fr;"' : ""}>${raccourcis.join("")}</div>`;
 
   wrap.innerHTML = html;
+}
+
+// Raccourci « Rechercher » : amène le doigt sur la barre de recherche des
+// villes, qui existe déjà juste en dessous.
+function focusRechercheVille() {
+  hapticSelect();
+  const barre = document.getElementById("citySearchBar");
+  const champ = document.getElementById("citySearchInput");
+  if (barre) barre.scrollIntoView({ behavior: "smooth", block: "center" });
+  if (champ) setTimeout(() => champ.focus(), 260);
 }
 
 // Sélectionne une ville (depuis n'importe quel pays) → menu produits
