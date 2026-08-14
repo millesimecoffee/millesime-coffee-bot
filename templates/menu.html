@@ -1370,6 +1370,18 @@
     transition: transform 0.14s ease, box-shadow 0.14s ease;
   }
   .tk-cta:active { transform: scale(0.975); box-shadow: 0 4px 14px rgba(139,92,246,0.26); }
+  /* Pastille de messages non lus, posée dans le bouton principal. */
+  .tk-badge {
+    display: inline-flex; align-items: center; justify-content: center;
+    min-width: 23px; height: 23px; padding: 0 7px; margin-left: 9px;
+    border-radius: 999px; background: rgba(255,255,255,0.26);
+    font-size: 13px; font-weight: 800; vertical-align: middle;
+    animation: tkBadge 1.8s ease-in-out infinite;
+  }
+  @keyframes tkBadge {
+    0%, 100% { transform: scale(1); }
+    55%      { transform: scale(1.12); }
+  }
   .tk-cta2 {
     width: 100%; margin-top: 10px; padding: 15px;
     border: none; border-radius: 19px; cursor: pointer;
@@ -3508,7 +3520,10 @@
 
     <div class="tk-details" id="trackDetails" style="display:none;"></div>
 
-    <button class="tk-cta" id="trackCta" onclick="contactSupport()">📞 Contacter le livreur</button>
+    <button class="tk-cta" id="trackCta" onclick="ouvrirChatDepuisSuivi()">
+      <span id="trackCtaTexte">💬 Contacter le livreur</span>
+      <span class="tk-badge" id="trackChatBadge" style="display:none;">0</span>
+    </button>
     <button class="tk-cta2" onclick="basculerDetailsCommande()" id="trackDetailsBtn">
       Voir les détails de la commande</button>
   </div>
@@ -5919,14 +5934,6 @@ async function contactClient(elOrObj) {
   askAndSendMessageToClient(client);
 }
 
-// Le client ouvre une conversation directe avec le vendeur/admin depuis le suivi.
-function contactSupport() {
-  hapticSelect();
-  const s = state.support || {};
-  // Le vendeur a toujours un @username public : lien t.me direct.
-  if (s.username && ouvrirLienTelegram("https://t.me/" + s.username)) return;
-  showToast("Contact vendeur indisponible", true);
-}
 
 // Envoi d'un message au client via le bot (repli si le chat direct n'est pas dispo).
 async function askAndSendMessageToClient(client) {
@@ -6706,20 +6713,48 @@ function renderTracking(data) {
   document.getElementById("trackInfoT1").textContent = msg[0];
   document.getElementById("trackInfoT2").textContent = msg[1];
 
-  // Le bouton principal suit l'état : on ne propose pas de joindre un livreur
-  // qui n'est pas encore parti.
-  const cta = document.getElementById("trackCta");
-  if (cta) {
-    cta.textContent = status === "delivering" ? "📞 Contacter le livreur"
-                    : annulee || status === "delivered" ? "💬 Nous contacter"
-                    : "💬 Contacter la boutique";
+  // Le bouton principal ouvre la messagerie de l'application. Son libellé
+  // suit l'étape : on ne propose pas de joindre un livreur qui n'est pas
+  // encore parti. Seul le texte change — la pastille de non-lus reste.
+  const ctaTexte = document.getElementById("trackCtaTexte");
+  if (ctaTexte) {
+    ctaTexte.textContent = status === "delivering" ? "💬 Contacter le livreur"
+                         : annulee || status === "delivered" ? "💬 Nous écrire"
+                         : "💬 Contacter la boutique";
   }
+  majBadgeChatSuivi();
 
   // Détails déjà ouverts : les rafraîchir avec les données du dernier relevé.
   const det = document.getElementById("trackDetails");
   if (det && det.style.display !== "none") dessinerDetailsCommande();
 
   updateTrackingMap(data);
+}
+
+// ── Messagerie depuis le suivi ─────────────────────────────────────────────
+// Le client discute avec la boutique sans quitter Telegram, pendant que la
+// commande roule. On rouvre le même fil que la carte « Discuter avec le
+// vendeur » de l'accueil : une seule conversation par client, pas une par
+// commande, sinon l'historique serait éparpillé.
+function ouvrirChatDepuisSuivi() {
+  const badge = document.getElementById("trackChatBadge");
+  if (badge) badge.style.display = "none";
+  ouvrirChat("");
+}
+
+// Pastille de non-lus sur le bouton : le client doit voir qu'on lui a répondu
+// sans avoir à ouvrir la conversation.
+async function majBadgeChatSuivi() {
+  const badge = document.getElementById("trackChatBadge");
+  if (!badge) return;
+  try {
+    const r = await apiFetch("/api/chat/resume", {
+      method: "POST", body: JSON.stringify({ initData: tg.initData || "" }) });
+    const d = await r.json();
+    const n = (d && d.non_lus) || 0;
+    badge.textContent = n > 99 ? "99+" : String(n);
+    badge.style.display = n ? "inline-flex" : "none";
+  } catch { /* réseau : on retentera au prochain relevé */ }
 }
 
 // Détails de la commande, dépliés sous la timeline. Tout vient du relevé de
@@ -6963,6 +6998,12 @@ updateHeader = function(name) {
     // Pas de bandeau au-dessus de la carte : elle démarre sous la zone
     // système, et l'écran porte son propre bouton retour.
     document.getElementById("header").style.display = "none";
+    // Au retour de la conversation, la carte a été masquée : Leaflet a mesuré
+    // un conteneur de taille nulle et n'afficherait que des tuiles grises.
+    setTimeout(() => {
+      try { state._trackMap && state._trackMap.invalidateSize(); } catch {}
+      majBadgeChatSuivi();
+    }, 60);
   } else if (name === "admin-pwd") {
     // Écran de garde : pas d'en-tête ni de bouton retour, comme l'écran
     // mot de passe du catalogue.
