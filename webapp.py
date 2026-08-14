@@ -3,6 +3,7 @@ Serveur Flask — Mini App Telegram (catalogue + selfie + détection visage Open
 Tourne dans un thread en parallèle du bot Telegram.
 """
 import base64
+import hashlib
 import hmac
 import importlib
 import logging
@@ -636,7 +637,14 @@ def api_auth():
     est_admin = bool(mdp_admin) and hmac.compare_digest(
         _normalise_mdp(pwd), _normalise_mdp(mdp_admin))
 
-    if not est_admin and (not pwd or _normalise_mdp(pwd) != _normalise_mdp(expected)):
+    # Puis celui du livreur : même principe, mais il n'ouvre que les courses
+    # de sa zone, sans aucune identité de client.
+    mdp_livreur = _livreur_password()
+    est_livreur = (not est_admin and bool(mdp_livreur) and hmac.compare_digest(
+        _normalise_mdp(pwd), _normalise_mdp(mdp_livreur)))
+
+    if (not est_admin and not est_livreur
+            and (not pwd or _normalise_mdp(pwd) != _normalise_mdp(expected))):
         with _pwd_lock:
             for k in keys:
                 _pwd_attempts.setdefault(k, []).append(now)
@@ -648,6 +656,11 @@ def api_auth():
             _admin_unlocked[uid] = time.time() + _ADMIN_SESSION_TTL
         logger.info("panel admin ouvert par mot de passe pour %s", uid)
 
+    if est_livreur and uid:
+        with _livreur_lock:
+            _livreur_unlocked[uid] = time.time() + _ADMIN_SESSION_TTL
+        logger.info("panel livreur ouvert pour %s (zones %s)", uid, _zones_livreur())
+
     # OK — recharger le catalogue (au cas où on l'aurait modifié)
     try:
         import catalog as catalog_mod
@@ -655,6 +668,7 @@ def api_auth():
         resp = {
             "ok":         True,
             "admin":      est_admin,   # la Mini App bascule direct sur le panel
+            "livreur":    est_livreur, # … ou sur les courses de sa zone
             "catalog":    catalog_mod.CATALOG,
             "min_orders": catalog_mod.MIN_ORDER,
             "currencies": catalog_mod.CURRENCIES,
@@ -675,9 +689,10 @@ def api_auth():
         bot_token = os.getenv("BOT_TOKEN", "")
         init_data = (data or {}).get("initData", "") if isinstance(data, dict) else ""
         parsed = _verify_init_data(init_data, bot_token) if init_data else None
-        # Une entrée par le mot de passe admin n'est pas une visite client :
-        # elle ne doit pas déclencher « UN CLIENT EST ENTRÉE DANS LE SHOP ».
-        if parsed and not est_admin:
+        # Une entrée par le mot de passe admin ou livreur n'est pas une visite
+        # client : elle ne doit pas déclencher « UN CLIENT EST ENTRÉE DANS LE
+        # SHOP », sinon l'owner serait notifié à chaque connexion de son livreur.
+        if parsed and not est_admin and not est_livreur:
             try:
                 _notify_owner_client_entry(parsed)
             except Exception:
@@ -1685,6 +1700,228 @@ def _guard_admin(req):
     return None
 
 
+# ═════════════════════════════════════════════════════════════════════════════
+# Accès livreur — les courses de sa zone, sans aucune identité de client
+# ═════════════════════════════════════════════════════════════════════════════
+# Le livreur a son propre mot de passe et ne voit que ce dont il a besoin pour
+# livrer : l'adresse, le panier, le montant. Jamais le nom, le pseudo, l'ID
+# Telegram ni le selfie du client. Il lui parle par la messagerie de
+# l'application, à travers une référence opaque : même en lisant les réponses
+# du serveur, il ne peut pas remonter au compte Telegram de la personne.
+
+_livreur_unlocked: dict[str, float] = {}
+_livreur_lock = threading.Lock()
+
+
+def _livreur_password() -> str:
+    return os.getenv("LIVREUR_PASSWORD", "").strip()
+
+
+def _zones_livreur() -> list[tuple[str, str]]:
+    """Zones confiées au livreur : liste de (pays_normalisé, ville_normalisée).
+
+    Format de LIVREUR_ZONES : « Belgique:Bruxelles, France:Paris ».
+    Une entrée sans ville couvre tout le pays : « Belgique ».
+    """
+    brut = os.getenv("LIVREUR_ZONES", "Belgique:Bruxelles")
+    zones = []
+    for morceau in brut.split(","):
+        morceau = morceau.strip()
+        if not morceau:
+            continue
+        pays, _, ville = morceau.partition(":")
+        zones.append((_sans_accent(pays), _sans_accent(ville)))
+    return zones
+
+
+def _sans_accent(s: str) -> str:
+    """Minuscule sans accent ni drapeau, pour comparer « Belgique » et
+    « 🇧🇪 Belgique » sans se soucier de la casse."""
+    import unicodedata
+    s = "".join(c for c in (s or "") if not (0x1F1E6 <= ord(c) <= 0x1F1FF))
+    s = unicodedata.normalize("NFKD", s.strip())
+    return "".join(c for c in s if not unicodedata.combining(c)).casefold()
+
+
+def _dans_zone_livreur(order: dict) -> bool:
+    pays = _sans_accent(order.get("country") or "")
+    ville = _sans_accent(order.get("city") or "")
+    for z_pays, z_ville in _zones_livreur():
+        if z_pays and z_pays != pays:
+            continue
+        if z_ville and z_ville != ville:
+            continue
+        return True
+    return False
+
+
+def _livreur_is_unlocked(uid) -> bool:
+    with _livreur_lock:
+        maintenant = time.time()
+        for k in [k for k, exp in _livreur_unlocked.items() if exp <= maintenant]:
+            del _livreur_unlocked[k]
+        return _livreur_unlocked.get(str(uid), 0) > maintenant
+
+
+def _a_acces_livreur(uid) -> bool:
+    return uid is not None and bool(_livreur_password()) and _livreur_is_unlocked(uid)
+
+
+def _guard_livreur(req):
+    uid = _uid_authentifie(req)
+    if uid is None:
+        return None, (jsonify({"ok": False, "error": "auth_failed"}), 401)
+    if not _a_acces_livreur(uid):
+        return None, (jsonify({"ok": False, "error": "livreur_locked"}), 403)
+    return uid, None
+
+
+def _ref_chat(order_id: str) -> str:
+    """Référence opaque d'une conversation, dérivée de la commande.
+
+    Le livreur discute avec « la commande 140801 », pas avec un identifiant
+    Telegram : impossible pour lui de retrouver la personne hors de l'app.
+    """
+    cle = (os.getenv("BOT_TOKEN", "") or "millesime").encode()
+    return hmac.new(cle, f"chat:{order_id}".encode(), hashlib.sha256).hexdigest()[:24]
+
+
+def _resoudre_ref_chat(ref: str):
+    """(client_id, commande) correspondant à une référence, dans la zone du
+    livreur uniquement. Renvoie (None, None) si la référence est inconnue."""
+    ref = _texte(ref, 64)
+    if not ref:
+        return None, None
+    try:
+        from storage import _load as _load_all
+        commandes = _load_all() or []
+    except Exception:
+        return None, None
+    for o in commandes:
+        oid = str(o.get("order_id") or "")
+        if oid and _dans_zone_livreur(o) and hmac.compare_digest(_ref_chat(oid), ref):
+            try:
+                return int(o.get("user_id") or 0) or None, o
+            except (TypeError, ValueError):
+                return None, None
+    return None, None
+
+
+def _course_pour_livreur(o: dict) -> dict:
+    """Vue d'une commande telle que le livreur a le droit de la voir.
+
+    Tout ce qui identifie le client est retiré ; l'adresse reste, sans quoi
+    il ne pourrait pas livrer.
+    """
+    oid = str(o.get("order_id") or "")
+    return {
+        "order_id":   oid,
+        "status":     o.get("status") or "pending",
+        "created_at": o.get("created_at"),
+        "city":       o.get("city"),
+        "country":    o.get("country"),
+        "address":    o.get("address") or "",
+        "address_lat": o.get("address_lat"),
+        "address_lon": o.get("address_lon"),
+        "cart":       o.get("cart") or {},
+        "total":      o.get("total"),
+        "display_currency": o.get("display_currency") or "€",
+        "payment":    o.get("payment") or "",
+        "_confirmed_at":        o.get("_confirmed_at"),
+        "_delivery_started_at": o.get("_delivery_started_at"),
+        "_delivered_at":        o.get("_delivered_at"),
+        # Pour ouvrir la conversation sans jamais exposer le compte Telegram.
+        "chat_ref":   _ref_chat(oid),
+    }
+
+
+@app.route("/api/livreur/courses", methods=["POST"])
+def api_livreur_courses():
+    """Les courses de la zone du livreur, sans aucune identité de client.
+    POST {initData}
+    """
+    uid, refus = _guard_livreur(request)
+    if refus:
+        return refus
+    try:
+        from storage import _load as _load_all
+        toutes = _load_all() or []
+    except Exception as exc:
+        logger.error("livreur_courses load: %s", exc)
+        return jsonify({"ok": False, "error": "load_failed"}), 500
+
+    miennes = [o for o in toutes if _dans_zone_livreur(o)]
+    miennes.sort(key=lambda o: o.get("created_at") or "", reverse=True)
+    courses = [_course_pour_livreur(o) for o in miennes[:200]]
+
+    a_traiter = [c for c in courses
+                 if c["status"] in ("pending", "confirmed", "delivering")]
+    return jsonify({
+        "ok": True,
+        "zones": [" · ".join(x for x in z if x) for z in _zones_livreur()],
+        "courses": courses,
+        "a_traiter": len(a_traiter),
+        "non_lus": sum(chat.non_lus(o.get("user_id"), chat.VENDEUR)
+                       for o in miennes if o.get("user_id")),
+    })
+
+
+# Le livreur fait avancer la course, il ne peut pas la faire reculer ni la
+# ressusciter : seules ces transitions lui sont ouvertes.
+_TRANSITIONS_LIVREUR = {
+    "pending":    {"confirmed", "cancelled"},
+    "confirmed":  {"delivering", "cancelled"},
+    "delivering": {"delivered", "cancelled"},
+}
+
+
+@app.route("/api/livreur/course/<order_id>/status", methods=["POST"])
+def api_livreur_status(order_id):
+    """Changement de statut par le livreur, borné à sa zone et aux étapes
+    suivantes. POST {initData, status, eta_minutes?}"""
+    uid, refus = _guard_livreur(request)
+    if refus:
+        return refus
+    data = _corps(request)
+    nouveau = _texte(data.get("status"), 32)
+
+    try:
+        from storage import get_order
+        order = get_order(order_id)
+    except Exception:
+        return jsonify({"ok": False, "error": "load_failed"}), 500
+    if not order or not _dans_zone_livreur(order):
+        return jsonify({"ok": False, "error": "hors_zone"}), 404
+
+    actuel = order.get("status") or "pending"
+    if nouveau not in _TRANSITIONS_LIVREUR.get(actuel, set()):
+        return jsonify({"ok": False, "error": "transition_interdite",
+                        "actuel": actuel}), 400
+
+    return _appliquer_statut(order_id, order, nouveau, data, par="livreur")
+
+
+@app.route("/api/livreur/status", methods=["POST"])
+def api_livreur_etat():
+    """Dit à la Mini App si la session est celle d'un livreur. POST {initData}"""
+    uid = _uid_authentifie(request)
+    return jsonify({
+        "ok": True,
+        "livreur": _a_acces_livreur(uid),
+        "password_set": bool(_livreur_password()),
+        "zones": [" · ".join(x for x in z if x) for z in _zones_livreur()],
+    })
+
+
+@app.route("/api/livreur/lock", methods=["POST"])
+def api_livreur_lock():
+    uid = _uid_authentifie(request)
+    if uid is not None:
+        with _livreur_lock:
+            _livreur_unlocked.pop(str(uid), None)
+    return jsonify({"ok": True})
+
+
 @app.route("/api/admin/status", methods=["POST"])
 def api_admin_status():
     """Dit à la Mini App si l'utilisateur est owner et si le panel est verrouillé.
@@ -1964,13 +2201,25 @@ def api_admin_set_status(order_id):
 
     # Charger order existant
     try:
-        from storage import get_order, update_order
+        from storage import get_order
         order = get_order(order_id)
     except Exception as exc:
         logger.error("admin_set_status load: %s", exc)
         return jsonify({"ok": False, "error": "load_failed"}), 500
     if not order:
         return jsonify({"ok": False, "error": "not_found"}), 404
+
+    return _appliquer_statut(order_id, order, new_status, data, par="admin")
+
+
+def _appliquer_statut(order_id, order, new_status, data, par="admin"):
+    """Écrit le nouveau statut et prévient le client.
+
+    Partagé par le panel admin et le panel livreur : les deux doivent
+    horodater les étapes et notifier de la même façon, sinon le suivi client
+    afficherait des choses différentes selon qui a appuyé.
+    """
+    from storage import update_order
 
     # Idempotence
     if (order.get("status") or "pending") == new_status:
@@ -3311,6 +3560,14 @@ def _qui_parle(req):
         # Admin sans destinataire : c'est le mode client (« Discuter avec le
         # vendeur »). On lui ouvre son propre fil plutôt qu'une erreur.
         return chat.CLIENT, uid, None
+    # Le livreur désigne la conversation par une référence opaque, jamais par
+    # l'identifiant Telegram du client : il parle « à la commande », pas à une
+    # personne qu'il pourrait ensuite retrouver hors de l'application.
+    if _a_acces_livreur(uid):
+        client_id, _cmd = _resoudre_ref_chat(data.get("chat_ref"))
+        if not client_id:
+            return None, None, (jsonify({"ok": False, "error": "ref_inconnue"}), 400)
+        return chat.VENDEUR, client_id, None
     return chat.CLIENT, uid, None
 
 
@@ -3338,6 +3595,23 @@ def api_chat_thread():
     if erreur:
         return erreur
     chat.marquer_lu(client_id, role)
+
+    # Le livreur ne reçoit ni profil ni identifiant : ni nom, ni pseudo, ni
+    # user_id Telegram. Il voit la conversation rattachée à une commande.
+    livreur = _a_acces_livreur(_uid_authentifie(request)) and not _a_acces_admin(
+        _uid_authentifie(request))
+    if livreur:
+        _cid, commande = _resoudre_ref_chat(_corps(request).get("chat_ref"))
+        return jsonify({
+            "ok": True,
+            "role": role,
+            "client_id": "",
+            "titre": f"Commande {(commande or {}).get('order_id', '')}",
+            "sous_titre": (commande or {}).get("city") or "",
+            "messages": chat.messages(client_id),
+            "profil": {},
+        })
+
     profil = chat.profil(client_id) or (_profil_client(client_id) if role == chat.VENDEUR else {})
     return jsonify({
         "ok": True,
@@ -3428,6 +3702,16 @@ def api_chat_resume():
     if _a_acces_admin(uid):
         return jsonify({"ok": True, "role": chat.VENDEUR,
                         "non_lus": chat.total_non_lus(chat.VENDEUR)})
+    if _a_acces_livreur(uid):
+        # Non-lus des seules courses de sa zone.
+        try:
+            from storage import _load as _load_all
+            total = sum(chat.non_lus(o.get("user_id"), chat.VENDEUR)
+                        for o in (_load_all() or [])
+                        if o.get("user_id") and _dans_zone_livreur(o))
+        except Exception:
+            total = 0
+        return jsonify({"ok": True, "role": "livreur", "non_lus": total})
     return jsonify({"ok": True, "role": chat.CLIENT,
                     "non_lus": chat.non_lus(uid, chat.CLIENT)})
 
@@ -3444,6 +3728,10 @@ def api_chat_media(media_id):
         return ("Forbidden", 403)
     if _a_acces_admin(uid):
         client_id = _entier(request.args.get("client_id"), 0, 0, 10 ** 15)
+        if not client_id:
+            return ("Bad request", 400)
+    elif _a_acces_livreur(uid):
+        client_id, _cmd = _resoudre_ref_chat(request.args.get("chat_ref"))
         if not client_id:
             return ("Bad request", 400)
     else:

@@ -274,6 +274,105 @@
     .ch-rac .t2 { white-space: nowrap; }
   }
 
+  /* ═══════════════════════════════════════════════════════════════════════
+     PANEL LIVREUR — les courses de sa zone
+     Volontairement sans avatar ni nom : il n'a aucune identité à afficher.
+     ═══════════════════════════════════════════════════════════════════════ */
+  .lv-entete {
+    display: flex; align-items: flex-start; justify-content: space-between;
+    gap: 12px; margin: 4px 2px 16px;
+  }
+  .lv-titre { font-size: 24px; font-weight: 800; letter-spacing: -0.5px; }
+  .lv-zone { font-size: 12.5px; color: var(--txt-secondary); margin-top: 3px; }
+  .lv-rafraichir {
+    font-size: 19px; opacity: 0.6; cursor: pointer; padding: 4px;
+    flex: 0 0 auto;
+  }
+  .lv-onglets { display: flex; gap: 8px; margin-bottom: 14px; }
+  .lv-onglet {
+    flex: 1; text-align: center; padding: 10px 12px; cursor: pointer;
+    border-radius: 14px; font-size: 13.5px; font-weight: 650;
+    background: var(--bg-card); border: 1px solid var(--border);
+    color: var(--txt-secondary);
+  }
+  .lv-onglet.actif {
+    background: rgba(139,92,246,0.16); border-color: rgba(139,92,246,0.4);
+    color: #c4b5fd;
+  }
+  .lv-onglet .n {
+    display: inline-block; min-width: 19px; padding: 0 5px; margin-left: 5px;
+    border-radius: 999px; background: rgba(255,255,255,0.12);
+    font-size: 11.5px; font-weight: 800;
+  }
+
+  .lv-course {
+    background: var(--bg-card); border: 1px solid var(--border);
+    border-radius: 20px; padding: 15px 16px; margin-bottom: 11px;
+  }
+  .lv-course .haut {
+    display: flex; align-items: center; gap: 9px; flex-wrap: wrap;
+    margin-bottom: 10px;
+  }
+  .lv-course .num {
+    font-size: 17px; font-weight: 800; letter-spacing: -0.2px;
+    background: var(--accent-grad);
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+    font-variant-numeric: tabular-nums;
+  }
+  .lv-course .etat {
+    padding: 3px 9px; border-radius: 999px; font-size: 10.5px;
+    font-weight: 800; text-transform: uppercase; letter-spacing: 0.3px;
+  }
+  .lv-course .etat.attente    { background: rgba(245,158,11,0.15); color: #fcd34d; }
+  .lv-course .etat.confirmee  { background: rgba(59,130,246,0.15); color: #7dd3fc; }
+  .lv-course .etat.route      { background: rgba(16,185,129,0.15); color: #4ade80; }
+  .lv-course .etat.livree     { background: rgba(148,163,184,0.15); color: #cbd5e1; }
+  .lv-course .etat.annulee    { background: rgba(239,68,68,0.15); color: #fca5a5; }
+  .lv-course .quand { margin-left: auto; font-size: 11.5px; color: var(--txt-secondary); }
+
+  .lv-course .adresse {
+    display: flex; gap: 9px; align-items: flex-start;
+    font-size: 14px; line-height: 1.4; margin-bottom: 10px;
+  }
+  .lv-course .adresse .maps {
+    margin-left: auto; flex: 0 0 auto; padding: 6px 11px; border-radius: 12px;
+    background: rgba(255,255,255,0.07); border: 1px solid var(--border);
+    font-size: 12px; font-weight: 650; cursor: pointer; white-space: nowrap;
+  }
+  .lv-course .articles {
+    font-size: 13.5px; color: var(--txt-secondary); line-height: 1.5;
+    padding: 10px 12px; border-radius: 13px; background: rgba(255,255,255,0.04);
+  }
+  .lv-course .argent {
+    display: flex; align-items: baseline; justify-content: space-between;
+    gap: 12px; margin-top: 10px;
+  }
+  .lv-course .argent .paiement { font-size: 13px; color: var(--txt-secondary); }
+  .lv-course .argent .total {
+    font-size: 21px; font-weight: 800; letter-spacing: -0.4px;
+    background: var(--accent-grad);
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+  }
+  .lv-course .actions { display: flex; gap: 8px; margin-top: 13px; }
+  .lv-course .act {
+    flex: 1; padding: 12px 8px; border: none; border-radius: 14px;
+    font-size: 13.5px; font-weight: 700; color: #fff; cursor: pointer;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .lv-course .act:active { transform: scale(0.96); }
+  .lv-course .act.valider { background: linear-gradient(135deg,#3b82f6,#2563eb); }
+  .lv-course .act.partir  { background: linear-gradient(135deg,#a855f7,#7c3aed); }
+  .lv-course .act.finir   { background: linear-gradient(135deg,#10b981,#059669); }
+  .lv-course .act.parler {
+    flex: 0 0 auto; padding: 12px 14px; position: relative;
+    background: rgba(255,255,255,0.09); color: var(--txt-primary);
+  }
+  .lv-course .act.parler .pastille {
+    position: absolute; top: -5px; right: -5px; min-width: 19px; height: 19px;
+    padding: 0 5px; border-radius: 999px; background: #ef4444; color: #fff;
+    font-size: 11px; font-weight: 800; line-height: 19px;
+  }
+
   /* Section title */
   .section-title {
     font-size: 13px;
@@ -3671,6 +3770,33 @@
          onchange="chatChoisirPhoto(this)">
 </div>
 
+<!-- ÉCRAN LIVREUR : les courses de sa zone, sans identité de client -->
+<div class="screen" id="screen-livreur">
+  <div class="container">
+    <div class="lv-entete">
+      <div>
+        <div class="lv-titre">🛵 Mes courses</div>
+        <div class="lv-zone" id="lvZone">—</div>
+      </div>
+      <div class="lv-rafraichir" role="button" onclick="chargerCourses(true)">🔄</div>
+    </div>
+    <div class="lv-onglets" id="lvOnglets">
+      <div class="lv-onglet actif" data-filtre="actives" onclick="filtrerCourses('actives')">
+        À traiter <span class="n" id="lvNbActives">0</span></div>
+      <div class="lv-onglet" data-filtre="toutes" onclick="filtrerCourses('toutes')">Toutes</div>
+    </div>
+    <div id="lvListe"></div>
+    <div class="card" style="margin-top:14px;" onclick="quitterLivreur()">
+      <span class="emoji">🚪</span>
+      <div class="info">
+        <div class="name">Se déconnecter</div>
+        <div class="meta">Ferme la session livreur</div>
+      </div>
+      <span class="arrow">›</span>
+    </div>
+  </div>
+</div>
+
 <!-- ÉCRAN MESSAGERIE : liste des conversations (vendeur) -->
 <div class="screen" id="screen-chat-list">
   <div class="container">
@@ -4111,6 +4237,12 @@ async function checkPassword() {
         // ce chemin court-circuite l'appel à /api/admin/status qui le disait.
         state._adminPasswordSet = true;
         showOwnerHome();
+        return;
+      }
+      // Mot de passe livreur : ses courses, rien d'autre. Ni catalogue, ni
+      // panel admin, ni identité de client.
+      if (data.livreur) {
+        showLivreurHome();
         return;
       }
       // Sinon on demande au serveur si cette session a déjà un accès ouvert
@@ -6108,6 +6240,182 @@ function openExternal(url) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
+// PANEL LIVREUR — ses courses, aucune identité de client
+// ═══════════════════════════════════════════════════════════════════════════
+// Le livreur travaille seul : il voit les commandes de sa zone, les fait
+// avancer et parle au client par la messagerie. Il n'a jamais ni nom, ni
+// pseudo, ni numéro : le serveur ne les lui envoie pas.
+
+const LIVREUR_RAFRAICHIR_MS = 8000;
+const lvEtat = { courses: [], filtre: "actives", timer: null };
+
+function showLivreurHome() {
+  state.is_livreur = true;
+  setScreen("livreur");
+  chargerCourses(true);
+  clearInterval(lvEtat.timer);
+  lvEtat.timer = setInterval(() => {
+    if (!document.hidden && document.getElementById("screen-livreur").classList.contains("active"))
+      chargerCourses(false);
+  }, LIVREUR_RAFRAICHIR_MS);
+}
+
+async function chargerCourses(afficherChargement) {
+  const liste = document.getElementById("lvListe");
+  if (afficherChargement && liste) {
+    liste.innerHTML = `<div class="empty"><span class="loader"></span> Chargement…</div>`;
+  }
+  try {
+    const r = await apiFetch("/api/livreur/courses", {
+      method: "POST", body: JSON.stringify({ initData: tg.initData || "" }) });
+    const d = await r.json();
+    if (!d.ok) {
+      if (liste) liste.innerHTML = `<div class="empty"><div class="text">Accès refusé</div></div>`;
+      return;
+    }
+    lvEtat.courses = d.courses || [];
+    document.getElementById("lvZone").textContent =
+      (d.zones || []).join(" · ") || "Zone non définie";
+    document.getElementById("lvNbActives").textContent = d.a_traiter || 0;
+    dessinerCourses();
+  } catch {
+    if (afficherChargement && liste)
+      liste.innerHTML = `<div class="empty"><div class="text">${t("err_network")}</div></div>`;
+  }
+}
+
+function filtrerCourses(filtre) {
+  lvEtat.filtre = filtre;
+  document.querySelectorAll("#lvOnglets .lv-onglet").forEach(o =>
+    o.classList.toggle("actif", o.dataset.filtre === filtre));
+  hapticSelect();
+  dessinerCourses();
+}
+
+const LV_ETATS = {
+  pending:    { txt: "En attente",  cls: "attente"   },
+  confirmed:  { txt: "Confirmée",   cls: "confirmee" },
+  delivering: { txt: "En route",    cls: "route"     },
+  delivered:  { txt: "Livrée",      cls: "livree"    },
+  cancelled:  { txt: "Annulée",     cls: "annulee"   },
+  cancelled_by_client: { txt: "Annulée", cls: "annulee" },
+};
+// Étape suivante proposée par le bouton principal, selon l'état courant.
+const LV_SUITE = {
+  pending:    { statut: "confirmed",  libelle: "✅ Accepter",   cls: "valider" },
+  confirmed:  { statut: "delivering", libelle: "🛵 Je pars",    cls: "partir"  },
+  delivering: { statut: "delivered",  libelle: "📦 Livrée",     cls: "finir"   },
+};
+
+function dessinerCourses() {
+  const liste = document.getElementById("lvListe");
+  if (!liste) return;
+  const actives = ["pending", "confirmed", "delivering"];
+  const courses = lvEtat.filtre === "actives"
+    ? lvEtat.courses.filter(c => actives.includes(c.status))
+    : lvEtat.courses;
+
+  if (!courses.length) {
+    liste.innerHTML = `<div class="empty"><div class="emoji">☕</div>
+      <div class="text">${lvEtat.filtre === "actives"
+        ? "Aucune course à traiter pour le moment."
+        : "Aucune course dans votre zone."}</div></div>`;
+    return;
+  }
+
+  liste.innerHTML = courses.map(c => {
+    const e = LV_ETATS[c.status] || LV_ETATS.pending;
+    const suite = LV_SUITE[c.status];
+    const articles = Object.entries(c.cart || {})
+      .map(([n, q]) => `${escHtml(n)} × ${escHtml(q)}`).join("<br>");
+    const mapsJs = `ouvrirDansPlans(${c.address_lat || "null"}, ${c.address_lon || "null"}, `
+                 + `'${String(c.address || "").replace(/\\/g, "\\\\").replace(/'/g, "\\'")}')`;
+    return `
+      <div class="lv-course">
+        <div class="haut">
+          <span class="num">${escHtml(c.order_id)}</span>
+          <span class="etat ${e.cls}">${e.txt}</span>
+          <span class="quand">${_heureCourte(c.created_at)}</span>
+        </div>
+        <div class="adresse">
+          <span>📍</span>
+          <span>${escHtml(c.address || "Adresse non renseignée")}</span>
+          ${c.address ? `<span class="maps" role="button"
+             onclick="${escHtml(mapsJs)}">Maps</span>` : ""}
+        </div>
+        <div class="articles">${articles || "Panier vide"}</div>
+        <div class="argent">
+          <span class="paiement">${escHtml(c.payment || "—")}</span>
+          <span class="total">${Number(c.total || 0).toLocaleString("fr-FR")} ${escHtml(c.display_currency || "€")}</span>
+        </div>
+        <div class="actions">
+          ${suite ? `<button class="act ${suite.cls}"
+             onclick="avancerCourse('${escHtml(c.order_id)}','${suite.statut}', this)">
+             ${suite.libelle}</button>` : ""}
+          <button class="act parler" data-ref="${escHtml(c.chat_ref)}"
+                  data-titre="Commande ${escHtml(c.order_id)}"
+                  onclick="ouvrirChatCourse(this)">💬
+            <span class="pastille" data-ref="${escHtml(c.chat_ref)}" style="display:none;"></span>
+          </button>
+        </div>
+      </div>`;
+  }).join("");
+}
+
+async function avancerCourse(orderId, statut, bouton) {
+  if (statut === "delivered") {
+    const ok = await new Promise(res => {
+      try { tg.showConfirm("Confirmer la livraison de cette commande ?", r => res(!!r)); }
+      catch { res(confirm("Confirmer la livraison ?")); }
+    });
+    if (!ok) return;
+  }
+  const avant = bouton.innerHTML;
+  bouton.disabled = true;
+  bouton.innerHTML = '<span class="loader"></span>';
+  try {
+    const r = await apiFetch(`/api/livreur/course/${encodeURIComponent(orderId)}/status`, {
+      method: "POST",
+      body: JSON.stringify({ initData: tg.initData || "", status: statut }) });
+    const d = await r.json();
+    if (d.ok) {
+      hapticSuccess();
+      // Le client est prévenu par le bot, exactement comme si l'admin agissait.
+      showToast(d.notified === false
+        ? "Statut enregistré — client non prévenu" : "✅ Statut mis à jour", d.notified === false);
+      await chargerCourses(false);
+      return;
+    }
+    showToast(d.error === "transition_interdite" ? "Étape déjà passée" : "Échec", true);
+  } catch {
+    showToast(t("err_network"), true);
+  }
+  bouton.disabled = false;
+  bouton.innerHTML = avant;
+}
+
+function ouvrirChatCourse(bouton) {
+  const pastille = bouton.querySelector(".pastille");
+  if (pastille) pastille.style.display = "none";
+  ouvrirChat("", bouton.dataset.titre, bouton.dataset.ref);
+}
+
+async function quitterLivreur() {
+  const ok = await new Promise(res => {
+    try { tg.showConfirm("Fermer la session livreur ?", r => res(!!r)); }
+    catch { res(confirm("Fermer la session ?")); }
+  });
+  if (!ok) return;
+  clearInterval(lvEtat.timer);
+  try {
+    await apiFetch("/api/livreur/lock", {
+      method: "POST", body: JSON.stringify({ initData: tg.initData || "" }) });
+  } catch {}
+  state.is_livreur = false;
+  location.reload();
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
 // MESSAGERIE — conversation privée vendeur ↔ client, dans l'application
 // ═══════════════════════════════════════════════════════════════════════════
 
@@ -6129,12 +6437,16 @@ const chatEtat = {
 function chatCorps(extra) {
   const c = { initData: tg.initData || "", ...(extra || {}) };
   if (chatEtat.clientId) c.client_id = chatEtat.clientId;
+  // Le livreur désigne la conversation par une référence opaque : il n'a pas
+  // — et ne doit pas avoir — l'identifiant du client.
+  if (chatEtat.ref) c.chat_ref = chatEtat.ref;
   return JSON.stringify(c);
 }
 
-async function ouvrirChat(clientId, nom) {
+async function ouvrirChat(clientId, nom, ref) {
   hapticSelect();
   chatEtat.clientId = clientId ? String(clientId) : "";
+  chatEtat.ref = ref || "";
   chatEtat.messages = [];
   document.getElementById("chatNom").textContent = nom || (clientId ? "Client" : "Millésime Coffee");
   document.getElementById("chatSous").textContent = "Chargement…";
@@ -6182,7 +6494,13 @@ async function chatCharger(forcer) {
     if (!forcer && signature === chatEtat._signature) return;
     chatEtat._signature = signature;
     chatEtat.messages = d.messages || [];
-    if (d.role === "vendeur") {
+    if (d.titre) {
+      // Vue livreur : la conversation porte le numéro de commande, pas une
+      // personne. Le serveur ne renvoie ni nom ni identifiant.
+      document.getElementById("chatNom").textContent = d.titre;
+      document.getElementById("chatSous").textContent = d.sous_titre || "Client";
+      document.getElementById("chatAvatar").textContent = "📦";
+    } else if (d.role === "vendeur") {
       const p = d.profil || {};
       document.getElementById("chatNom").textContent = p.user_name || `Client ${d.client_id}`;
       document.getElementById("chatSous").textContent =
@@ -6246,6 +6564,7 @@ function chatUrlMedia(media) {
   let u = `/api/chat/media/${encodeURIComponent(media)}`
         + `?initData=${encodeURIComponent(tg.initData || "")}`;
   if (chatEtat.clientId) u += `&client_id=${encodeURIComponent(chatEtat.clientId)}`;
+  if (chatEtat.ref) u += `&chat_ref=${encodeURIComponent(chatEtat.ref)}`;
   return u;
 }
 
@@ -7210,6 +7529,10 @@ updateHeader = function(name) {
   } else if (name === "chat-list") {
     document.getElementById("headerTitle").textContent    = "💬 Messages";
     document.getElementById("headerSubtitle").textContent = "Conversations clients";
+  } else if (name === "livreur") {
+    // Pas de retour possible : le livreur n'a pas d'écran en amont.
+    document.getElementById("header").style.display = "none";
+    try { tg.BackButton.hide(); } catch {}
   } else if (name === "owner-home") {
     _origUpdateHeader2(name);
     majPastilleMessages();
