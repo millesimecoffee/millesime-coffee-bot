@@ -2982,18 +2982,6 @@
     text-shadow: 0 0 20px rgba(232,121,249,0.70);
   }
 
-  /* ── Note privée ─────────────────────────────────────────────────── */
-  .od2-note {
-    display: flex; gap: 9px; align-items: flex-start;
-    padding: 11px 13px; border-radius: 14px; cursor: pointer;
-    background: rgba(245,158,11,0.09); border: 1px solid rgba(245,158,11,0.28);
-    font-size: 14px; color: var(--od2-txt); line-height: 1.4;
-  }
-  .od2-note.vide {
-    background: none; border: none; padding: 8px 2px;
-    color: #C084FC; font-size: 15px; font-weight: 500;
-  }
-
   .od2-photo { width: 100%; border-radius: 20px; display: block; border: 1px solid var(--od2-bordure); }
 
   /* ── Agrandissement du selfie ────────────────────────────────────── */
@@ -6095,13 +6083,6 @@ function renderOrderDetail(o) {
   const plansJs = `ouvrirDansPlans(${lat || "null"}, ${lon || "null"}, '${libelleMaps}')`;
   const aUneAdresse = lignesAdr.length > 0 || (lat && lon);
 
-  // ── Note privée ─────────────────────────────────────────────────────────
-  const note = o._client_note || "";
-  const noteHtml = note
-    ? `<div class="od2-note" onclick="editClientNote(${uidSafe})">
-         <span>📝</span><div>${escHtml(note).replace(/\n/g, "<br>")}</div></div>`
-    : `<div class="od2-note vide" onclick="editClientNote(${uidSafe})">＋ Note privée</div>`;
-
   // ── Action principale = étape suivante ──────────────────────────────────
   const SUITE = {
     pending:    { s: "confirmed",  txt: "Confirmer" },
@@ -6175,7 +6156,6 @@ function renderOrderDetail(o) {
              onclick="enregistrerSelfie('${oid}')">
           <span class="ic">⬇︎</span>Selfie</button>` : ""}
       </div>
-      <div style="margin-top:12px;">${noteHtml}</div>
     </div>
 
     <div class="od2-carte">
@@ -8437,58 +8417,6 @@ function _diffHuman(t1, t2) {
     return `${Math.floor(s/3600)} h ${Math.floor((s%3600)/60)} min`;
   } catch { return ""; }
 }
-
-// ─── Notes privées owner (v4 : modal custom au lieu de prompt() iOS-broken) ───
-async function editClientNote(userId) {
-  hapticSelect();
-  // Charger la note existante
-  let currentNote = "";
-  try {
-    const r = await apiFetch("/api/admin/client_note", {
-      method: "POST",
-      body: JSON.stringify({ initData: tg.initData || "", user_id: userId, action: "get" })
-    });
-    const d = await r.json();
-    if (d.ok) currentNote = d.note || "";
-  } catch {}
-  const newNote = await showTextModal(
-    "Note privée sur ce client",
-    currentNote,
-    "Ex : client régulier, préfère livraison discrète, à recontacter…",
-    true
-  );
-  if (newNote === null) return;  // annulé
-  try {
-    const r = await apiFetch("/api/admin/client_note", {
-      method: "POST",
-      body: JSON.stringify({
-        initData: tg.initData || "",
-        user_id: userId,
-        action: "set",
-        note: newNote.trim(),
-      })
-    });
-    const d = await r.json();
-    if (d.ok) {
-      showToast("✅ Note enregistrée");
-      hapticSuccess();
-      // Recharger le détail si on est dessus
-      const cur = document.querySelector(".screen.active")?.id;
-      if (cur === "screen-owner-detail" && state._lastOpenedOrderId) {
-        openOrderDetail(state._lastOpenedOrderId);
-      }
-    } else {
-      showToast(d.error || "Erreur", true);
-    }
-  } catch { showToast(t("err_network"), true); }
-}
-
-// Mémoriser l'orderId courant pour pouvoir refresh après edit note
-const _origOpenOrderDetail = openOrderDetail;
-openOrderDetail = async function(orderId) {
-  state._lastOpenedOrderId = orderId;
-  return _origOpenOrderDetail(orderId);
-};
 
 // ─── Re-commander depuis l'historique client ───────────────────────────
 async function reorderFromHistory(orderId) {
