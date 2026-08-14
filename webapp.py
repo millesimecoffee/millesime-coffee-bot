@@ -2031,11 +2031,54 @@ def api_livreur_courses():
 
     a_traiter = [c for c in courses
                  if c["status"] in ("pending", "confirmed", "delivering")]
+
+    # ── Son tableau de bord : ce qu'il a LIVRÉ, sur sa zone uniquement ──────
+    # Seules les courses livrées comptent — une commande en attente ou annulée
+    # n'est pas un gain. Journées découpées à l'heure de Paris, comme partout.
+    from datetime import datetime as _dt, timedelta as _td
+    auj = _dt.now(_PARIS).date()
+    debut7 = auj - _td(days=6)
+    debut_mois = auj.replace(day=1)
+    stats = {"jour": {"ca": 0.0, "n": 0}, "semaine": {"ca": 0.0, "n": 0},
+             "mois": {"ca": 0.0, "n": 0}}
+    produits: dict = {}
+    devises: dict = {}
+    for o in miennes:
+        if (o.get("status") or "") != "delivered":
+            continue
+        jour = _jour_paris(o.get("_delivered_at") or o.get("created_at"))
+        if jour is None:
+            continue
+        try:
+            montant = float(o.get("total") or 0)
+        except (TypeError, ValueError):
+            montant = 0.0
+        devise = o.get("display_currency") or "€"
+        devises[devise] = devises.get(devise, 0) + 1
+        if jour == auj:
+            stats["jour"]["ca"] += montant; stats["jour"]["n"] += 1
+        if jour >= debut7:
+            stats["semaine"]["ca"] += montant; stats["semaine"]["n"] += 1
+        if jour >= debut_mois:
+            stats["mois"]["ca"] += montant; stats["mois"]["n"] += 1
+            for p, q in (o.get("cart") or {}).items():
+                try:
+                    q = int(q)
+                except (TypeError, ValueError):
+                    q = 0
+                if q > 0:
+                    produits[p] = produits.get(p, 0) + q
+    stats["devise"] = max(devises, key=devises.get) if devises else "€"
+    stats["top_produits"] = [
+        {"produit": p, "quantite": q}
+        for p, q in sorted(produits.items(), key=lambda x: x[1], reverse=True)[:5]]
+
     return jsonify({
         "ok": True,
         "zones": [" · ".join(x for x in z if x) for z in _zones_livreur()],
         "courses": courses,
         "a_traiter": len(a_traiter),
+        "stats": stats,
         "non_lus": sum(chat.non_lus(o.get("user_id"), chat.VENDEUR)
                        for o in miennes if o.get("user_id")),
     })
@@ -3852,6 +3895,33 @@ def _traduire_message(texte: str, role: str, client_id):
     return source, trads
 
 
+def _selfie_avatar(client_id, pour_livreur: bool = False) -> str:
+    """Chemin de la photo de profil d'un fil : le dernier selfie du client.
+
+    Le selfie est déjà la photo de contrôle de la boutique — c'est ce visage
+    que l'owner comme le livreur associent à la commande. On le sert par les
+    routes photo existantes, qui portent déjà les bons contrôles d'accès :
+    panel déverrouillé côté admin, zone côté livreur.
+    """
+    try:
+        from storage import _load as _load_all
+        siens = [o for o in _load_all()
+                 if str(o.get("user_id") or "") == str(client_id)
+                 and o.get("selfie_b64")]
+    except Exception:
+        return ""
+    if pour_livreur:
+        siens = [o for o in siens if _dans_zone_livreur(o)]
+    if not siens:
+        return ""
+    siens.sort(key=lambda o: o.get("created_at") or "")
+    oid = str(siens[-1].get("order_id") or "")
+    if not oid:
+        return ""
+    return (f"/api/livreur/course/{oid}/selfie" if pour_livreur
+            else f"/api/admin/photo/{oid}/selfie")
+
+
 def _filtrer_contacts(req, client_id) -> bool:
     """Faut-il empêcher l'échange de coordonnées dans ce fil ?
 
@@ -3931,6 +4001,7 @@ def api_chat_thread():
             "ma_langue": "fr",
             "lu_par_autre": chat.lu_par(client_id, chat.CLIENT),
             "presence": _presence(client_id),
+            "avatar_path": _selfie_avatar(client_id, pour_livreur=True),
         })
 
     profil = chat.profil(client_id) or (_profil_client(client_id) if role == chat.VENDEUR else {})
@@ -3949,6 +4020,9 @@ def api_chat_thread():
         # Présence de l'autre : secondes depuis sa dernière activité dans
         # l'application, None si on ne l'a jamais vu.
         "presence": _presence(client_id) if role == chat.VENDEUR else None,
+        # Photo de profil du fil : le dernier selfie du client. Rien côté
+        # client — il n'a pas à voir sa propre photo en face de lui.
+        "avatar_path": _selfie_avatar(client_id) if role == chat.VENDEUR else "",
     })
 
 
@@ -4034,6 +4108,7 @@ def api_chat_threads():
     for f in fils:
         if not f["profil"].get("user_name"):
             f["profil"] = _profil_client(f["client_id"])
+        f["avatar_path"] = _selfie_avatar(f["client_id"])
     return jsonify({"ok": True, "threads": fils,
                     "non_lus": sum(f["non_lus"] for f in fils)})
 

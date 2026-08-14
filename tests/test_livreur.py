@@ -176,6 +176,28 @@ statuts = [j.get("chat_id") for _, j in envois if j and "text" in (j or {})]
 print(f"   {len(envois)} notification(s) envoyée(s) au client {statuts[:3]}")
 assert any(str(CLIENT_BXL) == str(x) for x in statuts)
 
+titre("8b", "Son tableau de bord : ce qu'il a LIVRÉ, sur sa zone uniquement")
+from datetime import timedelta as _td
+il_y_a_3j = (webapp._now_aware() - _td(days=3)).isoformat(timespec="seconds")
+BASE.append(dict(CMD_BXL, order_id="BXL02", status="cancelled", total=999,
+                 _delivered_at=webapp._now_iso()))          # annulée : exclue
+BASE.append(dict(CMD_BXL, order_id="BXL03", status="delivered", total=300,
+                 cart={"🌸 TUCI 1G": 1}, created_at=il_y_a_3j,
+                 _delivered_at=il_y_a_3j))                  # livrée il y a 3 j
+d = app.post("/api/livreur/courses", json={"initData": "x"}).json
+s = d["stats"]
+print(f"   aujourd'hui : {s['jour']['ca']:.0f} € ({s['jour']['n']} course)")
+print(f"   7 jours     : {s['semaine']['ca']:.0f} € ({s['semaine']['n']} courses)")
+print(f"   ce mois-ci  : {s['mois']['ca']:.0f} € ({s['mois']['n']} courses)")
+print(f"   top produits: {[(p['produit'], p['quantite']) for p in s['top_produits']]}")
+assert s["jour"]["ca"] == 200 and s["jour"]["n"] == 1, "BXL01 livrée aujourd'hui"
+assert s["semaine"]["ca"] == 500 and s["semaine"]["n"] == 2, "BXL01 + BXL03"
+assert s["mois"]["ca"] >= s["jour"]["ca"]
+assert any(p["produit"] == "❄️ COCA 1G" and p["quantite"] == 2
+           for p in s["top_produits"])
+print("   la commande annulée (999 €) et Paris ne comptent nulle part")
+BASE.pop(); BASE.pop()
+
 titre(9, "Il discute avec le client par une référence opaque")
 ref = c["chat_ref"]
 print(f"   référence : {ref[:16]}…  (ni le user_id, ni un pseudo)")
@@ -193,6 +215,12 @@ sans_identite(d, "le fil de conversation")
 assert d.get("titre") == "Jean Dupont", "le prénom doit s'afficher"
 assert d.get("client_id") == "" and not d.get("profil")
 print("   il peut lui parler, il ne peut pas le recontacter ailleurs")
+
+titre("10b", "Sa photo de profil dans le chat : le selfie, servi par SA route")
+d = app.post("/api/chat/thread", json={"initData": "x", "chat_ref": ref}).json
+print(f"   avatar : {d.get('avatar_path')}")
+assert d.get("avatar_path") == "/api/livreur/course/BXL01/selfie"
+assert "admin" not in d["avatar_path"], "jamais la route admin pour le livreur"
 
 titre(11, "Le client répond, le livreur le voit")
 qui["v"] = CLIENT_BXL
@@ -338,6 +366,9 @@ d = app.post("/api/admin/orders", json={"initData": "x", "limit": 10}).json
 noms = [o.get("user_name") for o in d["orders"]]
 print(f"   {len(d['orders'])} commandes, clients : {noms}")
 assert "Jean Dupont" in noms and len(d["orders"]) == 2
+d2 = app.post("/api/chat/thread", json={"initData": "x", "client_id": CLIENT_BXL}).json
+print(f"   avatar côté admin : {d2.get('avatar_path')}")
+assert d2.get("avatar_path") == "/api/admin/photo/BXL01/selfie"
 
 titre(16, "Verrouiller referme la session du livreur")
 qui["v"] = LIVREUR

@@ -3035,6 +3035,10 @@
     display: flex; align-items: center; justify-content: center;
     background: linear-gradient(135deg,#7c3aed,#ec4899);
     font-weight: 800; font-size: 16px; color: #fff;
+    overflow: hidden;      /* le selfie remplit le rond sans déborder */
+  }
+  .ch-avatar img {
+    width: 100%; height: 100%; object-fit: cover; display: block;
   }
   .ch-entete .qui { min-width: 0; flex: 1; }
   .ch-entete .nom {
@@ -3867,6 +3871,23 @@
       </div>
       <div class="lv-rafraichir" role="button" onclick="chargerCourses(true)">🔄</div>
     </div>
+
+    <!-- Son tableau de bord : ce qu'il a livré, sur sa zone uniquement -->
+    <div id="lvStats" style="display:none;">
+      <div class="card-grid" style="grid-template-columns:1fr 1fr 1fr; gap:8px; margin-bottom:10px;">
+        <div class="stat-mini"><div class="lbl">Aujourd'hui</div>
+          <div class="val grad" style="font-size:17px;" id="lvCaJour">—</div>
+          <div class="sous" id="lvNbJour"></div></div>
+        <div class="stat-mini"><div class="lbl">7 jours</div>
+          <div class="val grad" style="font-size:17px;" id="lvCa7">—</div>
+          <div class="sous" id="lvNb7"></div></div>
+        <div class="stat-mini"><div class="lbl">Ce mois-ci</div>
+          <div class="val grad" style="font-size:17px;" id="lvCaMois">—</div>
+          <div class="sous" id="lvNbMois"></div></div>
+      </div>
+      <div id="lvTops" style="margin-bottom:14px;"></div>
+    </div>
+
     <div class="lv-onglets" id="lvOnglets">
       <div class="lv-onglet actif" data-filtre="actives" onclick="filtrerCourses('actives')">
         À traiter <span class="n" id="lvNbActives">0</span></div>
@@ -6364,11 +6385,42 @@ async function chargerCourses(afficherChargement) {
     document.getElementById("lvZone").textContent =
       (d.zones || []).join(" · ") || "Zone non définie";
     document.getElementById("lvNbActives").textContent = d.a_traiter || 0;
+    dessinerStatsLivreur(d.stats);
     dessinerCourses();
   } catch {
     if (afficherChargement && liste)
       liste.innerHTML = `<div class="empty"><div class="text">${t("err_network")}</div></div>`;
   }
+}
+
+// Tableau de bord du livreur : livré aujourd'hui / 7 jours / mois, et ce qui
+// est parti ce mois-ci. Les chiffres viennent du serveur, calculés sur sa
+// zone uniquement — jamais sur la boutique entière.
+function dessinerStatsLivreur(s) {
+  const bloc = document.getElementById("lvStats");
+  if (!bloc) return;
+  if (!s) { bloc.style.display = "none"; return; }
+  bloc.style.display = "block";
+  const dev = s.devise || "€";
+  const pose = (id, v) => { const e = document.getElementById(id); if (e) e.textContent = v; };
+  const n = x => `${x.n} course${x.n > 1 ? "s" : ""}`;
+  pose("lvCaJour", `${nb(s.jour.ca)} ${dev}`);   pose("lvNbJour", n(s.jour));
+  pose("lvCa7",    `${nb(s.semaine.ca)} ${dev}`); pose("lvNb7",   n(s.semaine));
+  pose("lvCaMois", `${nb(s.mois.ca)} ${dev}`);   pose("lvNbMois", n(s.mois));
+
+  const tops = document.getElementById("lvTops");
+  const medailles = ["🥇", "🥈", "🥉", "4·", "5·"];
+  tops.innerHTML = (s.top_produits && s.top_produits.length)
+    ? `<div style="background:var(--bg-card); border:1px solid var(--border);
+                   border-radius:16px; padding:11px 14px;">
+         <div style="font-size:11px; text-transform:uppercase; letter-spacing:1px;
+                     opacity:0.5; font-weight:700; margin-bottom:6px;">Vendu ce mois-ci</div>
+         <div style="font-size:13.5px; line-height:1.75;">${
+           s.top_produits.map((p, i) =>
+             `${medailles[i] || ""} ${escHtml(p.produit)} <span style="opacity:0.55;">× ${
+               escHtml(p.quantite)}</span>`).join("<br>")}</div>
+       </div>`
+    : "";
 }
 
 function filtrerCourses(filtre) {
@@ -6587,8 +6639,11 @@ async function ouvrirChat(clientId, nom, ref) {
   chatAnnulerCitation();
   document.getElementById("chatNom").textContent = nom || (clientId ? "Client" : "Millésime Coffee");
   document.getElementById("chatSous").textContent = "Chargement…";
-  document.getElementById("chatAvatar").textContent =
-    [...String(nom || "M").trim()][0]?.toUpperCase() || "?";
+  // Repartir de l'initiale : le selfie de la conversation précédente ne doit
+  // pas rester affiché pendant le chargement de celle-ci.
+  const av0 = document.getElementById("chatAvatar");
+  av0.dataset.selfie = "";
+  av0.textContent = [...String(nom || "M").trim()][0]?.toUpperCase() || "?";
   document.getElementById("chatFil").innerHTML =
     `<div class="ch-vide"><span class="loader"></span></div>`;
   setScreen("chat");
@@ -6652,15 +6707,15 @@ function chatEnteteAutre(d) {
       document.getElementById("chatNom").textContent = d.titre;
       document.getElementById("chatSous").innerHTML =
         chatPresence(d.presence, d.sous_titre || "Client");
-      document.getElementById("chatAvatar").textContent =
-        [...String(d.titre).trim()][0]?.toUpperCase() || "📦";
+      chatPoserAvatar(d.avatar_path,
+        [...String(d.titre).trim()][0]?.toUpperCase() || "📦");
     } else if (d.role === "vendeur") {
       const p = d.profil || {};
       document.getElementById("chatNom").textContent = p.user_name || `Client ${d.client_id}`;
       document.getElementById("chatSous").innerHTML = chatPresence(d.presence,
         [p.username ? "@" + p.username : "", p.city].filter(Boolean).join(" · ") || "Client");
-      document.getElementById("chatAvatar").textContent =
-        [...String(p.user_name || "?").trim()][0]?.toUpperCase() || "?";
+      chatPoserAvatar(d.avatar_path,
+        [...String(p.user_name || "?").trim()][0]?.toUpperCase() || "?");
     } else {
       document.getElementById("chatSous").textContent = "Vendeur · réponse en général rapide";
     }
@@ -6717,6 +6772,23 @@ function chatRepCitee(m) {
   return `<span class="ch-rep">
     <span class="qui">${moi ? "Vous" : chatNomAutre()}</span>
     <span class="txt">${escHtml(m.rep.apercu || "")}</span></span>`;
+}
+
+// Photo de profil du fil : le selfie du client quand il existe, sinon son
+// initiale. L'image n'est reposée que si le chemin change — la reposer à
+// chaque relevé la ferait clignoter toutes les 3 secondes.
+function chatPoserAvatar(chemin, lettre) {
+  const av = document.getElementById("chatAvatar");
+  if (!av) return;
+  if (chemin) {
+    if (av.dataset.selfie !== chemin) {
+      av.dataset.selfie = chemin;
+      av.innerHTML = `<img src="${chemin}?initData=${encodeURIComponent(tg.initData || "")}" alt="">`;
+    }
+    return;
+  }
+  av.dataset.selfie = "";
+  av.textContent = lettre;
 }
 
 // Présence : « en ligne » quand la personne est active dans l'application à
@@ -7081,9 +7153,13 @@ async function ouvrirListeChats() {
       const apercu = f.dernier.type === "photo" ? "📷 Photo"
                    : f.dernier.type === "audio" ? "🎤 Message vocal"
                    : (f.dernier.texte || "");
+      const avatar = f.avatar_path
+        ? `<div class="ch-avatar"><img src="${escHtml(f.avatar_path)}?initData=${
+             encodeURIComponent(tg.initData || "")}" alt=""></div>`
+        : `<div class="ch-avatar">${escHtml([...nom.trim()][0] || "?").toUpperCase()}</div>`;
       return `<div class="ch-item" data-uid="${escHtml(f.client_id)}" data-nom="${escHtml(nom)}"
                    onclick="ouvrirChat(this.dataset.uid, this.dataset.nom)">
-        <div class="ch-avatar">${escHtml([...nom.trim()][0] || "?").toUpperCase()}</div>
+        ${avatar}
         <div class="corps">
           <div class="nom">${escHtml(nom)}</div>
           <div class="apercu">${escHtml(prefixe + apercu)}</div>
