@@ -6,11 +6,19 @@ erreur 4xx est une réponse correcte ; un 500 est un bug.
 """
 import os
 import sys
+import tempfile
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from _commun import preparer, simuler_telegram, titre, fin, OWNER
 
-webapp = preparer(ADMIN_PANEL_PASSWORD="")
+# DATA_DIR isolé : le fuzz du chat écrit chats.json, il ne doit pas atterrir
+# dans le projet. LIVREUR_PASSWORD pour pouvoir fuzzer aussi ces routes.
+webapp = preparer(ADMIN_PANEL_PASSWORD="", LIVREUR_PASSWORD="",
+                  TRADUCTION_REPLI="0",
+                  DATA_DIR=tempfile.mkdtemp(prefix="millesime_fuzz_"))
+import github_backup
+github_backup.backup_file_async = lambda *a, **k: None
+github_backup.backup_binaire_async = lambda *a, **k: None
 uid = {"v": OWNER}
 simuler_telegram(webapp, uid)
 
@@ -58,6 +66,20 @@ ENDPOINTS = [
     ("/api/client/orders",           {"limit": 10}),
     ("/api/order/track",             {"order_id": "R1"}),
     ("/api/notify/city",             {"country": "🇫🇷 France", "city": "Paris"}),
+    # Endpoints ajoutés depuis : messagerie, livreur, diagnostic.
+    ("/api/chat/thread",             {"client_id": OWNER, "chat_ref": "x"}),
+    ("/api/chat/send",               {"client_id": OWNER, "texte": "coucou",
+                                      "repond_a": "abc", "duree": 3,
+                                      "photo_b64": "", "audio_b64": ""}),
+    ("/api/chat/threads",            {}),
+    ("/api/chat/resume",             {}),
+    ("/api/livreur/courses",         {}),
+    ("/api/livreur/course/R1/status", {"status": "confirmed", "eta_minutes": 10}),
+    ("/api/livreur/status",          {}),
+    ("/api/livreur/lock",            {}),
+    ("/api/diag",                    {"platform": "ios", "version": "9.6",
+                                      "len": 3, "has_init": True,
+                                      "has_user": False, "href": "x"}),
 ]
 
 print("=" * 62)

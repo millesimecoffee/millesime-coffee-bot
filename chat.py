@@ -233,6 +233,19 @@ def messages(client_id) -> list:
     return list(_fil(_lire(), client_id).get("messages", []))
 
 
+def langue_ecrite(client_id) -> str:
+    """Langue des messages que le client a réellement écrits.
+
+    Sert quand il n'a encore aucune commande : sans elle, un client qui écrit
+    en français avant de commander recevrait les réponses en anglais, la
+    langue par défaut.
+    """
+    for m in reversed(messages(client_id)):
+        if m.get("de") == CLIENT and m.get("lang"):
+            return m["lang"]
+    return ""
+
+
 def lu_par(client_id, qui: str) -> str:
     """Identifiant du dernier message que `qui` a lu.
 

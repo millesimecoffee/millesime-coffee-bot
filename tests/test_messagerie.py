@@ -203,6 +203,18 @@ restants = chat.messages(CLIENT)
 print(f"   apres {len(gros)} + 1 messages : {len(restants)} conserves, dernier = {restants[-1]['texte']!r}")
 assert len(restants) == chat.MAX_MESSAGES and restants[-1]["texte"] == "le dernier"
 
+titre("14b", "Un client SANS commande qui ecrit en francais lit en francais")
+print("    (sans ce reglage, il recevait les reponses traduites en anglais,")
+print("     la langue par defaut)")
+uid["v"] = 424242424          # aucun historique de commande
+r = app.post("/api/chat/send",
+             json={"initData": "x", "texte": "Bonjour, vous livrez ce soir ?"})
+assert r.status_code == 200 and r.get_json()["message"].get("lang") == "fr"
+d = app.post("/api/chat/thread", json={"initData": "x"}).get_json()
+print(f"   langue detectee sur son message : fr — ma_langue = {d['ma_langue']!r}")
+assert d["ma_langue"] == "fr", "sa langue doit venir de ce qu'il ecrit"
+uid["v"] = AUTRE
+
 titre(15, "Ouvrir la messagerie sans ecrire ne cree pas de fil vide")
 uid["v"] = 777000333
 fil()

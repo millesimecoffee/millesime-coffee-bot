@@ -358,6 +358,18 @@ print(f"   destinataires : {webapp._destinataires_livreur()}")
 assert webapp._destinataires_livreur() == ["424242", "434343"]
 os.environ["LIVREUR_CHAT_ID"] = ""
 
+titre("11j", "Un client, plusieurs commandes : ses non-lus comptent UNE fois")
+BASE.append(dict(CMD_BXL, order_id="BXL05"))     # 2e commande du même client
+qui["v"] = CLIENT_BXL
+app.post("/api/chat/send", json={"initData": "x", "texte": "Une seule question"})
+qui["v"] = LIVREUR
+n1 = app.post("/api/livreur/courses", json={"initData": "x"}).json["non_lus"]
+n2 = app.post("/api/chat/resume", json={"initData": "x"}).json["non_lus"]
+print(f"   2 commandes en zone, 1 message non lu -> courses={n1} resume={n2}")
+assert n1 == 1 and n2 == 1, "le message ne doit pas être compté par commande"
+app.post("/api/chat/thread", json={"initData": "x", "chat_ref": ref})   # lu
+BASE.pop()
+
 titre(12, "Une référence inventée ne donne accès à rien")
 for faux in ["0" * 24, "", webapp._ref_chat("PAR01")]:
     r = app.post("/api/chat/thread", json={"initData": "x", "chat_ref": faux})

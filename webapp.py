@@ -2080,8 +2080,11 @@ def api_livreur_courses():
         "courses": courses,
         "a_traiter": len(a_traiter),
         "stats": stats,
-        "non_lus": sum(chat.non_lus(o.get("user_id"), chat.VENDEUR)
-                       for o in miennes if o.get("user_id")),
+        # Par client UNIQUE : un client avec trois commandes dans la zone ne
+        # doit pas voir son message non lu compté trois fois.
+        "non_lus": sum(chat.non_lus(u, chat.VENDEUR)
+                       for u in {o.get("user_id") for o in miennes
+                                 if o.get("user_id")}),
     })
 
 
@@ -3866,6 +3869,12 @@ def _langue_client(client_id) -> str:
     return ""
 
 
+def _langue_lecture_client(client_id) -> str:
+    """Langue dans laquelle CE client lit : celle choisie à l'entrée de la
+    boutique, sinon celle de ses propres messages, anglais en dernier recours."""
+    return _langue_client(client_id) or chat.langue_ecrite(client_id) or "en"
+
+
 def _traduire_message(texte: str, role: str, client_id):
     """(langue détectée, {langue: traduction}) pour un message qui part.
 
@@ -3886,7 +3895,7 @@ def _traduire_message(texte: str, role: str, client_id):
     if role == chat.CLIENT:
         cibles = ["fr"]                      # la boutique lit en français
     else:
-        cibles = [_langue_client(client_id) or "en"]
+        cibles = [_langue_lecture_client(client_id)]
     trads = {}
     for cible in cibles:
         if cible and cible != source:
@@ -4015,7 +4024,7 @@ def api_chat_thread():
         "vendeur": os.getenv("SUPPORT_USERNAME", "") or "millesimecoffee",
         # Langue de lecture de celui qui regarde, et jusqu'où l'autre a lu :
         # de quoi afficher chaque message traduit et poser les accusés.
-        "ma_langue": "fr" if role == chat.VENDEUR else (_langue_client(client_id) or "en"),
+        "ma_langue": "fr" if role == chat.VENDEUR else _langue_lecture_client(client_id),
         "lu_par_autre": chat.lu_par(
             client_id, chat.CLIENT if role == chat.VENDEUR else chat.VENDEUR),
         # Présence de l'autre : secondes depuis sa dernière activité dans
@@ -4127,12 +4136,13 @@ def api_chat_resume():
         return jsonify({"ok": True, "role": chat.VENDEUR,
                         "non_lus": chat.total_non_lus(chat.VENDEUR)})
     if _a_acces_livreur(uid):
-        # Non-lus des seules courses de sa zone.
+        # Non-lus des seules courses de sa zone, par client UNIQUE : plusieurs
+        # commandes du même client ne multiplient pas ses messages.
         try:
             from storage import _load as _load_all
-            total = sum(chat.non_lus(o.get("user_id"), chat.VENDEUR)
-                        for o in (_load_all() or [])
-                        if o.get("user_id") and _dans_zone_livreur(o))
+            uids = {o.get("user_id") for o in (_load_all() or [])
+                    if o.get("user_id") and _dans_zone_livreur(o)}
+            total = sum(chat.non_lus(u, chat.VENDEUR) for u in uids)
         except Exception:
             total = 0
         return jsonify({"ok": True, "role": "livreur", "non_lus": total})

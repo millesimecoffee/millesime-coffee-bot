@@ -26,6 +26,10 @@ def preparer(**extra):
         "PUSHOVER_USER_KEY": "",
         "PUSHOVER_APP_TOKEN": "",
         "NOTIF_IGNORER_OWNER": "",
+        # Les tests ne doivent jamais toucher au réseau : sans ce réglage, la
+        # traduction automatique appellerait le vrai service pendant les suites.
+        "TRADUCTION_REPLI": "0",
+        "DEEPL_API_KEY": "",
     })
     os.environ.update(extra)
     import webapp
