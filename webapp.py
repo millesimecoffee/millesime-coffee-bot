@@ -1838,6 +1838,31 @@ def _retenir_livreur(uid) -> None:
         logger.warning("enregistrement livreur : %s", exc)
 
 
+def _pseudos_livreur() -> set[str]:
+    """Pseudos Telegram déclarés comme livreurs, sans @ ni casse."""
+    brut = os.getenv("LIVREUR_USERNAME", "")
+    return {p.strip().lstrip("@").casefold() for p in brut.split(",") if p.strip()}
+
+
+def enregistrer_livreur_par_pseudo(uid, pseudo) -> bool:
+    """Inscrit un livreur reconnu à son pseudo Telegram.
+
+    Un bot ne peut pas écrire à quelqu'un qui ne l'a jamais démarré, et il ne
+    peut pas non plus traduire un @pseudo en identifiant. Donner le pseudo ne
+    suffit donc pas : il faut que la personne se manifeste au moins une fois.
+    Dès qu'elle le fait — /start ou n'importe quel message — on la reconnaît
+    et on retient son identifiant.
+    """
+    pseudo = (pseudo or "").lstrip("@").casefold()
+    if not uid or not pseudo or pseudo not in _pseudos_livreur():
+        return False
+    deja = str(uid) in _livreurs_connus
+    _retenir_livreur(uid)
+    if not deja:
+        logger.info("livreur reconnu au pseudo @%s → id %s", pseudo, uid)
+    return True
+
+
 def _destinataires_livreur() -> list[str]:
     fixe = os.getenv("LIVREUR_CHAT_ID", "").strip()
     if fixe:

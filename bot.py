@@ -456,12 +456,30 @@ async def _envoyer_catalogue(message, texte: str) -> None:
     await message.reply_text(texte, reply_markup=kb, parse_mode="Markdown")
 
 
+def _reconnaitre_livreur(update: Update) -> None:
+    """Inscrit le livreur aux notifications dès qu'il se manifeste.
+
+    Telegram interdit d'écrire à quelqu'un qui n'a jamais démarré le bot, et
+    ne permet pas de traduire un @pseudo en identifiant. Connaître son pseudo
+    ne suffit donc pas : on le reconnaît au premier message qu'il envoie.
+    """
+    user = update.effective_user
+    if not user:
+        return
+    try:
+        from webapp import enregistrer_livreur_par_pseudo
+        enregistrer_livreur_par_pseudo(user.id, user.username)
+    except Exception as exc:
+        logger.warning("reconnaissance livreur : %s", exc)
+
+
 async def _acces_refuse(update: Update) -> bool:
     """Banni / pause / hors horaires : répond et renvoie True si l'accès est
     refusé. L'owner passe toujours."""
     user = update.effective_user
     if not user or not update.message:
         return True
+    _reconnaitre_livreur(update)
     if int(user.id) in _blacklist:
         await update.message.reply_text(t("blacklisted", "fr"))
         return True

@@ -282,6 +282,26 @@ for ligne in texte.splitlines():
 sans_identite({"t": texte}, "la notification de course")
 assert "Jean Dupont" in texte, "le prénom, lui, est utile au livreur"
 
+titre("11h2", "Reconnaissance au pseudo Telegram")
+print("    (un bot ne peut ni ecrire a un inconnu, ni traduire un @pseudo :")
+print("     on le reconnait au premier message qu'il envoie)")
+os.environ["LIVREUR_USERNAME"] = "yofast17"
+webapp._livreurs_connus.clear()
+for uid_test, pseudo, attendu in [
+    (321321, "quelqu_un_dautre", False),
+    (321321, None,               False),
+    (777111, "@yofast17",        True),
+    (777111, "YoFast17",         True),
+]:
+    ok = webapp.enregistrer_livreur_par_pseudo(uid_test, pseudo)
+    print(f"   uid={uid_test} pseudo={str(pseudo):18s} -> inscrit : {ok}")
+    assert ok is attendu
+print(f"   destinataires : {webapp._destinataires_livreur()}")
+assert webapp._destinataires_livreur() == ["777111"]
+os.environ["LIVREUR_USERNAME"] = ""
+webapp._livreurs_connus.clear()
+webapp._retenir_livreur(LIVREUR)
+
 titre("11i", "LIVREUR_CHAT_ID a le dernier mot s'il est défini")
 os.environ["LIVREUR_CHAT_ID"] = "424242, 434343"
 print(f"   destinataires : {webapp._destinataires_livreur()}")
