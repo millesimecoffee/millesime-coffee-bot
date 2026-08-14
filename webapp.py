@@ -2516,6 +2516,22 @@ def api_order_track():
         "delivering":  status in ("delivering", "delivered"),                       # en route
         "delivered":   status == "delivered",                                       # livrée
     }
+    # Heure de passage de chaque étape, pour l'afficher sous la timeline.
+    # Ces horodatages sont posés par le panel à chaque changement de statut.
+    step_times = {
+        "received":   order.get("created_at"),
+        "preparing":  order.get("_confirmed_at"),
+        "delivering": order.get("_delivery_started_at"),
+        "delivered":  order.get("_delivered_at"),
+    }
+    step_times = {k: v for k, v in step_times.items() if v and steps_status.get(k)}
+
+    # Heure d'arrivée estimée, calculée côté serveur pour que tout le monde
+    # lise la même : le téléphone du client peut être à la mauvaise heure.
+    eta_at = None
+    if eta_seconds is not None and status == "delivering":
+        from datetime import timedelta as _td
+        eta_at = (_now_aware() + _td(seconds=eta_seconds)).isoformat(timespec="seconds")
 
     return jsonify({
         "ok":        True,
@@ -2544,9 +2560,16 @@ def api_order_track():
         "live":        is_live,
         "distance_km": round(distance_km, 2) if distance_km is not None else None,
         "steps": steps_status,
+        "step_times": step_times,
+        "eta_at": eta_at,
         "city":  order.get("city"),
         "total": order.get("total"),
         "display_currency": order.get("display_currency") or "€",
+        # De quoi remplir « Voir les détails de la commande » sans second appel.
+        "cart":    order.get("cart") or {},
+        "address": order.get("address") or "",
+        "payment": order.get("payment") or "",
+        "created_at": order.get("created_at"),
     })
 
 

@@ -1171,241 +1171,264 @@
   }
   .skel-line { height: 12px; margin: 6px 0; border-radius: 6px; }
 
-  /* === TRACKING (Uber Eats style) === */
-  .track-status {
-    text-align: center; padding: 18px 16px 8px; position: relative; z-index: 1;
+  /* ═══════════════════════════════════════════════════════════════════════
+     SUIVI DE LIVRAISON — carte plein écran + bottom sheet iOS
+     Seul écran en thème clair : les variables sont donc redéfinies ici et
+     ne débordent pas sur le reste de l'application, qui reste sombre.
+     ═══════════════════════════════════════════════════════════════════════ */
+  #screen-tracking {
+    --tk-fond:     #ffffff;
+    --tk-carte:    #f5f5f8;
+    --tk-txt:      #0d0d14;
+    --tk-txt-2:    #8b8b9c;
+    --tk-violet:   #7c3aed;
+    --tk-violet-c: #f4f0ff;
+    --tk-trait:    #ececf2;
+    --tk-grad:     linear-gradient(90deg, #ff4d9d 0%, #8b5cf6 52%, #22d3ee 100%);
   }
-  .track-status .big {
-    font-size: 24px; font-weight: 800;
-    background: var(--accent-grad);
-    -webkit-background-clip: text; background-clip: text; color: transparent;
+  /* Plein écran : la carte occupe le haut, la feuille se pose par-dessus.
+     L'animation d'entrée des écrans laisse un translateY résiduel qui, sur un
+     élément en position fixed, décale tout vers le bas — on l'annule. */
+  #screen-tracking.active {
+    position: fixed; inset: 0; z-index: 55;
+    display: flex; flex-direction: column;
+    background: var(--tk-fond); color: var(--tk-txt);
+    animation: tkOuvre 0.25s ease-out; transform: none;
+    -webkit-font-smoothing: antialiased;
   }
-  .track-status .sub { font-size: 14px; opacity: 0.7; margin-top: 4px; }
+  @keyframes tkOuvre { from { opacity: 0; } }
 
-  .track-eta {
-    text-align: center;
-    padding: 14px 16px 10px;
-    font-size: 48px;
-    font-weight: 900;
-    letter-spacing: -1px;
-    background: var(--accent-grad);
-    -webkit-background-clip: text; background-clip: text; color: transparent;
+  /* ── Carte ───────────────────────────────────────────────────────────── */
+  .tk-zone-carte {
+    flex: 1 1 auto; min-height: 32vh; position: relative;
+    background: var(--tk-carte); overflow: hidden;
+  }
+  .tk-zone-carte #trackMap { position: absolute; inset: 0; }
+  .tk-vide {
+    position: absolute; inset: 0;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 10px; padding: 24px; text-align: center;
+    color: var(--tk-txt-2); font-size: 13.5px; line-height: 1.45;
+  }
+  .tk-vide .emo { font-size: 42px; }
+
+  /* Retour : discret, hors de la zone système et des contrôles Telegram. */
+  .tk-retour {
+    position: absolute; z-index: 500;
+    top: calc(env(safe-area-inset-top, 0px) + 12px); left: 14px;
+    width: 38px; height: 38px; border-radius: 50%; border: none;
+    display: flex; align-items: center; justify-content: center;
+    background: rgba(255,255,255,0.94); color: var(--tk-txt);
+    font-size: 21px; line-height: 1; cursor: pointer;
+    box-shadow: 0 2px 10px rgba(15,15,30,0.14);
+    backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+  }
+  .tk-retour:active { transform: scale(0.92); }
+
+  /* Pastille flottante en bas à gauche : distance restante. */
+  .tk-position {
+    position: absolute; z-index: 500;
+    left: 14px; bottom: 44px;
+    display: flex; align-items: center; gap: 10px;
+    padding: 9px 14px 9px 11px; border-radius: 16px;
+    background: rgba(255,255,255,0.96);
+    box-shadow: 0 4px 18px rgba(15,15,30,0.16);
+    backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+  }
+  .tk-position .ic {
+    width: 30px; height: 30px; flex: 0 0 30px; border-radius: 10px;
+    display: flex; align-items: center; justify-content: center;
+    background: var(--tk-violet-c); font-size: 15px;
+  }
+  .tk-position .lbl {
+    font-size: 10.5px; font-weight: 600; color: var(--tk-txt-2);
+    letter-spacing: 0.2px; line-height: 1;
+  }
+  .tk-position .val {
+    font-size: 15px; font-weight: 750; color: var(--tk-txt);
+    margin-top: 3px; line-height: 1; font-variant-numeric: tabular-nums;
+  }
+  .tk-position.direct .ic { background: #e7fbf1; }
+  .tk-position.direct .lbl { color: #059669; }
+
+  /* ── Bottom sheet ────────────────────────────────────────────────────── */
+  .tk-feuille {
+    flex: 0 0 auto; position: relative; z-index: 10;
+    margin-top: -28px; max-height: 68vh; overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    background: var(--tk-fond);
+    border-radius: 30px 30px 0 0;
+    box-shadow: 0 -10px 34px rgba(15,15,30,0.13);
+    padding: 0 20px calc(18px + env(safe-area-inset-bottom, 0px));
+  }
+  .tk-poignee {
+    width: 38px; height: 5px; border-radius: 999px;
+    background: #dcdce4; margin: 9px auto 14px;
+  }
+
+  .tk-entete { display: flex; align-items: flex-start; gap: 12px; }
+  .tk-entete .bloc { flex: 1; min-width: 0; }
+  .tk-titre {
+    font-size: 22px; font-weight: 800; letter-spacing: -0.5px;
+    line-height: 1.2; color: var(--tk-txt);
+  }
+  .tk-sous {
+    font-size: 13.5px; color: var(--tk-txt-2); margin-top: 5px; line-height: 1.35;
+  }
+  .tk-eta {
+    flex: 0 0 auto; text-align: center; padding: 9px 14px;
+    border-radius: 17px; background: var(--tk-violet-c);
+  }
+  .tk-eta .lbl {
+    font-size: 10px; font-weight: 700; color: var(--tk-violet);
+    text-transform: uppercase; letter-spacing: 0.4px; line-height: 1;
+  }
+  .tk-eta .val {
+    font-size: 25px; font-weight: 800; color: var(--tk-violet);
+    margin-top: 5px; line-height: 1; letter-spacing: -0.6px;
     font-variant-numeric: tabular-nums;
   }
-  .track-eta-label {
-    text-align: center;
-    font-size: 12px;
-    opacity: 0.5;
-    text-transform: uppercase;
-    letter-spacing: 1.5px;
-    margin-top: -8px;
-  }
 
-  /* Steps timeline */
-  .steps {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 18px 14px;
-    margin: 14px 16px;
-    background: var(--bg-card);
-    border: 1px solid var(--border);
-    border-radius: 18px;
-    position: relative; z-index: 1;
+  /* ── Progression en 4 étapes ─────────────────────────────────────────── */
+  .tk-etapes {
+    position: relative; display: flex; justify-content: space-between;
+    margin: 22px 0 4px; padding: 0 2px;
   }
-  .step {
-    flex: 1; text-align: center; position: relative;
+  /* Rail de fond + portion parcourue, tracés derrière les pastilles. */
+  .tk-etapes::before, .tk-etapes::after {
+    content: ""; position: absolute; top: 17px; height: 3px; border-radius: 2px;
   }
-  .step .dot {
-    width: 36px; height: 36px; border-radius: 50%;
-    background: var(--bg-secondary);
-    border: 2px solid var(--border);
+  .tk-etapes::before { left: 12%; right: 12%; background: var(--tk-trait); }
+  .tk-etapes::after {
+    left: 12%; width: calc((100% - 24%) * var(--tk-avance, 0));
+    background: var(--tk-grad); transition: width 0.5s ease;
+  }
+  .tk-etape { position: relative; z-index: 1; flex: 1; text-align: center; }
+  .tk-etape .rond {
+    width: 35px; height: 35px; border-radius: 50%; margin: 0 auto 7px;
     display: flex; align-items: center; justify-content: center;
-    margin: 0 auto 6px;
-    font-size: 16px;
-    transition: all .3s;
+    font-size: 15px; background: #f0f0f5; color: #b4b4c2;
+    border: 2px solid var(--tk-fond);
+    transition: background 0.3s, color 0.3s, box-shadow 0.3s;
   }
-  .step.done .dot {
-    background: var(--accent-grad);
-    border-color: transparent;
-    color: white;
-    box-shadow: 0 4px 14px rgba(255,45,155,0.4);
+  .tk-etape.faite .rond {
+    background: var(--tk-grad); color: #fff;
+    box-shadow: 0 3px 10px rgba(139,92,246,0.32);
   }
-  .step.active .dot {
-    background: var(--accent-grad);
-    border-color: transparent;
-    color: white;
-    animation: stepPulse 1.8s ease-in-out infinite;
+  .tk-etape.encours .rond {
+    background: var(--tk-grad); color: #fff;
+    animation: tkPulse 1.9s ease-in-out infinite;
   }
-  @keyframes stepPulse {
-    0%, 100% { box-shadow: 0 0 0 0 rgba(255,45,155,0.6); }
-    50%       { box-shadow: 0 0 0 12px rgba(255,45,155,0); }
+  @keyframes tkPulse {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(139,92,246,0.5); }
+    55%      { box-shadow: 0 0 0 11px rgba(139,92,246,0); }
   }
-  .step .label {
-    font-size: 11px;
-    font-weight: 600;
-    opacity: 0.7;
-    line-height: 1.2;
+  .tk-etape .nom {
+    font-size: 11px; font-weight: 650; color: var(--tk-txt-2); line-height: 1.2;
   }
-  .step.done .label, .step.active .label { opacity: 1; }
-  /* Lignes entre steps */
-  .step::after {
-    content: '';
-    position: absolute;
-    top: 18px; left: 50%; right: -50%;
-    height: 2px;
-    background: var(--border);
-    z-index: -1;
+  .tk-etape.faite .nom, .tk-etape.encours .nom { color: var(--tk-txt); }
+  .tk-etape.encours .nom { color: var(--tk-violet); font-weight: 750; }
+  .tk-etape .heure {
+    font-size: 10.5px; color: #b0b0be; margin-top: 3px; line-height: 1;
+    font-variant-numeric: tabular-nums;
   }
-  .step.done::after { background: var(--accent); }
-  .step:last-child::after { display: none; }
 
-  /* Map */
-  .track-map {
-    height: 280px;
-    margin: 0 16px 14px;
-    border-radius: 18px;
-    overflow: hidden;
-    border: 1px solid var(--border);
-    position: relative; z-index: 1;
-    background: var(--bg-card);
+  /* ── Bandeau d'information ───────────────────────────────────────────── */
+  .tk-info {
+    display: flex; gap: 11px; align-items: flex-start;
+    margin-top: 20px; padding: 13px 15px;
+    border-radius: 17px; background: var(--tk-carte);
   }
-  .track-map .empty-map {
-    height: 100%;
+  .tk-info .ic {
+    width: 30px; height: 30px; flex: 0 0 30px; border-radius: 10px;
     display: flex; align-items: center; justify-content: center;
-    flex-direction: column; gap: 8px;
-    opacity: 0.4; padding: 20px; text-align: center;
+    background: var(--tk-violet-c); font-size: 15px;
+  }
+  .tk-info .t1 { font-size: 13.5px; font-weight: 650; color: var(--tk-txt); line-height: 1.35; }
+  .tk-info .t2 { font-size: 12.5px; color: var(--tk-txt-2); margin-top: 3px; line-height: 1.4; }
+
+  /* Détails de la commande, dépliés à la demande. */
+  .tk-details {
+    margin-top: 12px; padding: 14px 16px; border-radius: 17px;
+    background: var(--tk-carte); font-size: 13.5px; color: var(--tk-txt);
+  }
+  .tk-details .ligne {
+    display: flex; justify-content: space-between; gap: 12px; padding: 5px 0;
+  }
+  .tk-details .ligne .q { color: var(--tk-txt-2); font-variant-numeric: tabular-nums; }
+  .tk-details .sep { height: 1px; background: var(--tk-trait); margin: 8px 0; }
+  .tk-details .total { font-weight: 800; font-size: 15.5px; }
+  .tk-details .adr { color: var(--tk-txt-2); font-size: 12.5px; line-height: 1.4; }
+
+  /* ── Actions ─────────────────────────────────────────────────────────── */
+  .tk-cta {
+    width: 100%; margin-top: 18px; padding: 17px;
+    border: none; border-radius: 21px; cursor: pointer;
+    background: var(--tk-grad); color: #fff;
+    font-size: 16.5px; font-weight: 750; letter-spacing: -0.2px;
+    box-shadow: 0 8px 22px rgba(139,92,246,0.30);
+    transition: transform 0.14s ease, box-shadow 0.14s ease;
+  }
+  .tk-cta:active { transform: scale(0.975); box-shadow: 0 4px 14px rgba(139,92,246,0.26); }
+  .tk-cta2 {
+    width: 100%; margin-top: 10px; padding: 15px;
+    border: none; border-radius: 19px; cursor: pointer;
+    background: var(--tk-carte); color: var(--tk-txt);
+    font-size: 15px; font-weight: 650;
+  }
+  .tk-cta2:active { background: #ededf2; }
+
+  @media (max-height: 700px) {
+    .tk-feuille { max-height: 74vh; }
+    .tk-titre { font-size: 20px; }
+    .tk-etapes { margin-top: 18px; }
   }
 
-  /* Custom Leaflet markers */
-  .leaflet-driver-icon {
-    background: transparent !important;
-    border: none !important;
-    text-align: center;
-    position: relative;
-  }
+  /* ── Marqueurs Leaflet (fond de carte clair) ─────────────────────────── */
+  .leaflet-driver-icon { background: transparent !important; border: none !important;
+                         text-align: center; position: relative; }
   .leaflet-driver-icon .icon {
-    font-size: 30px;
-    text-shadow: 0 2px 8px rgba(0,0,0,0.6);
+    font-size: 28px; display: block; position: relative; z-index: 2;
+    filter: drop-shadow(0 3px 6px rgba(15,15,30,0.35));
     animation: bobMarker 1.2s ease-in-out infinite alternate;
-    display: block;
-    position: relative;
-    z-index: 2;
   }
   .leaflet-driver-icon::before {
-    content: '';
-    position: absolute;
-    top: 50%; left: 50%;
-    width: 40px; height: 40px;
-    transform: translate(-50%, -50%);
-    background: radial-gradient(circle, rgba(255,45,155,0.6) 0%, rgba(255,45,155,0) 70%);
-    border-radius: 50%;
-    animation: driverPulse 2s ease-in-out infinite;
-    z-index: 1;
+    content: ''; position: absolute; top: 50%; left: 50%;
+    width: 40px; height: 40px; transform: translate(-50%, -50%);
+    background: radial-gradient(circle, rgba(124,58,237,0.45) 0%, rgba(124,58,237,0) 70%);
+    border-radius: 50%; animation: driverPulse 2s ease-in-out infinite; z-index: 1;
   }
   @keyframes driverPulse {
     0%   { transform: translate(-50%, -50%) scale(0.8); opacity: 0.9; }
     100% { transform: translate(-50%, -50%) scale(2.2); opacity: 0; }
   }
-  .leaflet-dest-icon {
-    background: transparent !important;
-    border: none !important;
-    font-size: 32px;
-    text-align: center;
-    text-shadow: 0 3px 10px rgba(0,0,0,0.6);
-    filter: drop-shadow(0 0 6px rgba(16,185,129,0.5));
-  }
-  /* Flèche de cap : orientée vers la direction de déplacement du livreur.
-     Rotation pilotée en JS, d'où l'absence de transform ici. */
   .leaflet-driver-icon .arrow {
-    position: absolute;
-    top: 50%; left: 50%;
-    margin: -32px 0 0 -7px;
-    font-size: 15px;
-    color: var(--accent);
-    text-shadow: 0 0 6px rgba(255,45,155,0.8);
-    transform-origin: 50% 26px;
-    z-index: 3;
-    pointer-events: none;
+    position: absolute; top: 50%; left: 50%; margin: -32px 0 0 -7px;
+    font-size: 15px; color: var(--tk-violet, #7c3aed);
+    text-shadow: 0 0 5px rgba(124,58,237,0.55);
+    transform-origin: 50% 26px; z-index: 3; pointer-events: none;
   }
   @keyframes bobMarker {
     from { transform: translateY(0); }
     to   { transform: translateY(-4px); }
   }
-  /* Badge « en direct » posé sur la carte */
-  .track-live {
-    position: absolute;
-    top: 10px; left: 10px;
-    z-index: 500;
-    display: flex; align-items: center;
-    gap: 5px;
-    padding: 5px 11px;
-    border-radius: 999px;
-    font-size: 11px;
-    font-weight: 700;
-    letter-spacing: 0.3px;
-    background: rgba(15,16,21,0.85);
-    backdrop-filter: blur(6px);
-    color: #94a3b8;
-    border: 1px solid rgba(255,255,255,0.08);
+  .leaflet-dest-icon {
+    background: transparent !important; border: none !important;
+    font-size: 30px; text-align: center;
+    filter: drop-shadow(0 3px 7px rgba(15,15,30,0.35));
   }
-  .track-live.on {
-    color: #34d399;
-    border-color: rgba(16,185,129,0.35);
-    animation: livePulse 2s ease-in-out infinite;
-  }
-  @keyframes livePulse {
-    0%,100% { box-shadow: 0 0 0 0 rgba(16,185,129,0.35); }
-    50%     { box-shadow: 0 0 0 5px rgba(16,185,129,0); }
-  }
-  @media (prefers-reduced-motion: reduce) {
-    .track-live.on { animation: none; }
-  }
-  /* Polyline animée dashed */
+  /* Itinéraire : ligne foncée, comme sur la référence. */
   .leaflet-interactive.route {
-    stroke-dasharray: 10, 12;
-    animation: dashDance 1s linear infinite;
+    stroke-dasharray: 9, 11;
+    animation: dashDance 1.1s linear infinite;
   }
-  @keyframes dashDance {
-    to { stroke-dashoffset: -22; }
-  }
-  /* Fond map cohérent avec l'app */
-  .leaflet-container { background: #0f1015 !important; font-family: inherit; }
+  @keyframes dashDance { to { stroke-dashoffset: -20; } }
+  .leaflet-container { background: #eeeef3 !important; font-family: inherit; }
 
-  /* Driver card */
-  .driver-card {
-    background: var(--bg-card);
-    border: 1px solid var(--border);
-    border-radius: 18px;
-    padding: 16px;
-    margin: 0 16px 14px;
-    display: flex; align-items: center; gap: 14px;
-    position: relative; z-index: 1;
-  }
-  .driver-card .avatar {
-    width: 54px; height: 54px;
-    background: var(--accent-grad);
-    border-radius: 50%;
-    display: flex; align-items: center; justify-content: center;
-    font-size: 26px;
-    flex-shrink: 0;
-    box-shadow: 0 4px 14px rgba(255,45,155,0.35);
-  }
-  .driver-card .info { flex: 1; min-width: 0; }
-  .driver-card .name { font-size: 16px; font-weight: 700; margin-bottom: 2px; }
-  .driver-card .vehicle { font-size: 12px; opacity: 0.6; }
-  .driver-card .rating {
-    font-size: 13px;
-    font-weight: 700;
-    color: #fbbf24;
-  }
-  .driver-card .plate {
-    font-family: 'SF Mono', Menlo, monospace;
-    font-size: 11px;
-    background: var(--bg-secondary);
-    border-radius: 6px;
-    padding: 3px 7px;
-    opacity: 0.8;
+  @media (prefers-reduced-motion: reduce) {
+    .tk-etape.encours .rond, .leaflet-driver-icon .icon,
+    .leaflet-driver-icon::before, .leaflet-interactive.route { animation: none; }
+    .tk-cta { transition: none; }
   }
 
   /* ═══════════════════════════════════════════════════════════════════════
@@ -1870,11 +1893,6 @@
     padding: 12px 16px !important;
   }
 
-  /* Tracking — stepper amélioré */
-  .track-status .big {
-    letter-spacing: -0.8px;
-    font-size: 26px !important;
-  }
 
   /* Sélecteur de devise (écran menu produits) */
   .cur-selector {
@@ -3434,37 +3452,65 @@
   </div>
 </div>
 
-<!-- ÉCRAN 11 : Tracking livreur (style Uber Eats) -->
+<!-- ÉCRAN 11 : Suivi de livraison — carte plein écran + bottom sheet -->
 <div class="screen" id="screen-tracking">
-  <!-- Statut + ETA -->
-  <div class="track-status">
-    <div class="big" id="trackStatusBig">Préparation</div>
-    <div class="sub" id="trackStatusSub">Votre commande est en cours de préparation</div>
-  </div>
-  <div class="track-eta" id="trackEta" style="display:none;">15:00</div>
-  <div class="track-eta-label" id="trackEtaLabel" style="display:none;">Temps estimé</div>
 
-  <!-- Steps -->
-  <div class="steps" id="trackSteps">
-    <div class="step" data-step="received">  <div class="dot">✓</div>  <div class="label">Reçue</div></div>
-    <div class="step" data-step="preparing"> <div class="dot">☕</div> <div class="label">Préparation</div></div>
-    <div class="step" data-step="delivering"><div class="dot">🛵</div> <div class="label">En route</div></div>
-    <div class="step" data-step="delivered"> <div class="dot">📦</div> <div class="label">Livrée</div></div>
-  </div>
-
-  <!-- Carte -->
-  <div class="track-map" id="trackMapWrap">
-    <div class="empty-map" id="trackMapEmpty">
-      <div style="font-size:40px;">🗺️</div>
-      <div style="font-size:13px;">La carte s'affichera quand le livreur sera en route</div>
+  <!-- Carte : occupe tout le haut, sans aucun bandeau par-dessus -->
+  <div class="tk-zone-carte" id="trackMapWrap">
+    <div id="trackMap"></div>
+    <div class="tk-vide" id="trackMapEmpty">
+      <div class="emo">🗺️</div>
+      <div>La carte s'affichera dès que<br>le livreur sera en route.</div>
     </div>
-    <div class="track-live" id="trackLiveBadge" style="display:none;"></div>
-    <div id="trackMap" style="height:100%; display:none;"></div>
+    <button class="tk-retour" onclick="closeTracking()" aria-label="Retour">‹</button>
+    <div class="tk-position" id="trackLiveBadge" style="display:none;">
+      <span class="ic">📍</span>
+      <div>
+        <div class="lbl" id="trackPosLabel">Position estimée</div>
+        <div class="val" id="trackPosDist">—</div>
+      </div>
+    </div>
   </div>
 
-  <div class="container" style="padding-top:0;">
-    <button class="next-btn" onclick="contactSupport()">💬 Nous contacter</button>
-    <button class="next-btn" style="background:#444; box-shadow:none; margin-top:10px;" onclick="closeTracking()">Fermer</button>
+  <!-- Panneau de suivi -->
+  <div class="tk-feuille">
+    <div class="tk-poignee"></div>
+
+    <div class="tk-entete">
+      <div class="bloc">
+        <div class="tk-titre" id="trackStatusBig">Préparation</div>
+        <div class="tk-sous" id="trackStatusSub">Votre commande est en cours de préparation</div>
+      </div>
+      <div class="tk-eta" id="trackEtaCarte" style="display:none;">
+        <div class="lbl" id="trackEtaLabel">Arrivée estimée</div>
+        <div class="val" id="trackEta">--:--</div>
+      </div>
+    </div>
+
+    <div class="tk-etapes" id="trackSteps">
+      <div class="tk-etape" data-step="received">
+        <div class="rond">✓</div><div class="nom">Reçue</div><div class="heure">--:--</div></div>
+      <div class="tk-etape" data-step="preparing">
+        <div class="rond">☕</div><div class="nom">Préparation</div><div class="heure">--:--</div></div>
+      <div class="tk-etape" data-step="delivering">
+        <div class="rond">🛵</div><div class="nom">En route</div><div class="heure">--:--</div></div>
+      <div class="tk-etape" data-step="delivered">
+        <div class="rond">📦</div><div class="nom">Livrée</div><div class="heure">--:--</div></div>
+    </div>
+
+    <div class="tk-info">
+      <span class="ic">📍</span>
+      <div>
+        <div class="t1" id="trackInfoT1">Le livreur est en route vers votre adresse.</div>
+        <div class="t2" id="trackInfoT2">Vous pouvez suivre sa progression en temps réel sur la carte.</div>
+      </div>
+    </div>
+
+    <div class="tk-details" id="trackDetails" style="display:none;"></div>
+
+    <button class="tk-cta" id="trackCta" onclick="contactSupport()">📞 Contacter le livreur</button>
+    <button class="tk-cta2" onclick="basculerDetailsCommande()" id="trackDetailsBtn">
+      Voir les détails de la commande</button>
   </div>
 </div>
 
@@ -6484,12 +6530,16 @@ function openTracking(orderId) {
   state._trackUserMoved = false;
   state._trackDriverAt  = null;
   state._trackDriverHeading = null;
+  state._trackEtaAt = null;
   document.getElementById("trackMap").style.display = "none";
   document.getElementById("trackMapEmpty").style.display = "flex";
   const _lb = document.getElementById("trackLiveBadge");
   if (_lb) _lb.style.display = "none";
-  document.getElementById("trackEta").style.display = "none";
-  document.getElementById("trackEtaLabel").style.display = "none";
+  document.getElementById("trackEtaCarte").style.display = "none";
+  const _det = document.getElementById("trackDetails");
+  if (_det) { _det.style.display = "none"; _det.innerHTML = ""; }
+  const _detBtn = document.getElementById("trackDetailsBtn");
+  if (_detBtn) _detBtn.textContent = "Voir les détails de la commande";
   setScreen("tracking");
   loadTrackingOnce();
   startTrackingPoll();
@@ -6555,20 +6605,26 @@ async function loadTrackingOnce() {
     state._trackLastData = data;
     state._trackEtaSeconds = data.eta_seconds;
     state._trackEtaTickAt  = Date.now();
+    // Heure d'arrivée : celle du serveur si elle est fournie, sinon déduite
+    // du temps restant.
+    state._trackEtaAt = data.eta_at ? _parseServerDate(data.eta_at)
+      : (data.eta_seconds != null ? new Date(Date.now() + data.eta_seconds * 1000) : null);
     renderTracking(data);
   } catch (e) {
     // Réseau down, silencieux (réessaie au prochain poll)
   }
 }
 
+// L'écran annonce une HEURE d'arrivée (« 14:50 »), pas un décompte : c'est ce
+// qu'on regarde quand on attend une livraison. L'heure vient du serveur quand
+// il la fournit — le téléphone du client peut être mal réglé.
 function tickEta() {
-  if (state._trackEtaSeconds == null) return;
-  const elapsed = Math.floor((Date.now() - (state._trackEtaTickAt || Date.now())) / 1000);
-  const remaining = Math.max(0, state._trackEtaSeconds - elapsed);
-  const mm = Math.floor(remaining / 60);
-  const ss = remaining % 60;
   const eta = document.getElementById("trackEta");
-  if (eta) eta.textContent = `${mm}:${ss.toString().padStart(2,'0')}`;
+  if (!eta) return;
+  if (!state._trackEtaAt) { eta.textContent = "--:--"; return; }
+  const d = state._trackEtaAt;
+  const p = n => String(n).padStart(2, "0");
+  eta.textContent = `${p(d.getHours())}:${p(d.getMinutes())}`;
 }
 
 function renderTracking(data) {
@@ -6587,46 +6643,122 @@ function renderTracking(data) {
   document.getElementById("trackStatusBig").textContent = info.big;
   document.getElementById("trackStatusSub").textContent = info.sub;
 
-  // Steps
+  // ── Progression en 4 étapes ────────────────────────────────────────────
+  const ORDRE = ["received", "preparing", "delivering", "delivered"];
   const steps = data.steps || {};
-  ["received","preparing","delivering","delivered"].forEach(k => {
-    const el = document.querySelector(`#trackSteps .step[data-step="${k}"]`);
+  const heures = data.step_times || {};
+  const annulee = (status === "cancelled" || status === "cancelled_by_client");
+
+  // L'étape en cours est la DERNIÈRE franchie, pas la suivante : tant que la
+  // commande roule, c'est « En route » qu'on met en avant, et « Livrée » reste
+  // grise. Une commande livrée ou annulée n'a plus d'étape en cours.
+  const enCours = (annulee || status === "delivered")
+    ? null
+    : [...ORDRE].reverse().find(k => steps[k]) || null;
+
+  ORDRE.forEach(k => {
+    const el = document.querySelector(`#trackSteps .tk-etape[data-step="${k}"]`);
     if (!el) return;
-    el.classList.remove("done", "active");
-    if (steps[k]) el.classList.add("done");
+    el.classList.toggle("faite", !!steps[k]);
+    el.classList.toggle("encours", k === enCours);
+    const h = el.querySelector(".heure");
+    if (h) h.textContent = heures[k] ? _heureCourte(heures[k]) : "--:--";
   });
-  // Marquer la step "active" = la première non-done qui suit (sauf si cancelled)
-  if (status !== "cancelled" && status !== "cancelled_by_client" && status !== "delivered") {
-    const order = ["received","preparing","delivering","delivered"];
-    let activeStep = null;
-    for (const k of order) {
-      if (!steps[k]) { activeStep = k; break; }
-    }
-    if (activeStep) {
-      const el = document.querySelector(`#trackSteps .step[data-step="${activeStep}"]`);
-      if (el) el.classList.add("active");
-    }
+
+  // Portion colorée du rail : elle relie les pastilles franchies.
+  const faites = ORDRE.filter(k => steps[k]).length;
+  const conteneur = document.getElementById("trackSteps");
+  if (conteneur) {
+    conteneur.style.setProperty("--tk-avance",
+      String(Math.max(0, Math.min(1, (faites - 1) / (ORDRE.length - 1)))));
   }
 
-  // ETA visible uniquement si delivering
-  const etaEl   = document.getElementById("trackEta");
-  const etaLbl  = document.getElementById("trackEtaLabel");
-  if (status === "delivering" && data.eta_seconds != null) {
-    etaEl.style.display = "block"; etaLbl.style.display = "block";
-    etaLbl.textContent = "Temps estimé restant";
+  // ── Heure d'arrivée estimée ────────────────────────────────────────────
+  const etaCarte = document.getElementById("trackEtaCarte");
+  const etaLbl   = document.getElementById("trackEtaLabel");
+  const etaVal   = document.getElementById("trackEta");
+  if (status === "delivering" && state._trackEtaAt) {
+    etaCarte.style.display = "block";
+    etaLbl.textContent = "Arrivée estimée";
     tickEta();
   } else if (status === "delivered") {
-    etaEl.style.display = "block"; etaLbl.style.display = "block";
-    etaEl.textContent = "✓";
-    etaLbl.textContent = "Livré";
+    etaCarte.style.display = "block";
+    etaLbl.textContent = "Livrée";
+    etaVal.textContent = heures.delivered ? _heureCourte(heures.delivered) : "✓";
   } else {
-    etaEl.style.display = "none"; etaLbl.style.display = "none";
+    etaCarte.style.display = "none";
   }
 
-  // (Carte livreur retirée — plus d'infos livreur affichées au client)
+  // ── Bandeau d'information + actions, selon l'étape ─────────────────────
+  const messages = {
+    pending:    ["Votre commande vient d'être transmise.",
+                 "Vous serez prévenu dès qu'elle sera confirmée."],
+    confirmed:  ["Votre commande est en préparation.",
+                 "La carte s'affichera dès que le livreur sera parti."],
+    delivering: ["Le livreur est en route vers votre adresse.",
+                 "Vous pouvez suivre sa progression en temps réel sur la carte."],
+    delivered:  ["Votre commande a bien été livrée.",
+                 "Merci de votre confiance — à très bientôt !"],
+    cancelled:  ["Cette commande a été annulée.",
+                 "Contactez-nous si vous pensez qu'il s'agit d'une erreur."],
+  };
+  const msg = messages[annulee ? "cancelled" : status] || messages.pending;
+  document.getElementById("trackInfoT1").textContent = msg[0];
+  document.getElementById("trackInfoT2").textContent = msg[1];
 
-  // Carte
+  // Le bouton principal suit l'état : on ne propose pas de joindre un livreur
+  // qui n'est pas encore parti.
+  const cta = document.getElementById("trackCta");
+  if (cta) {
+    cta.textContent = status === "delivering" ? "📞 Contacter le livreur"
+                    : annulee || status === "delivered" ? "💬 Nous contacter"
+                    : "💬 Contacter la boutique";
+  }
+
+  // Détails déjà ouverts : les rafraîchir avec les données du dernier relevé.
+  const det = document.getElementById("trackDetails");
+  if (det && det.style.display !== "none") dessinerDetailsCommande();
+
   updateTrackingMap(data);
+}
+
+// Détails de la commande, dépliés sous la timeline. Tout vient du relevé de
+// suivi déjà en main : aucun appel supplémentaire, aucune donnée inventée.
+function basculerDetailsCommande() {
+  const det = document.getElementById("trackDetails");
+  const btn = document.getElementById("trackDetailsBtn");
+  if (!det) return;
+  hapticSelect();
+  const ouvert = det.style.display !== "none";
+  det.style.display = ouvert ? "none" : "block";
+  btn.textContent = ouvert ? "Voir les détails de la commande"
+                           : "Masquer les détails";
+  if (!ouvert) {
+    dessinerDetailsCommande();
+    det.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  }
+}
+
+function dessinerDetailsCommande() {
+  const det = document.getElementById("trackDetails");
+  const d = state._trackLastData;
+  if (!det || !d) return;
+  const dev = d.display_currency || "€";
+  const articles = Object.entries(d.cart || {});
+  det.innerHTML = `
+    <div class="ligne"><span class="q">Commande</span><span>N° ${escHtml(d.order_id || "—")}</span></div>
+    ${d.created_at ? `<div class="ligne"><span class="q">Passée le</span>
+        <span>${escHtml(_dateLongue(d.created_at))}</span></div>` : ""}
+    <div class="sep"></div>
+    ${articles.length
+      ? articles.map(([nom, q]) =>
+          `<div class="ligne"><span>${escHtml(nom)}</span><span class="q">× ${escHtml(q)}</span></div>`).join("")
+      : `<div class="ligne"><span class="q">Panier indisponible</span><span></span></div>`}
+    <div class="sep"></div>
+    <div class="ligne total"><span>Total</span><span>${
+      Number(d.total || 0).toLocaleString("fr-FR")} ${escHtml(dev)}</span></div>
+    ${d.payment ? `<div class="ligne"><span class="q">Paiement</span><span>${escHtml(d.payment)}</span></div>` : ""}
+    ${d.address ? `<div class="sep"></div><div class="adr">📍 ${escHtml(d.address)}</div>` : ""}`;
 }
 
 // ── Carte de suivi ──────────────────────────────────────────────────────────
@@ -6718,6 +6850,11 @@ function updateTrackingMap(data) {
     empty.style.display = "flex";
     mapDiv.style.display = "none";
     if (badge) badge.style.display = "none";
+    if (status === "pending" || status === "confirmed") {
+      empty.innerHTML = `<div class="emo">☕</div>
+        <div>Votre commande est en préparation.<br>
+        La carte s'affichera dès le départ du livreur.</div>`;
+    }
     cancelAnimationFrame(state._trackRaf);
     if (state._trackMap) {
       try { state._trackMap.remove(); } catch {}
@@ -6748,8 +6885,10 @@ function updateTrackingMap(data) {
       dragging: true, scrollWheelZoom: false,
       touchZoom: true, doubleClickZoom: false,
     }).setView([dest.lat, dest.lon], 14);
-    // Tiles dark natives (CARTO Dark Matter) — bien meilleur que le filter CSS
-    L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", {
+    // Fond clair (CARTO Positron) : l'écran de suivi est le seul en thème
+    // lumineux, un fond sombre y jurerait et l'itinéraire foncé ne se verrait
+    // pas.
+    L.tileLayer("https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png", {
       maxZoom: 19,
       subdomains: "abcd",
       attribution: "",
@@ -6757,7 +6896,7 @@ function updateTrackingMap(data) {
     // Marqueur destination
     const destIcon = L.divIcon({
       className: "leaflet-dest-icon",
-      html: "🏠",
+      html: "📍",
       iconSize: [40,40],
       iconAnchor: [20,36],
     });
@@ -6767,16 +6906,19 @@ function updateTrackingMap(data) {
     state._trackMap.on("dragstart", () => { state._trackUserMoved = true; });
   }
 
-  // Badge « en direct » vs position estimée
+  // Pastille flottante : d'où vient la position, et distance restante.
   if (badge) {
     badge.style.display = "flex";
-    badge.className = "track-live" + (data.live ? " on" : "");
-    const dist = data.distance_km != null
-      ? (data.distance_km < 1
-          ? ` · ${Math.round(data.distance_km * 1000)} m`
-          : ` · ${data.distance_km.toFixed(1)} km`)
-      : "";
-    badge.textContent = (data.live ? "● En direct" : "○ Position estimée") + dist;
+    badge.className = "tk-position" + (data.live ? " direct" : "");
+    const lbl = document.getElementById("trackPosLabel");
+    const val = document.getElementById("trackPosDist");
+    if (lbl) lbl.textContent = data.live ? "Position en direct" : "Position estimée";
+    if (val) {
+      val.textContent = data.distance_km == null ? "—"
+        : data.distance_km < 1
+          ? `${Math.round(data.distance_km * 1000)} m`
+          : `${data.distance_km.toFixed(1).replace(".", ",")} km`;
+    }
   }
 
   // Marqueur livreur
@@ -6793,9 +6935,11 @@ function updateTrackingMap(data) {
       state._trackDriverAt = L.latLng(driver.lat, driver.lon);
     }
     if (!state._trackPolyline) {
+      // Ligne foncée : c'est ce qui se lit le mieux sur un fond de carte clair.
       state._trackPolyline = L.polyline(
         [[driver.lat, driver.lon], [dest.lat, dest.lon]],
-        { color: "#ff2d9b", weight: 4, opacity: 0.95, className: "route" }
+        { color: "#1f2430", weight: 4, opacity: 0.9, className: "route",
+          lineCap: "round" }
       ).addTo(state._trackMap);
     }
     animateDriverTo(driver.lat, driver.lon, driver.heading);
@@ -6816,8 +6960,9 @@ function updateTrackingMap(data) {
 const _origUpdateHeader2 = updateHeader;
 updateHeader = function(name) {
   if (name === "tracking") {
-    document.getElementById("headerTitle").textContent    = "📦 Suivi de commande";
-    document.getElementById("headerSubtitle").textContent = "N° " + (state._trackOrderId || "");
+    // Pas de bandeau au-dessus de la carte : elle démarre sous la zone
+    // système, et l'écran porte son propre bouton retour.
+    document.getElementById("header").style.display = "none";
   } else if (name === "admin-pwd") {
     // Écran de garde : pas d'en-tête ni de bouton retour, comme l'écran
     // mot de passe du catalogue.

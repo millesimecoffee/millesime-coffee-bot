@@ -75,7 +75,39 @@ print(f"   HTTP {r.status_code} — {r.get_json()}")
 assert r.status_code == 403
 _qui["v"] = CLIENT
 
-titre(7, "Cap et vitesse deduits de deux points successifs")
+titre(7, "L'ecran de suivi recoit de quoi tout afficher")
+print("    (heures d'etapes, heure d'arrivee, panier : sinon la timeline et")
+print("     le bouton « details » afficheraient des tirets)")
+COMMANDE.update({
+    "_confirmed_at": "2026-08-12T13:24:00+02:00",
+    "_delivery_started_at": "2026-08-12T13:28:00+02:00",
+    "created_at": "2026-08-12T13:22:00+02:00",
+    "cart": {"❄️ COCA 1G": 2}, "payment": "Espèces",
+})
+webapp.set_driver_position(48.8600, 2.3515)
+d = suivre()
+print(f"   heures d'etapes : {d['step_times']}")
+assert set(d["step_times"]) == {"received", "preparing", "delivering"}, \
+    "l'etape non franchie ne doit pas avoir d'heure"
+print(f"   heure d'arrivee : {d['eta_at']}")
+assert d["eta_at"], "sans eta_at, l'ecran ne peut pas annoncer une heure"
+assert d["eta_at"] > webapp._now_iso(), "l'arrivee doit etre dans le futur"
+print(f"   panier : {d['cart']}  total : {d['total']}  paiement : {d['payment']}")
+assert d["cart"] == {"❄️ COCA 1G": 2} and d["address"]
+
+titre(8, "Une commande livree : toutes les etapes horodatees, arrivee figee")
+COMMANDE.update({"status": "delivered", "_delivered_at": "2026-08-12T13:41:00+02:00"})
+d = suivre()
+print(f"   etapes : {d['steps']}")
+print(f"   heures : {sorted(d['step_times'])}")
+assert all(d["steps"].values()), "les 4 etapes doivent etre franchies"
+assert "delivered" in d["step_times"]
+print(f"   eta_at : {d['eta_at']} (aucune arrivee a annoncer)")
+assert d["eta_at"] is None
+COMMANDE.update({"status": "delivering"})
+COMMANDE.pop("_delivered_at", None)
+
+titre(9, "Cap et vitesse deduits de deux points successifs")
 webapp.clear_driver_position()
 webapp.set_driver_position(48.8700, 2.3400)
 import time
