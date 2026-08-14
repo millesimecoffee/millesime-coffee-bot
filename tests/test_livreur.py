@@ -184,6 +184,63 @@ d = app.post("/api/chat/thread", json={"initData": "x", "chat_ref": ref}).json
 print(f"   {len(d['messages'])} messages : {[m['de'] for m in d['messages']]}")
 assert [m["de"] for m in d["messages"]] == ["vendeur", "client"]
 
+titre("11b", "Aucune coordonnée ne circule dans ce fil")
+print("    (c'est par là que passerait un détournement de client)")
+BLOQUES = [
+    ("0470 11 22 33",                 "telephone"),
+    ("+32470112233",                  "telephone"),
+    ("appelle moi au 04.70.11.22.33", "telephone"),
+    ("0 4 7 0 1 1 2 2 3 3",           "telephone"),
+    ("écris-moi @jean_livreur",       "pseudo"),
+    ("t.me/jeanlivreur",              "lien"),
+    ("passe sur whatsapp",            "lien"),
+    ("mon insta : instagram.com/x",   "lien"),
+]
+for texte, motif in BLOQUES:
+    r = app.post("/api/chat/send", json={"initData": "x", "chat_ref": ref, "texte": texte})
+    d2 = r.json
+    print(f"   REFUSÉ  {texte[:30]:32s} {d2.get('motif') or d2.get('error')}")
+    assert r.status_code == 400 and d2.get("error") == "contact_interdit"
+    assert d2.get("motif") == motif, f"{texte} : motif {d2.get('motif')} au lieu de {motif}"
+
+titre("11c", "Mais la conversation normale n'est pas gênée")
+PASSENT = [
+    "Je suis en bas, code 1234",
+    "Bâtiment B, 3e étage, porte 12",
+    "12 rue Neuve, 1000 Bruxelles",
+    "J'arrive dans 10 minutes",
+    "Commande 140801 bien reçue",
+    "Ça fait 340 € au total",
+    "Sonnez 2 fois s'il vous plaît",
+]
+for texte in PASSENT:
+    r = app.post("/api/chat/send", json={"initData": "x", "chat_ref": ref, "texte": texte})
+    print(f"   passe   {texte[:34]:36s} HTTP {r.status_code}")
+    assert r.status_code == 200, f"faux positif sur : {texte}"
+
+titre("11d", "Le client non plus, tant qu'une course est en cours")
+BASE.append(dict(CMD_BXL, order_id="BXL99", status="delivering"))
+qui["v"] = CLIENT_BXL
+r = app.post("/api/chat/send", json={"initData": "x", "texte": "mon num : 0470112233"})
+print(f"   course en cours  : HTTP {r.status_code} ({r.json.get('motif')})")
+assert r.status_code == 400
+# Une fois tout livré, il redialogue normalement avec la boutique.
+BASE[-1]["status"] = "delivered"
+r = app.post("/api/chat/send", json={"initData": "x", "texte": "mon num : 0470112233"})
+print(f"   plus rien en cours : HTTP {r.status_code}")
+assert r.status_code == 200
+BASE.pop()
+
+titre("11e", "… mais l'owner reste libre d'échanger ce qu'il veut")
+qui["v"] = OWNER
+app.post("/api/admin/unlock", json={"initData": "x", "password": "RICH PORTER"})
+r = app.post("/api/chat/send",
+             json={"initData": "x", "client_id": CLIENT_BXL,
+                   "texte": "Voici mon numéro direct : 0470 11 22 33"})
+print(f"   owner -> client : HTTP {r.status_code}")
+assert r.status_code == 200, "l'owner ne doit pas être filtré"
+qui["v"] = LIVREUR
+
 titre(12, "Une référence inventée ne donne accès à rien")
 for faux in ["0" * 24, "", webapp._ref_chat("PAR01")]:
     r = app.post("/api/chat/thread", json={"initData": "x", "chat_ref": faux})

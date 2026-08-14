@@ -320,6 +320,46 @@ def resume(msg: dict) -> str:
     return texte[:200] + ("…" if len(texte) > 200 else "")
 
 
+# ── Filtre anti-détournement ────────────────────────────────────────────────
+# Dans une conversation où intervient un livreur, on empêche l'échange de
+# coordonnées : c'est ce qui permettrait de traiter la commande suivante en
+# dehors de la boutique. Le filtre vise les moyens de recontact, pas les
+# chiffres en général — un code de porte, un numéro de rue ou un étage doivent
+# passer sans encombre.
+
+import re as _re
+
+# 9 chiffres ou plus d'affilée, tolérant les séparateurs habituels d'un numéro.
+# Un code d'immeuble (4 à 6 chiffres) ou un numéro de rue restent en dessous.
+_MOTIF_TEL = _re.compile(r"(?:\+|00)?\s*(?:\d[\s.\-/()]{0,2}){9,}")
+# @pseudo, t.me/…, et les messageries qui serviraient de porte de sortie.
+_MOTIF_PSEUDO = _re.compile(r"@[A-Za-z][A-Za-z0-9_]{3,}")
+_MOTIF_LIEN = _re.compile(
+    r"(?:t\.me/|telegram\.me/|telegram\s*:|wa\.me/|whatsapp|signal\.me/|"
+    r"instagram\.com/|snapchat)", _re.IGNORECASE)
+# Caractères invisibles glissés entre les chiffres pour passer sous le radar.
+_INVISIBLES = _re.compile(r"[​-‏⁠﻿]")
+
+
+def contient_contact(texte: str) -> str:
+    """Motif de refus si le texte transmet un moyen de recontact, sinon "".
+
+    Renvoie « telephone », « pseudo » ou « lien » — de quoi expliquer
+    précisément à l'expéditeur ce qui bloque.
+    """
+    if not texte:
+        return ""
+    t = _INVISIBLES.sub("", texte)
+    if _MOTIF_LIEN.search(t):
+        return "lien"
+    if _MOTIF_PSEUDO.search(t):
+        return "pseudo"
+    for bloc in _MOTIF_TEL.finditer(t):
+        if sum(c.isdigit() for c in bloc.group()) >= 9:
+            return "telephone"
+    return ""
+
+
 def decoder_b64(b64: str) -> bytes:
     """Décode un média envoyé par la Mini App (avec ou sans préfixe data:)."""
     if not isinstance(b64, str) or not b64:

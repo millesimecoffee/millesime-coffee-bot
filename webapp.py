@@ -3598,6 +3598,34 @@ def _qui_parle(req):
     return chat.CLIENT, uid, None
 
 
+def _filtrer_contacts(req, client_id) -> bool:
+    """Faut-il empêcher l'échange de coordonnées dans ce fil ?
+
+    Oui dès qu'un livreur est impliqué : quand c'est lui qui écrit, et quand
+    le client répond alors qu'une de ses commandes est en cours dans une zone
+    livreur. L'owner n'est jamais filtré — c'est sa boutique, il donne son
+    numéro à qui il veut.
+    """
+    uid = _uid_authentifie(req)
+    if uid is None or _a_acces_admin(uid):
+        return False
+    if _a_acces_livreur(uid):
+        return True
+    if not _livreur_password():
+        return False
+    # Côté client : seulement pendant qu'une course est entre les mains d'un
+    # livreur. Une fois livré, il redialogue normalement avec la boutique.
+    try:
+        from storage import _load as _load_all
+        return any(
+            str(o.get("user_id") or "") == str(client_id)
+            and (o.get("status") or "pending") in ("pending", "confirmed", "delivering")
+            and _dans_zone_livreur(o)
+            for o in (_load_all() or []))
+    except Exception:
+        return False
+
+
 def _profil_client(uid) -> dict:
     """Nom et pseudo du client, repris de sa commande la plus récente."""
     try:
@@ -3666,6 +3694,15 @@ def api_chat_send():
         return erreur
     data = _corps(request)
     texte = _texte(data.get("texte"), chat.MAX_TEXTE)
+
+    # Dès qu'un livreur est partie prenante, les coordonnées ne circulent pas :
+    # c'est par là que passerait un détournement de client. L'owner, lui, reste
+    # libre d'échanger ce qu'il veut avec ses clients.
+    if texte and _filtrer_contacts(request, client_id):
+        motif = chat.contient_contact(texte)
+        if motif:
+            return jsonify({"ok": False, "error": "contact_interdit",
+                            "motif": motif}), 400
 
     kind, media_id = "texte", ""
     photo_b64 = data.get("photo_b64")

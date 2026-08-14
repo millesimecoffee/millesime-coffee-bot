@@ -6623,7 +6623,7 @@ async function chatEnvoyer(charge, apercu) {
     if (!d.ok) {
       chatEtat.messages = chatEtat.messages.filter(m => m.id !== provisoire.id);
       chatDessiner();
-      showToast(chatErreur(d.error), true);
+      showToast(chatErreur(d.error, d.motif), true);
       return false;
     }
     chatEtat.messages[chatEtat.messages.length - 1] = d.message;
@@ -6639,7 +6639,14 @@ async function chatEnvoyer(charge, apercu) {
   }
 }
 
-function chatErreur(code) {
+function chatErreur(code, motif) {
+  if (code === "contact_interdit") {
+    return {
+      telephone: "Les numéros de téléphone ne passent pas dans cette conversation.",
+      pseudo:    "Les identifiants @ ne passent pas dans cette conversation.",
+      lien:      "Les liens vers d'autres messageries ne passent pas ici.",
+    }[motif] || "Les coordonnées ne peuvent pas être échangées ici.";
+  }
   return {
     media_too_big: "Fichier trop lourd",
     bad_photo:     "Photo illisible",
@@ -6655,7 +6662,12 @@ async function chatEnvoyerTexte() {
   if (!texte) return;
   zone.value = "";
   chatAjusterHauteur(zone);
-  await chatEnvoyer({ texte }, { type: "texte", texte });
+  // Message refusé (coordonnées interdites, réseau…) : on rend le texte à son
+  // auteur plutôt que de le lui faire retaper.
+  if (!await chatEnvoyer({ texte }, { type: "texte", texte })) {
+    zone.value = texte;
+    chatAjusterHauteur(zone);
+  }
 }
 
 async function chatChoisirPhoto(input) {
