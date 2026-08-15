@@ -567,7 +567,16 @@ def api_notify_city():
         import parcours
         # Le veilleur ne doit pas apparaître dans sa propre liste.
         if not _a_acces_veille(uid):
-            parcours.noter(uid, user_obj.get("first_name") or "", country, city)
+            nouveau = parcours.noter(uid, user_obj.get("first_name") or "", country, city)
+            # On ne prévient que sur une ligne nouvelle : sinon les
+            # allers-retours entre écrans enverraient dix messages.
+            if nouveau:
+                prenom = _html_escape((user_obj.get("first_name") or "Quelqu'un")[:40])
+                lieu = f"{_html_escape(country)}"
+                if city:
+                    lieu += f" · <b>{_html_escape(city)}</b>"
+                _prevenir_veille(f"👀 <b>{prenom}</b> consulte le catalogue\n{lieu}",
+                                 cle_anti_repetition=f"vl:{uid}:{country}:{city}")
     except Exception as exc:
         logger.warning("journal des parcours : %s", exc)
 
@@ -721,6 +730,9 @@ def api_auth():
     if est_veille and uid:
         with _veille_lock:
             _veille_unlocked[str(uid)] = time.time() + _ADMIN_SESSION_TTL
+        # Sa connexion suffit à l'inscrire aux notifications : le bot ne peut
+        # écrire qu'à quelqu'un qui s'est manifesté.
+        _retenir_veilleur(uid)
         logger.info("acces veille ouvert pour %s", uid)
 
     if est_livreur and uid:
@@ -1599,6 +1611,10 @@ def api_finalize_order():
             import parcours
             parcours.noter_commande(order_id, user_id, user_first or user_name or "",
                                     country, city, "pending")
+            _prevenir_veille(
+                f"🛒 <b>Nouvelle commande</b>\n"
+                f"{_html_escape(country)} · <b>{_html_escape(city)}</b>\n"
+                f"n°…{_html_escape(str(order_id)[-4:])}")
         except Exception as exc:
             logger.warning("journal (commande) : %s", exc)
 
@@ -2187,6 +2203,84 @@ def _veille_is_unlocked(uid) -> bool:
 
 def _a_acces_veille(uid) -> bool:
     return uid is not None and bool(_veille_password()) and _veille_is_unlocked(uid)
+
+
+# Comptes qui reçoivent les notifications de veille. Deux sources, dans cet
+# ordre : VEILLE_CHAT_ID s'il est renseigné, sinon les comptes qui ont ouvert
+# l'accès — un bot ne peut pas écrire à quelqu'un qui ne l'a jamais démarré,
+# donc il faut de toute façon que la personne se soit manifestée.
+_VEILLEURS_FICHIER = None
+_veilleurs_connus: dict[str, float] = {}
+_veilleurs_lock = threading.RLock()
+
+
+def _fichier_veilleurs():
+    global _VEILLEURS_FICHIER
+    if _VEILLEURS_FICHIER is None:
+        from pathlib import Path
+        base = os.getenv("DATA_DIR", os.path.dirname(os.path.abspath(__file__)))
+        _VEILLEURS_FICHIER = Path(base) / "veilleurs.json"
+        try:
+            import json as _json
+            with _VEILLEURS_FICHIER.open(encoding="utf-8") as f:
+                d = _json.load(f)
+            if isinstance(d, dict):
+                _veilleurs_connus.update({str(k): float(v) for k, v in d.items()})
+        except (OSError, ValueError):
+            pass
+    return _VEILLEURS_FICHIER
+
+
+def _retenir_veilleur(uid) -> None:
+    """Mémorise le compte qui vient d'ouvrir l'accès de veille."""
+    if not uid:
+        return
+    chemin = _fichier_veilleurs()
+    with _veilleurs_lock:
+        _veilleurs_connus[str(uid)] = time.time()
+        copie = dict(_veilleurs_connus)
+    try:
+        from storage import _ecrire_json_atomique
+        _ecrire_json_atomique(chemin, copie, indent=2)
+        import github_backup
+        github_backup.backup_file_async("veilleurs.json")
+    except Exception as exc:
+        logger.warning("enregistrement veilleur : %s", exc)
+
+
+def _destinataires_veille() -> list[str]:
+    fixe = os.getenv("VEILLE_CHAT_ID", "").strip()
+    if fixe:
+        return [x.strip() for x in fixe.split(",") if x.strip()]
+    _fichier_veilleurs()
+    with _veilleurs_lock:
+        return list(_veilleurs_connus)
+
+
+def _prevenir_veille(texte: str, cle_anti_repetition: str = "") -> int:
+    """Envoie une notification aux comptes de veille.
+
+    Même règle que l'écran : où et quand, jamais combien ni quoi. Les messages
+    sont construits ici, à partir des seuls pays, ville et étape — le montant
+    et le panier n'entrent pas dans cette fonction.
+    """
+    token = os.getenv("BOT_TOKEN", "")
+    cibles = _destinataires_veille()
+    if not token or not cibles:
+        return 0
+    if cle_anti_repetition and _rate_limited(cle_anti_repetition, 1, _VILLE_COOLDOWN):
+        return 0
+    envoyes = 0
+    import httpx                       # importé ici, comme partout ailleurs :
+    for cible in cibles:               # le module ne l'importe pas globalement
+        try:
+            httpx.post(f"https://api.telegram.org/bot{token}/sendMessage",
+                       json={"chat_id": cible, "text": texte, "parse_mode": "HTML",
+                             "disable_web_page_preview": True}, timeout=8.0)
+            envoyes += 1
+        except Exception as exc:
+            logger.warning("notif veille %s : %s", cible, exc)
+    return envoyes
 
 
 def _compte_livreur_autorise(uid, prefixe: str = "LIVREUR") -> bool:
@@ -2855,6 +2949,15 @@ def _appliquer_statut(order_id, order, new_status, data, par="admin"):
                                 order.get("user_name") or "",
                                 order.get("country") or "", order.get("city") or "",
                                 new_status)
+        etape = parcours.ETAPES.get(new_status)
+        if etape:
+            emoji = {"confirmée": "✅", "en route": "🛵",
+                     "livrée": "📦", "annulée": "✖️"}.get(etape, "•")
+            _prevenir_veille(
+                f"{emoji} Commande <b>{_html_escape(etape)}</b>\n"
+                f"{_html_escape(order.get('country') or '')} · "
+                f"<b>{_html_escape(order.get('city') or '')}</b>\n"
+                f"n°…{_html_escape(str(order_id)[-4:])}")
     except Exception as exc:
         logger.warning("journal (etape) : %s", exc)
 

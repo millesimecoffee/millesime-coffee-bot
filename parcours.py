@@ -118,17 +118,27 @@ def noter(uid, prenom: str, pays: str, ville: str = "") -> dict | None:
         data = list(_lire())
         maintenant = _date(ligne["at"])
         for p in reversed(data[-60:]):
-            if (p.get("type", "vue") == "vue" and p.get("uid") == ligne["uid"]
-                    and p.get("pays") == pays and (p.get("ville") or "") == (ville or "")):
-                d = _date(p.get("at"))
-                if d and maintenant and \
-                        (maintenant - d).total_seconds() < REGROUPEMENT_SECONDES:
-                    p["at"] = ligne["at"]
-                    if ligne["prenom"]:
-                        p["prenom"] = ligne["prenom"]
-                    _ecrire(_elaguer(data))
-                    return None
+            if p.get("type", "vue") != "vue" or p.get("uid") != ligne["uid"] \
+                    or p.get("pays") != pays:
+                continue
+            d = _date(p.get("at"))
+            if not (d and maintenant
+                    and (maintenant - d).total_seconds() < REGROUPEMENT_SECONDES):
                 break
+            ancienne_ville = p.get("ville") or ""
+            # Même destination : on rafraîchit l'heure, sans nouvelle ligne.
+            # Le pays venait d'être choisi et la ville arrive : on complète la
+            # ligne au lieu d'en créer une seconde. Choisir « Allemagne » puis
+            # « Berlin » est UN parcours, pas deux visites.
+            if ancienne_ville == (ville or "") or (not ancienne_ville and ville):
+                p["at"] = ligne["at"]
+                if ville:
+                    p["ville"] = ville
+                if ligne["prenom"]:
+                    p["prenom"] = ligne["prenom"]
+                _ecrire(_elaguer(data))
+                return None
+            break
         data.append(ligne)
         _ecrire(_elaguer(data))
     return ligne

@@ -98,6 +98,20 @@ p = parcours.passages()
 print(f"   nouvelle destination -> {p[0]['pays']} · {p[0]['ville']}")
 assert p[0]["ville"] == "Malaga"
 
+titre("4b", "Choisir un pays PUIS sa ville ne fait qu'une seule ligne")
+# C'est le parcours reel : on clique sur le pays, l'ecran des villes s'ouvre,
+# on clique sur la ville. Constate en production le 15 aout 2026 : deux lignes
+# apparaissaient pour un seul visiteur qui affinait son choix.
+avant = len(parcours.passages(400))
+consulter(555111, "🇩🇪 Allemagne")
+consulter(555111, "🇩🇪 Allemagne", "Berlin")
+apres = parcours.passages(400)
+nouvelles = len(apres) - avant
+ligne = [x for x in apres if x.get("uid") == "555111"][0]
+print(f"   pays puis ville -> {nouvelles} ligne(s) : {ligne['pays']} · {ligne['ville']}")
+assert nouvelles == 1, f"{nouvelles} lignes au lieu d'une"
+assert ligne["ville"] == "Berlin", "la ligne doit porter la ville finale"
+
 titre(5, "Le mot de passe « The White Page » ouvre l'acces")
 d = entrer(VEILLEUR, "The White Page")
 print(f"   ok={d.get('ok')} veille={d.get('veille')} admin={d.get('admin')} "
@@ -232,10 +246,76 @@ for r in rep.get("classements", {}).get("villes_commandes", []):
     assert set(r) == {"pays", "ville", "n", "part"}, r
 print("   que des compteurs : aucun montant ne sort de cet acces")
 
+titre("11f", "Le compte de veille recoit les notifications Telegram")
+# On capture ce que le bot envoie, sans rien expedier.
+envois = []
+
+
+class RepTg:
+    status_code = 200
+
+    def json(self):
+        return {"ok": True}
+
+
+import httpx as _httpx
+_httpx.post = lambda url, **kw: (envois.append(kw.get("json") or {}), RepTg())[1]
+os.environ["BOT_TOKEN"] = "123:FAKE"
+os.environ["VEILLE_CHAT_ID"] = str(VEILLEUR)
+
+webapp._rate_store.clear()
+consulter(123456, "🇫🇷 France", "Paris")
+vus = [e for e in envois if str(e.get("chat_id")) == str(VEILLEUR)]
+print(f"   consultation -> {len(vus)} notification(s)")
+for e in vus:
+    print(f"   « {e.get('text','').replace(chr(10), ' | ')} »")
+assert vus, "le compte de veille doit etre prevenu"
+
+envois.clear()
+webapp._prevenir_veille("\U0001F6D2 <b>Nouvelle commande</b>\n"
+                        "\U0001F1EA\U0001F1F8 Espagne \u00b7 <b>Malaga</b>\n"
+                        "n\u00b0\u20260801")
+print(f"   commande     -> {len(envois)} notification(s)")
+print(f"   « {envois[0].get('text','').replace(chr(10), ' | ')} »")
+assert envois
+
+titre("11g", "Les notifications ne portent NI montant NI panier")
+envois.clear()
+webapp._rate_store.clear()
+consulter(123457, "🇪🇸 Espagne", "Barcelone")
+webapp._prevenir_veille("✅ Commande <b>confirmée</b>")
+textes = " ".join(e.get("text", "") for e in envois).lower()
+for interdit in ("€", "eur", "total", "prix", "montant", "coca", "weed",
+                 "panier", "£", "$"):
+    assert interdit not in textes, f"« {interdit} » dans une notification"
+print(f"   {len(envois)} message(s) verifies : aucun prix, aucun produit")
+
+titre("11h", "Sans destinataire, rien n'est envoye et rien ne casse")
+os.environ["VEILLE_CHAT_ID"] = ""
+webapp._veilleurs_connus.clear()
+envois.clear()
+n = webapp._prevenir_veille("test")
+print(f"   aucun destinataire -> {n} envoi(s)")
+assert n == 0 and not envois
+
+titre("11i", "Ouvrir l'acces inscrit le compte aux notifications")
+webapp._veilleurs_connus.clear()
+entrer(VEILLEUR, "The White Page")
+print(f"   comptes retenus : {list(webapp._veilleurs_connus)}")
+assert str(VEILLEUR) in webapp._veilleurs_connus
+os.environ["VEILLE_CHAT_ID"] = ""
+
 titre(12, "Aucune coordonnee dans le journal")
-brut = parcours._FICHIER.read_text(encoding="utf-8")
-for interdit in ("selfie", "adresse", "address", "phone", "lat", "lon", "total", "cart"):
-    assert interdit not in brut.lower(), interdit
-print("   ni adresse, ni photo, ni panier, ni telephone")
+brut = json.loads(parcours._FICHIER.read_text(encoding="utf-8"))
+# On verifie les CLES, pas des sous-chaines : chercher « lon » dans le texte
+# brut attrapait « Londres », et « total » un simple compteur.
+cles = set().union(*(set(x) for x in brut)) if brut else set()
+print(f"   cles presentes : {sorted(cles)}")
+AUTORISEES = {"type", "uid", "prenom", "pays", "ville", "at", "etape", "ref"}
+assert cles <= AUTORISEES, cles - AUTORISEES
+for interdit in ("selfie", "adresse", "address", "phone", "lat", "lon",
+                 "total", "cart", "prix", "montant", "payment"):
+    assert interdit not in cles, interdit
+print("   ni adresse, ni photo, ni panier, ni telephone, ni montant")
 
 fin()

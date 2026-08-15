@@ -18,6 +18,7 @@ orders.json
 blacklist.json
 blocked.json
 parcours.json
+veilleurs.json
 
 # Logs (toutes variantes)
 *.log
