@@ -4924,6 +4924,7 @@ async function checkPassword() {
       state.catalog = data.catalog;
       state.minOrders = data.min_orders;
       state.countryCurrencies = data.country_currencies || {};
+      state.cityPayment = data.city_payment || {};
       state.support = data.support || {};
       state.payment_config = data.payment_config || {};
       // Le mot de passe saisi décide du mode : le serveur répond admin=true
@@ -5353,10 +5354,35 @@ function clearCitySearch() {
 state.productNames = [];
 
 // Fixe les devises proposées pour un pays + la devise active par défaut.
+// Règles de paiement de la ville courante, ou celles du pays à défaut.
+function reglesPaiement() {
+  const cle = `${state.country}|${state.city}`;
+  return (state.cityPayment && state.cityPayment[cle]) || {};
+}
+
 function setCountryCurrency(country) {
-  const list = (state.countryCurrencies && state.countryCurrencies[country]) || ["€", "$", "£"];
+  // Une ville peut n'accepter qu'une devise là où son pays en propose trois :
+  // sa règle passe donc avant celle du pays.
+  const regle = reglesPaiement();
+  const list = (regle.devises && regle.devises.length ? regle.devises
+                : (state.countryCurrencies && state.countryCurrencies[country]))
+               || ["€", "$", "£"];
   state.allowedCurrencies = Array.isArray(list) && list.length ? list : ["€"];
-  state.currency = state.allowedCurrencies[0];
+  if (!state.allowedCurrencies.includes(state.currency)) {
+    state.currency = state.allowedCurrencies[0];
+  }
+}
+
+// N'affiche que les moyens de paiement acceptés dans cette ville. Le serveur
+// refuse de toute façon les autres : ceci évite juste de les proposer.
+function appliquerMoyensPaiement() {
+  const acceptes = reglesPaiement().methodes || ["cash", "link", "crypto"];
+  document.querySelectorAll("#screen-payment .pay-card").forEach(carte => {
+    const m = (carte.getAttribute("onclick") || "").match(/selectPaymentMethod\('([a-z]+)'\)/);
+    carte.style.display = (m && !acceptes.includes(m[1])) ? "none" : "";
+  });
+  // Un seul moyen accepté : on y va directement, sans écran de choix inutile.
+  return acceptes;
 }
 
 // Sélecteur de devise (pills) — affiché seulement si plusieurs devises possibles.
@@ -5572,6 +5598,12 @@ function buildCartScreen() {
 // Maintenant, on continue le flow IN-APP : on va à l'écran paiement.
 function submitCart() {
   try { tg.MainButton.hide(); } catch {}
+  const acceptes = appliquerMoyensPaiement();
+  if (acceptes.length === 1) {
+    // Une seule façon de payer : inutile de faire choisir entre une carte.
+    selectPaymentMethod(acceptes[0]);
+    return;
+  }
   setScreen("payment");
 }
 
@@ -5600,9 +5632,12 @@ function selectPaymentMethod(method) {
   }
 }
 
+// Symbole affiché → code de la devise encaissée.
+const _CODE_DEVISE = { "€": "EUR", "$": "USD", "£": "GBP", "dh": "MAD", "฿": "THB" };
+
 function buildCashCurrencies() {
   const cont = document.getElementById("cashCurrencies");
-  const list = [
+  let list = [
     ["EUR","🇪🇺 EUR — Euro"],
     ["USD","🇺🇸 USD — Dollar"],
     ["GBP","🇬🇧 GBP — Livre sterling"],
@@ -5610,6 +5645,16 @@ function buildCashCurrencies() {
     ["AED","🇦🇪 AED — Dirham EAU"],
     ["MAD","🇲🇦 MAD — Dirham marocain"],
   ];
+  // On ne restreint que les villes ayant une règle explicite, exactement comme
+  // le serveur : ailleurs, toutes les devises restent proposées, y compris
+  // celles qui n'ont pas de symbole dans la liste du pays (franc suisse,
+  // dirham des Émirats). Sinon on retirerait des devises qu'on encaisse.
+  const regle = reglesPaiement();
+  if (regle.devises && regle.devises.length) {
+    const permises = regle.devises.map(s => _CODE_DEVISE[s] || s);
+    const filtre = list.filter(([code]) => permises.includes(code));
+    if (filtre.length) list = filtre;
+  }
   cont.innerHTML = "";
   list.forEach(([code, label]) => {
     const d = document.createElement("div");

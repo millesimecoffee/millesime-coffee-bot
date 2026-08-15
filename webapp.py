@@ -79,6 +79,11 @@ def _borner(d: dict, maxi: int) -> None:
         d.pop(cle, None)
 
 
+# Symbole affiché dans le catalogue → code de la devise réellement encaissée.
+# Le panneau client raisonne en codes, le catalogue en symboles.
+_CODE_DEVISE = {"€": "EUR", "$": "USD", "£": "GBP", "dh": "MAD", "฿": "THB"}
+
+
 def _a_photo(o: dict, champ: str = "selfie_b64") -> bool:
     """Vrai si la commande a cette photo, qu'elle soit dedans (anciennes
     commandes) ou rangée dans son propre fichier (nouvelles)."""
@@ -707,6 +712,18 @@ def api_auth():
             "min_orders": catalog_mod.MIN_ORDER,
             "currencies": catalog_mod.CURRENCIES,
             "country_currencies": {c: catalog_mod.get_currencies(c) for c in catalog_mod.CATALOG},
+            # Règles propres à une ville — UNIQUEMENT celles qui s'écartent de
+            # la règle du pays. En envoyer une pour chaque ville ferait croire
+            # au panneau que toutes sont particulières, et il restreindrait la
+            # liste des devises en liquide partout, pas seulement là où il faut.
+            "city_payment": {
+                f"{pays}|{ville}": {
+                    "methodes": catalog_mod.get_payment_methods(pays, ville),
+                    "devises": catalog_mod.get_currencies(pays, ville),
+                }
+                for (pays, ville) in catalog_mod.PAIEMENT_PAR_VILLE
+                if ville in catalog_mod.CATALOG.get(pays, {})
+            },
             # Contact vendeur/support pour le bouton "Nous contacter" (tracking client)
             # Défaut = @millesimecoffee (username public), surchargeable via env.
             "support": {
@@ -748,6 +765,18 @@ def api_catalog():
             "min_orders": catalog_mod.MIN_ORDER,
             "currencies": catalog_mod.CURRENCIES,
             "country_currencies": {c: catalog_mod.get_currencies(c) for c in catalog_mod.CATALOG},
+            # Règles propres à une ville — UNIQUEMENT celles qui s'écartent de
+            # la règle du pays. En envoyer une pour chaque ville ferait croire
+            # au panneau que toutes sont particulières, et il restreindrait la
+            # liste des devises en liquide partout, pas seulement là où il faut.
+            "city_payment": {
+                f"{pays}|{ville}": {
+                    "methodes": catalog_mod.get_payment_methods(pays, ville),
+                    "devises": catalog_mod.get_currencies(pays, ville),
+                }
+                for (pays, ville) in catalog_mod.PAIEMENT_PAR_VILLE
+                if ville in catalog_mod.CATALOG.get(pays, {})
+            },
         })
     except Exception as exc:
         logger.error("api_catalog: %s", exc)
@@ -1349,11 +1378,40 @@ def api_finalize_order():
         return jsonify({"ok": False, "error": "bad_location"}), 400
 
     # Devise d'affichage choisie par le client — validée contre les devises
-    # autorisées pour ce pays (sinon on prend la devise par défaut du pays).
-    allowed_currencies = catalog_mod.get_currencies(country)
+    # autorisées pour cette VILLE (une ville peut n'accepter qu'une devise,
+    # même si son pays en propose plusieurs).
+    allowed_currencies = catalog_mod.get_currencies(country, city)
     disp_cur = str(data.get("display_currency", "")).strip()
     if disp_cur not in allowed_currencies:
         disp_cur = allowed_currencies[0] if allowed_currencies else "€"
+
+    # Moyen de paiement : la règle de la ville fait foi. Le panneau client
+    # masque déjà ce qui n'est pas proposé, mais rien n'empêche d'envoyer la
+    # requête à la main — c'est ici que la règle tient vraiment.
+    methodes_ok = catalog_mod.get_payment_methods(country, city)
+    methode = str(payment.get("method", "")).strip().lower()
+    if methode and methode not in methodes_ok:
+        logger.warning("commande refusee : paiement %r interdit a %s (%s)",
+                       methode, city, ", ".join(methodes_ok))
+        return jsonify({"ok": False, "error": "paiement_non_accepte",
+                        "acceptes": methodes_ok}), 400
+    # Le liquide se règle dans une devise autorisée. Attention : le panneau
+    # envoie un CODE (« EUR ») là où le catalogue liste des SYMBOLES (« € »),
+    # d'où la table de correspondance — les comparer directement refusait
+    # toutes les commandes en liquide.
+    #
+    # Le contrôle ne s'applique qu'aux villes ayant une règle explicite : les
+    # autres continuent d'accepter n'importe quelle devise en liquide, comme
+    # avant, sans quoi on casserait le franc suisse ou le dirham des Émirats,
+    # qui n'ont pas de symbole dans la liste du pays.
+    if methode == "cash" and catalog_mod.PAIEMENT_PAR_VILLE.get((country, city), {}).get("devises"):
+        codes_ok = {_CODE_DEVISE.get(sym, sym).upper() for sym in allowed_currencies}
+        devise_cash = str(payment.get("currency", "")).strip().upper()
+        if devise_cash and devise_cash not in codes_ok:
+            logger.warning("commande refusee : liquide en %r interdit a %s (%s)",
+                           devise_cash, city, ", ".join(sorted(codes_ok)))
+            return jsonify({"ok": False, "error": "devise_non_acceptee",
+                            "acceptees": sorted(codes_ok)}), 400
 
     products = catalog_mod.CATALOG[country][city]
     total = 0.0

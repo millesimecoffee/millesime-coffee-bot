@@ -465,7 +465,36 @@ COUNTRY_CURRENCIES: dict[str, list[str]] = {
 }
 
 
-def get_currencies(country: str) -> list[str]:
-    """Liste des devises d'affichage proposées pour un pays.
+# ═══════════════════════════════════════════════════════════════════════════
+# Règles de paiement par VILLE, quand elles diffèrent de celles du pays.
+#
+# Une ville peut n'accepter qu'une partie des moyens de paiement, et n'être
+# réglée que dans certaines devises. Ce qui n'est pas listé ici suit le pays.
+# ═══════════════════════════════════════════════════════════════════════════
+METHODES_PAIEMENT = ["cash", "link", "crypto"]
+
+PAIEMENT_PAR_VILLE: dict[tuple[str, str], dict] = {
+    # Espagne : ces trois villes ne prennent que du liquide, en euros.
+    ("🇪🇸 Espagne", "Barcelone"): {"methodes": ["cash"], "devises": ["€"]},
+    ("🇪🇸 Espagne", "Marbella"):  {"methodes": ["cash"], "devises": ["€"]},
+    ("🇪🇸 Espagne", "Malaga"):    {"methodes": ["cash"], "devises": ["€"]},
+}
+
+
+def get_payment_methods(country: str, city: str = "") -> list[str]:
+    """Moyens de paiement acceptés pour cette ville. Tous par défaut."""
+    regle = PAIEMENT_PAR_VILLE.get((country, city)) or {}
+    methodes = [m for m in (regle.get("methodes") or METHODES_PAIEMENT)
+                if m in METHODES_PAIEMENT]
+    # Une ville sans aucun moyen de paiement serait invendable : on retombe
+    # sur le liquide, qui ne dépend d'aucune configuration extérieure.
+    return methodes or ["cash"]
+
+
+def get_currencies(country: str, city: str = "") -> list[str]:
+    """Devises d'affichage proposées. La ville l'emporte sur le pays.
     Défaut = toutes les devises majeures (€/$/£)."""
+    regle = PAIEMENT_PAR_VILLE.get((country, city)) or {}
+    if regle.get("devises"):
+        return list(regle["devises"])
     return COUNTRY_CURRENCIES.get(country, ALL_CURRENCIES)
