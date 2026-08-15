@@ -69,6 +69,18 @@ COMMANDES = [
     {"order_id": "MIL1", "user_id": 999, "status": "pending", "total": 200,
      "country": "🇮🇹 Italie", "city": "Milan", "cart": {}, "user_name": "Luca",
      "created_at": "2026-08-15T10:00:00+02:00"},
+    # Deux commandes annulees : elles ne doivent apparaitre chez personne.
+    {"order_id": "CRE1", "user_id": 1010, "status": "cancelled", "total": 300,
+     "country": "🇬🇷 Grèce", "city": "Crète", "cart": {}, "user_name": "Millésime",
+     "created_at": "2026-08-02T15:47:00+02:00"},
+    {"order_id": "BXL9", "user_id": 1011, "status": "cancelled_by_client", "total": 80,
+     "country": "🇧🇪 Belgique", "city": "Bruxelles", "cart": {}, "user_name": "Sam",
+     "created_at": "2026-08-10T10:00:00+02:00"},
+    # Une livree, pour verifier que les stats ne bougent pas.
+    {"order_id": "ATH1", "user_id": 1012, "status": "delivered", "total": 400,
+     "country": "🇬🇷 Grèce", "city": "Athènes", "cart": {}, "user_name": "Elia",
+     "created_at": "2026-08-14T10:00:00+02:00",
+     "_delivered_at": "2026-08-14T12:00:00+02:00"},
 ]
 storage._load = lambda: [dict(o) for o in COMMANDES]
 storage.get_order = lambda oid: next((dict(o) for o in COMMANDES if o["order_id"] == oid), None)
@@ -203,16 +215,39 @@ r = courses().get_json()
 ids = sorted(c["order_id"] for c in r["courses"])
 print(f"   zones : {r['zones']}")
 print(f"   courses : {ids}")
-assert ids == ["MIL1", "MYK1", "ROM1", "SPL1"], ids
+assert ids == ["ATH1", "MIL1", "MYK1", "ROM1", "SPL1"], ids
+
+titre("11b", "Une commande ANNULEE n'apparait pas dans ses courses")
+# Elle n'est ni une course a faire, ni un gain : elle encombrait l'ecran et
+# pouvait passer pour une course en attente.
+r2 = courses().get_json()
+tous = [c["order_id"] for c in r2["courses"]]
+print(f"   courses affichees : {sorted(tous)}")
+print(f"   CRE1 (annulee) visible : {'CRE1' in tous}")
+assert "CRE1" not in tous, "une commande annulee ne doit pas etre proposee"
+assert "ATH1" in tous, "une livree reste dans son historique"
+
+titre("11c", "Mais elle ne fausse pas ses statistiques")
+st = r2.get("stats") or {}
+periodes = {k: v for k, v in st.items() if isinstance(v, dict) and "ca" in v}
+print(f"   par periode : {periodes}")
+# Seule ATH1 (400 EUR, livree) compte. Les 300 de l'annulee ne doivent
+# apparaitre nulle part, et le nombre de courses comptees reste 1.
+for nom, v in periodes.items():
+    assert v["ca"] in (0.0, 400.0), (nom, v)
+    assert v["n"] in (0, 1), (nom, v)
+print("   l'annulee (300) ne compte nulle part")
 
 titre(12, "Il ne voit rien des autres zones")
-for interdit in ("BXL1", "BCN1", "MRB1", "MLG1", "PAR1"):
+for interdit in ("BXL1", "BCN1", "MRB1", "MLG1", "PAR1", "BXL9"):
     assert interdit not in ids, interdit
 print("   ni Bruxelles, ni Espagne, ni Paris")
 
 titre(13, "Et les autres ne voient rien du sud")
 entrer(BXL, "livreur bruxelles")
 a = sorted(c["order_id"] for c in courses().get_json()["courses"])
+print(f"   annulee de Bruxelles visible : {'BXL9' in a}")
+assert "BXL9" not in a, "l'annulee de Bruxelles ne doit pas s'afficher non plus"
 entrer(ESP, "livreur espagne")
 b = sorted(c["order_id"] for c in courses().get_json()["courses"])
 print(f"   Bruxelles : {a}")

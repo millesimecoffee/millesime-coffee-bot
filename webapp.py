@@ -2480,7 +2480,12 @@ def api_livreur_courses():
 
     miennes = [o for o in toutes if _dans_zone_livreur(o, uid)]
     miennes.sort(key=lambda o: o.get("created_at") or "", reverse=True)
-    courses = [_course_pour_livreur(o) for o in miennes[:200]]
+    # Une commande annulée n'est ni une course à faire, ni un gain : elle n'a
+    # rien à faire sur l'écran du livreur. Elle y restait pourtant, et il
+    # pouvait la prendre pour une course en attente.
+    ANNULEES = ("cancelled", "cancelled_by_client")
+    visibles = [o for o in miennes if (o.get("status") or "pending") not in ANNULEES]
+    courses = [_course_pour_livreur(o) for o in visibles[:200]]
 
     a_traiter = [c for c in courses
                  if c["status"] in ("pending", "confirmed", "delivering")]
