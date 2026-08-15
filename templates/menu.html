@@ -2582,45 +2582,99 @@
 
   /* ── Décor ─────────────────────────────────────────────────────────────── */
   .sp-decor { position: absolute; inset: 0; pointer-events: none; }
-  /* Halo violet derrière le centre + reprise rose près du sol. */
-  .sp-lueur {
+
+  /* Ciel : indigo très sombre en haut, halo violet qui monte de l'horizon.
+     C'est ce halo qui donne sa profondeur à la scène. */
+  .sp-ciel {
     position: absolute; inset: 0;
     background:
-      radial-gradient(78% 46% at 50% 34%, rgba(124,40,190,0.30), transparent 68%),
-      radial-gradient(120% 40% at 50% 100%, rgba(190,40,150,0.20), transparent 70%);
-    animation: spRespire 9s ease-in-out infinite;
+      radial-gradient(135% 64% at 50% 74%, rgba(140,42,205,0.60) 0%, rgba(88,24,145,0.34) 42%, transparent 78%),
+      radial-gradient(90% 40% at 18% 80%, rgba(214,40,160,0.28), transparent 65%),
+      radial-gradient(90% 40% at 84% 80%, rgba(56,90,255,0.26), transparent 65%),
+      linear-gradient(180deg, #070418 0%, #0d0726 40%, #1a0c3d 70%, #10062a 100%);
+    animation: spCiel 11s ease-in-out infinite;
   }
-  @keyframes spRespire { 50% { opacity: 0.72; } }
+  @keyframes spCiel { 50% { opacity: 0.82; } }
 
-  /* Hauteur laissée au ratio du viewBox : en la forçant, le motif de fenêtres
-     était étiré avec le reste et devenait un damier géant. */
+  /* Deux skylines qui se font face, laissant un couloir sombre au milieu :
+     c'est ce vide central qui met le logo en valeur. */
   .sp-ville {
-    position: absolute; left: 0; right: 0; bottom: 17%;
-    width: 100%; height: auto;
-    opacity: 0.5;
+    position: absolute; bottom: 25%;
+    width: 42%; height: auto;
+    opacity: 0.85;
   }
-  /* Décalés vers l'extérieur : les couronnes encadrent le contenu au lieu de
-     lui passer dessus. */
-  .sp-palme {
-    position: absolute; bottom: 6%;
-    width: clamp(165px, 52vw, 330px); height: auto;
-    opacity: 0.92;
+  .sp-ville.g { left: 0; }
+  .sp-ville.d { right: 0; }
+  /* Les fenêtres scintillent : deux calques de même motif, décalés, dont
+     l'opacité alterne. Aucun rectangle n'est déplacé, seule l'opacité varie. */
+  .sp-scintille { animation: spScintille 4.5s ease-in-out infinite; }
+  .sp-scintille.b { animation-delay: 2.25s; }
+  @keyframes spScintille {
+    0%, 100% { opacity: 0.16; }
+    50%      { opacity: 0.5; }
   }
-  .sp-palme.gauche { left: -17%; }
-  .sp-palme.droite { right: -17%; transform: scaleX(-1); }
 
-  /* Sol : reflets néon très étirés, comme une chaussée mouillée. */
-  .sp-sol {
-    position: absolute; left: 0; right: 0; bottom: 0; height: 21%;
-    background:
-      linear-gradient(180deg, rgba(5,6,14,0) 0%, rgba(5,6,14,0.9) 8%, #05060e 100%),
-      repeating-linear-gradient(90deg,
-        rgba(255,45,155,0.16) 0 3px, transparent 3px 26px),
-      repeating-linear-gradient(90deg,
-        rgba(34,211,238,0.12) 13px 16px, transparent 16px 39px),
-      linear-gradient(180deg, rgba(150,40,190,0.30), transparent 75%);
-    filter: blur(1.5px);
+  /* Eau : reflets verticaux, magenta à gauche, bleus à droite, qui ondulent
+     lentement en s'étirant. */
+  .sp-eau {
+    position: absolute; left: 0; right: 0; bottom: 0; height: 26%;
+    overflow: hidden;
+    background: linear-gradient(180deg, #12082c 0%, #0a0420 55%, #060312 100%);
   }
+  /* Un seul dégradé de masque : la composition de plusieurs masques n'est pas
+     appliquée partout, et sans elle les raies couvraient toute la hauteur. */
+  /* Magenta sous la ville de gauche, bleu sous celle de droite : le reflet
+     appartient à ce qui l'éclaire. Deux calques de fond sur un seul élément,
+     chacun calé sur son bord — plus simple et plus sûr qu'un pseudo-élément
+     positionné en pourcentages négatifs. */
+  .sp-reflets {
+    position: absolute; inset: 0;
+    transform-origin: 50% 0;
+    background-image:
+      repeating-linear-gradient(90deg, rgba(255,45,155,0.34) 0 4px, transparent 4px 23px),
+      repeating-linear-gradient(90deg, rgba(80,125,255,0.30) 0 4px, transparent 4px 27px);
+    background-size: 42% 100%, 42% 100%;
+    background-position: 0 0, 100% 0;
+    background-repeat: no-repeat;
+    /* Le masque éteint les reflets vers le bas ET sur les bords : ils sont
+       les plus vifs juste sous la ville, là où la lumière tombe. */
+    -webkit-mask-image: linear-gradient(180deg, #000 0%, rgba(0,0,0,0.42) 44%, transparent 82%);
+            mask-image: linear-gradient(180deg, #000 0%, rgba(0,0,0,0.42) 44%, transparent 82%);
+    filter: blur(2.6px);
+    animation: spOnde 6.5s ease-in-out infinite;
+  }
+  @keyframes spOnde {
+    0%, 100% { transform: scaleY(1);    opacity: 0.7; }
+    50%      { transform: scaleY(1.07); opacity: 1; }
+  }
+  /* Ligne d'horizon : la lisière lumineuse entre la ville et l'eau. */
+  .sp-eau::before {
+    content: ""; position: absolute; left: 0; right: 0; top: 0; height: 2px;
+    background: linear-gradient(90deg,
+      rgba(255,45,155,0.55), rgba(150,60,220,0.35) 45%, rgba(56,110,255,0.55));
+    filter: blur(1px);
+  }
+
+  /* Palmiers : plus grands que la scène, ils sortent du cadre en haut comme
+     sur la référence. Ils oscillent depuis leur base, très lentement. */
+  .sp-palme {
+    position: absolute; bottom: 21%;
+    width: clamp(190px, 54vw, 350px); height: auto;
+  }
+  .sp-palme.gauche { left: -21%; transform-origin: 30% 100%; animation: spBalanceG 9s ease-in-out infinite; }
+  .sp-palme.droite { right: -21%; transform-origin: 70% 100%; animation: spBalanceD 9s ease-in-out infinite; }
+  /* Le miroir du palmier de droite doit être répété dans ses images-clés :
+     une animation sur `transform` remplace la propriété, elle ne s'y ajoute pas. */
+  @keyframes spBalanceG {
+    0%, 100% { transform: rotate(-1deg); }
+    50%      { transform: rotate(1deg); }
+  }
+  @keyframes spBalanceD {
+    0%, 100% { transform: scaleX(-1) rotate(-1deg); }
+    50%      { transform: scaleX(-1) rotate(1deg); }
+  }
+  /* Ourlet rose sur les palmes, comme si la ville les éclairait par-dessous. */
+  .sp-ourlet { stroke: #ff3d74; stroke-width: 1.2; fill: none; opacity: 0.4; }
 
   /* ── Contenu ───────────────────────────────────────────────────────────── */
   /* Une seule colonne centrée : tout partage le même axe vertical, donc la
@@ -2636,7 +2690,11 @@
     position: relative;
     width: clamp(150px, 42vw, 250px); aspect-ratio: 1;
     display: grid; place-items: center;
-    animation: spEntree .75s var(--ease-out) both;
+    animation: spLogoEntree 1s var(--ease-out) both;
+  }
+  @keyframes spLogoEntree {
+    from { opacity: 0; transform: translateY(26px) scale(0.86) rotate(-4deg); }
+    to   { opacity: 1; transform: none; }
   }
   /* Aura : posée DERRIÈRE le logo, elle ne touche pas à l'image elle-même. */
   .sp-aura {
@@ -2669,16 +2727,25 @@
     margin: clamp(18px, 4.4vh, 30px) 0 0;
     font-size: clamp(27px, 8.4vw, 46px);
     font-weight: 800; letter-spacing: -0.5px; line-height: 1.1;
-    background: linear-gradient(90deg, #ff3d9e 0%, #b06bff 52%, #22d3ee 100%);
+    background: linear-gradient(90deg, #ff3d9e 0%, #b06bff 26%, #22d3ee 50%,
+                                       #b06bff 74%, #ff3d9e 100%);
+    background-size: 220% 100%;
     -webkit-background-clip: text; background-clip: text; color: transparent;
-    animation: spEntree .7s var(--ease-out) .18s both;
+    animation: spEntree .7s var(--ease-out) .3s both,
+               spBalayage 5s linear 1s infinite;
+  }
+  /* Le dégradé fait deux fois la largeur du texte et défile : les couleurs
+     glissent d'une lettre à l'autre sans que rien ne bouge à l'écran. */
+  @keyframes spBalayage {
+    from { background-position: 100% 0; }
+    to   { background-position: -100% 0; }
   }
 
   .sp-sous {
     display: flex; align-items: center; justify-content: center;
     gap: clamp(9px, 3vw, 15px);
     margin-top: clamp(9px, 1.8vh, 14px);
-    animation: spEntree .7s var(--ease-out) .32s both;
+    animation: spEntree .7s var(--ease-out) .55s both;
   }
   .sp-sous .txt {
     font-size: clamp(9.5px, 2.9vw, 13px); font-weight: 700;
@@ -2690,7 +2757,12 @@
   }
   /* Les deux traits partagent la même largeur : la symétrie ne dépend pas du
      texte qui les sépare. */
-  .sp-sous .trait { width: clamp(26px, 9vw, 54px); height: 2px; border-radius: 2px; }
+  .sp-sous .trait {
+    width: clamp(26px, 9vw, 54px); height: 2px; border-radius: 2px;
+    animation: spTrait 3.2s ease-in-out infinite;
+  }
+  .sp-sous .trait.d { animation-delay: 1.6s; }
+  @keyframes spTrait { 0%, 100% { opacity: 0.55; } 50% { opacity: 1; } }
   .sp-sous .trait.g { background: linear-gradient(90deg, rgba(255,61,158,0), #ff3d9e); }
   .sp-sous .trait.d { background: linear-gradient(90deg, #22d3ee, rgba(34,211,238,0)); }
 
@@ -2704,7 +2776,7 @@
     border: 1px solid rgba(176,107,255,0.55);
     box-shadow: 0 0 16px rgba(150,60,220,0.30), inset 0 1px 3px rgba(0,0,0,0.6);
     overflow: hidden;
-    animation: spEntree .7s var(--ease-out) .46s both;
+    animation: spEntree .7s var(--ease-out) .8s both;
   }
   .sp-remplissage {
     position: absolute; left: 0; top: 0; bottom: 0;
@@ -2712,8 +2784,22 @@
     border-radius: 999px;
     background: linear-gradient(90deg, #ff2d9b 0%, #b026ff 38%, #4f7dff 70%, #22d3ee 100%);
     box-shadow: 0 0 14px rgba(255,45,155,0.45);
+    overflow: hidden;
     /* La largeur est posée à chaque image par le script : pas de transition,
        sinon l'affichage traînerait derrière le pourcentage annoncé. */
+  }
+  /* Reflet qui traverse le remplissage, en boucle. Il se déplace par
+     `transform`, donc sans recalcul de mise en page. */
+  .sp-remplissage::after {
+    content: ""; position: absolute; inset: 0;
+    background: linear-gradient(100deg, transparent 20%,
+                rgba(255,255,255,0.42) 50%, transparent 80%);
+    transform: translateX(-100%);
+    animation: spReflet 1.9s ease-in-out infinite;
+  }
+  @keyframes spReflet {
+    0%   { transform: translateX(-100%); }
+    60%, 100% { transform: translateX(100%); }
   }
   .sp-pct {
     position: absolute; right: 12px; top: 50%; transform: translateY(-50%);
@@ -2726,7 +2812,7 @@
     margin-top: clamp(14px, 2.6vh, 22px);
     font-size: clamp(12px, 3.4vw, 14.5px);
     color: #cfc9de; letter-spacing: 0.2px;
-    animation: spEntree .7s var(--ease-out) .58s both;
+    animation: spEntree .7s var(--ease-out) 1s both;
   }
   /* Réservé pour les trois points : sans ça le texte se recentrerait à chaque
      point qui apparaît. */
@@ -2738,8 +2824,12 @@
   }
 
   @media (prefers-reduced-motion: reduce) {
-    .sp-image, .sp-aura, .sp-lueur { animation: none; }
+    .sp-image, .sp-aura, .sp-ciel, .sp-scintille, .sp-reflets,
+    .sp-palme, .sp-sous .trait, .sp-remplissage::after { animation: none; }
     .sp-logo, .sp-titre, .sp-sous, .sp-barre, .sp-etat { animation: none; opacity: 1; transform: none; }
+    /* Le miroir du palmier de droite vient de son animation : sans elle, il
+       faut le reposer à la main, sinon les deux palmiers regardent du même côté. */
+    .sp-palme.droite { transform: scaleX(-1); }
     .splash { transition: opacity .3s linear, visibility .3s; }
     .splash.hide { transform: none; }
   }
@@ -2778,39 +2868,53 @@
 <div id="splash" class="splash" role="status" aria-label="Chargement de Millésime Coffee">
 
   <div class="sp-decor" aria-hidden="true">
-    <div class="sp-lueur"></div>
+    <div class="sp-ciel"></div>
 
-    <!-- Skyline : la silhouette est dessinée une fois, puis repassée avec un
-         motif de fenêtres. Deux passes valent mieux que cent rectangles. -->
-    <svg class="sp-ville" viewBox="0 0 400 150">
+    <!-- Skyline de gauche, fenêtres magenta. La silhouette est décrite une
+         fois puis repassée deux fois avec des motifs de fenêtres décalés :
+         c'est l'alternance de leurs opacités qui fait scintiller la ville. -->
+    <svg class="sp-ville g" viewBox="0 0 200 170">
       <defs>
-        <pattern id="spFenetres" width="8" height="13" patternUnits="userSpaceOnUse">
-          <rect x="2" y="3" width="2.4" height="4" fill="#ff2d9b" opacity="0.32"/>
-          <rect x="2" y="9" width="2.4" height="2" fill="#b06bff" opacity="0.20"/>
+        <pattern id="spFenA" width="7" height="11" patternUnits="userSpaceOnUse">
+          <rect x="1.8" y="2" width="1.6" height="2.6" fill="#ff2d9b"/>
         </pattern>
-        <path id="spImmeubles" d="
-          M0,150 V96 h22 V70 h16 V96 h14 V58 h20 V44 h10 V58 h18 V88 h16 V66 h22 V150 Z
-          M140,150 V74 h18 V40 h12 V22 h8 V40 h14 V74 h16 V92 h20 V62 h18 V150 Z
-          M248,150 V84 h20 V54 h16 V34 h10 V54 h16 V84 h18 V70 h24 V96 h20 V78 h28 V150 Z"/>
+        <pattern id="spFenB" width="7" height="11" patternUnits="userSpaceOnUse">
+          <rect x="1.8" y="7" width="1.6" height="2" fill="#c651ff"/>
+        </pattern>
+        <path id="spVilleG" d="M0,170 V44 h14 V26 h10 V44 h12 V64 h16 V40 h12 V78 h14
+          V58 h12 V90 h16 V76 h14 V106 h18 V96 h16 V124 h20 V114 h26 V170 Z"/>
       </defs>
-      <use href="#spImmeubles" fill="#0b0818"/>
-      <use href="#spImmeubles" fill="url(#spFenetres)"/>
-      <!-- Antennes -->
-      <g stroke="#ff2d9b" stroke-width="1" opacity="0.5">
-        <line x1="178" y1="22" x2="178" y2="8"/><line x1="293" y1="34" x2="293" y2="20"/>
+      <use href="#spVilleG" fill="#0a0620"/>
+      <use href="#spVilleG" fill="url(#spFenA)" class="sp-scintille"/>
+      <use href="#spVilleG" fill="url(#spFenB)" class="sp-scintille b"/>
+    </svg>
+
+    <!-- Skyline de droite, fenêtres bleues : même silhouette, retournée. -->
+    <svg class="sp-ville d" viewBox="0 0 200 170">
+      <defs>
+        <pattern id="spFenC" width="7" height="11" patternUnits="userSpaceOnUse">
+          <rect x="1.8" y="2" width="1.6" height="2.6" fill="#3b6dff"/>
+        </pattern>
+        <pattern id="spFenD" width="7" height="11" patternUnits="userSpaceOnUse">
+          <rect x="1.8" y="7" width="1.6" height="2" fill="#22d3ee"/>
+        </pattern>
+        <path id="spVilleD" d="M0,170 V44 h14 V26 h10 V44 h12 V64 h16 V40 h12 V78 h14
+          V58 h12 V90 h16 V76 h14 V106 h18 V96 h16 V124 h20 V114 h26 V170 Z"/>
+      </defs>
+      <g transform="translate(200,0) scale(-1,1)">
+        <use href="#spVilleD" fill="#0a0620"/>
+        <use href="#spVilleD" fill="url(#spFenC)" class="sp-scintille"/>
+        <use href="#spVilleD" fill="url(#spFenD)" class="sp-scintille b"/>
       </g>
     </svg>
 
-    <!-- Palmier : un tronc courbe et neuf palmes. Le second est le même,
-         retourné, ce qui garantit la symétrie des deux côtés. -->
-    <svg class="sp-palme gauche" viewBox="0 0 200 400" fill="#0d0a1c">
-      <!-- Tronc : il monte de la base vers la couronne, en s'affinant. -->
+    <div class="sp-eau"><div class="sp-reflets"></div></div>
+
+    <!-- Palmier : un tronc courbe, sept palmes en éventail qui retombent aux
+         extrémités, et un ourlet rose qui reprend la lumière de la ville. -->
+    <svg class="sp-palme gauche" viewBox="0 0 200 400" fill="#050212">
       <path d="M88,126 C76,196 58,288 30,400 L60,400 C76,294 92,206 101,128 Z"/>
-      <!-- Palmes. Chacune est une lentille : une courbe qui bombe d'un côté à
-           l'aller, de l'autre au retour — ce qui lui donne de l'épaisseur. Les
-           extrémités retombent plus bas que la couronne : c'est ce port en
-           fontaine qui fait lire un palmier, pas des rayons droits. -->
-      <g>
+      <g id="spFrondesG">
         <path d="M95,118 Q45,95 6,150 Q52,130 95,118 Z"/>
         <path d="M95,118 Q48,76 14,100 Q56,112 95,118 Z"/>
         <path d="M95,118 Q48,74 44,40 Q84,80 95,118 Z"/>
@@ -2819,16 +2923,12 @@
         <path d="M95,118 Q148,78 184,102 Q138,114 95,118 Z"/>
         <path d="M95,118 Q152,96 192,150 Q142,130 95,118 Z"/>
       </g>
+      <use href="#spFrondesG" class="sp-ourlet"/>
       <g><circle cx="90" cy="126" r="3.5"/><circle cx="99" cy="129" r="3.5"/><circle cx="94" cy="135" r="3.5"/></g>
     </svg>
-    <svg class="sp-palme droite" viewBox="0 0 200 400" fill="#0d0a1c">
-      <!-- Tronc : il monte de la base vers la couronne, en s'affinant. -->
+    <svg class="sp-palme droite" viewBox="0 0 200 400" fill="#050212">
       <path d="M88,126 C76,196 58,288 30,400 L60,400 C76,294 92,206 101,128 Z"/>
-      <!-- Palmes. Chacune est une lentille : une courbe qui bombe d'un côté à
-           l'aller, de l'autre au retour — ce qui lui donne de l'épaisseur. Les
-           extrémités retombent plus bas que la couronne : c'est ce port en
-           fontaine qui fait lire un palmier, pas des rayons droits. -->
-      <g>
+      <g id="spFrondesD">
         <path d="M95,118 Q45,95 6,150 Q52,130 95,118 Z"/>
         <path d="M95,118 Q48,76 14,100 Q56,112 95,118 Z"/>
         <path d="M95,118 Q48,74 44,40 Q84,80 95,118 Z"/>
@@ -2837,10 +2937,9 @@
         <path d="M95,118 Q148,78 184,102 Q138,114 95,118 Z"/>
         <path d="M95,118 Q152,96 192,150 Q142,130 95,118 Z"/>
       </g>
+      <use href="#spFrondesD" class="sp-ourlet"/>
       <g><circle cx="90" cy="126" r="3.5"/><circle cx="99" cy="129" r="3.5"/><circle cx="94" cy="135" r="3.5"/></g>
     </svg>
-
-    <div class="sp-sol"></div>
   </div>
 
   <div class="sp-contenu">
