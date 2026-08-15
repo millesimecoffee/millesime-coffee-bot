@@ -1683,6 +1683,17 @@
     font-size: 15px; font-weight: 650;
   }
   .tk-cta2:active { background: #ededf2; }
+  /* Annulation : volontairement sans fond ni cadre. Elle doit être trouvable,
+     pas invitante — on ne clique pas là-dessus par réflexe. */
+  .tk-annuler {
+    display: block; width: 100%; margin-top: 12px; padding: 11px;
+    border: none; background: none; cursor: pointer;
+    color: #d3455b; font-size: 13.5px; font-weight: 600;
+    font-family: inherit; text-decoration: underline;
+    text-underline-offset: 3px; text-decoration-thickness: 1px;
+  }
+  .tk-annuler:active { opacity: 0.6; }
+  .tk-annuler:disabled { opacity: 0.45; cursor: default; text-decoration: none; }
 
   @media (max-height: 700px) {
     .tk-feuille { max-height: 76vh; }
@@ -3917,6 +3928,10 @@
     </button>
     <button class="tk-cta2" onclick="basculerDetailsCommande()" id="trackDetailsBtn">
       Voir les détails de la commande</button>
+    <!-- Retrait de la commande : possible tant qu'elle n'est pas remise en
+         main propre. Discret, en dernier, pour ne pas être touché par erreur. -->
+    <button class="tk-annuler" id="trackAnnuler" onclick="annulerMaCommande()"
+            style="display:none;">Annuler ma commande</button>
   </div>
 </div>
 
@@ -7700,11 +7715,71 @@ function renderTracking(data) {
   }
   majBadgeChatSuivi();
 
+  // Annulation : proposée tant que la commande n'est pas remise en main
+  // propre. Une commande livrée ne s'annule pas — ce serait un remboursement,
+  // et ça se règle en écrivant à la boutique.
+  const btnAnnul = document.getElementById("trackAnnuler");
+  if (btnAnnul) {
+    const possible = ["pending", "confirmed", "delivering"].includes(status);
+    btnAnnul.style.display = possible ? "block" : "none";
+    btnAnnul.disabled = false;
+    btnAnnul.textContent = "Annuler ma commande";
+    // L'identifiant vient du relevé : sans lui, le bouton ne saurait pas quoi
+    // annuler quand le client ouvre le suivi depuis une notification.
+    if (data.order_id) btnAnnul.dataset.commande = data.order_id;
+  }
+
   // Détails déjà ouverts : les rafraîchir avec les données du dernier relevé.
   const det = document.getElementById("trackDetails");
   if (det && det.style.display !== "none") dessinerDetailsCommande();
 
   updateTrackingMap(data);
+}
+
+// ── Annulation par le client ───────────────────────────────────────────────
+// Le client reprend sa commande tant qu'elle ne lui a pas été remise. La
+// boutique — et le livreur s'il roule déjà — sont prévenus sur Telegram :
+// sans ça, une commande annulée continuerait d'être préparée.
+async function annulerMaCommande() {
+  const btn = document.getElementById("trackAnnuler");
+  const id = (btn && btn.dataset.commande) || state._trackOrderId || "";
+  if (!id) { showToast("Commande introuvable", true); return; }
+
+  const ok = await new Promise((res) => {
+    try {
+      tg.showConfirm("Annuler définitivement cette commande ?\n\n"
+                   + "La boutique en sera informée tout de suite. "
+                   + "Cette action est irréversible.", r => res(!!r));
+    } catch { res(confirm("Annuler définitivement cette commande ?")); }
+  });
+  if (!ok) return;
+
+  hapticMedium();
+  btn.disabled = true;
+  btn.textContent = "Annulation…";
+  try {
+    const r = await apiFetch(`/api/client/order/${encodeURIComponent(id)}/cancel`,
+                             { method: "POST", body: JSON.stringify({ initData: tg.initData || "" }) });
+    const d = await r.json();
+    if (!d.ok) {
+      btn.disabled = false;
+      btn.textContent = "Annuler ma commande";
+      showToast(d.error === "trop_tard"
+                  ? "Trop tard : la commande a déjà été livrée"
+                : d.error === "not_yours" ? "Cette commande n'est pas la vôtre"
+                : "Annulation impossible", true);
+      return;
+    }
+    hapticSuccess();
+    showToast("Commande annulée");
+    // On relit le suivi tout de suite : le titre, les étapes et le bandeau
+    // doivent basculer sur « annulée » sans attendre le prochain relevé.
+    loadTrackingOnce();
+  } catch {
+    btn.disabled = false;
+    btn.textContent = "Annuler ma commande";
+    showToast("Réseau indisponible", true);
+  }
 }
 
 // ── Messagerie depuis le suivi ─────────────────────────────────────────────

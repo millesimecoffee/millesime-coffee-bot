@@ -65,6 +65,7 @@ ENDPOINTS = [
     ("/api/admin/send_message",      {"user_id": OWNER, "text": "coucou"}),
     ("/api/admin/selfie/envoyer",    {"order_id": "R1"}),
     ("/api/client/orders",           {"limit": 10}),
+    ("/api/client/order/R1/cancel",  {}),
     ("/api/order/track",             {"order_id": "R1"}),
     ("/api/notify/city",             {"country": "🇫🇷 France", "city": "Paris"}),
     # Endpoints ajoutés depuis : messagerie, livreur, diagnostic.

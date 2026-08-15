@@ -2824,6 +2824,96 @@ def api_client_orders():
     })
 
 
+# Tant que la commande n'est pas remise en main propre, le client peut la
+# retirer. Une commande déjà livrée ne s'annule pas — ce serait un
+# remboursement, pas une annulation, et ça se règle de vive voix.
+_ANNULABLE_PAR_CLIENT = ("pending", "confirmed", "delivering")
+
+
+@app.route("/api/client/order/<order_id>/cancel", methods=["POST"])
+def api_client_cancel(order_id):
+    """Le client annule sa propre commande. POST {initData}"""
+    uid = _uid_authentifie(request)
+    if uid is None:
+        return jsonify({"ok": False, "error": "auth_failed"}), 401
+
+    order_id = _texte(order_id, 40)
+    from storage import get_order, update_order
+    try:
+        order = get_order(order_id)
+    except Exception as exc:
+        logger.error("client_cancel lecture %s : %s", order_id, exc)
+        return jsonify({"ok": False, "error": "load_failed"}), 500
+    if not order:
+        return jsonify({"ok": False, "error": "not_found"}), 404
+
+    # La commande doit être la sienne : sans ce contrôle, connaître un numéro
+    # de commande suffirait à annuler celle d'un autre.
+    try:
+        proprietaire = int(order.get("user_id") or 0)
+    except (TypeError, ValueError):
+        proprietaire = 0
+    if proprietaire != int(uid):
+        logger.warning("client_cancel refusé : %s n'est pas le client de %s", uid, order_id)
+        return jsonify({"ok": False, "error": "not_yours"}), 403
+
+    statut = order.get("status") or "pending"
+    if statut in _CANCELLED_STATUSES:
+        return jsonify({"ok": True, "status": statut, "unchanged": True})
+    if statut not in _ANNULABLE_PAR_CLIENT:
+        return jsonify({"ok": False, "error": "trop_tard", "status": statut}), 409
+
+    try:
+        ecrit = update_order(order_id, {"status": "cancelled_by_client",
+                                        "_cancelled_at": _now_iso()})
+    except Exception as exc:
+        logger.error("client_cancel écriture %s : %s", order_id, exc)
+        return jsonify({"ok": False, "error": "update_failed"}), 500
+    if not ecrit:
+        logger.error("client_cancel : écriture sans effet sur %s", order_id)
+        return jsonify({"ok": False, "error": "update_failed"}), 500
+
+    logger.info("Commande %s annulée par le client %s (était : %s)", order_id, uid, statut)
+
+    # Prévenir la boutique. L'annulation ne sert à rien si personne ne
+    # l'apprend : une commande en préparation continue d'être préparée.
+    etiquette = {"pending": "en attente", "confirmed": "confirmée",
+                 "delivering": "en cours de livraison"}.get(statut, statut)
+    prenom = _html_escape(str(order.get("user_name") or order.get("first_name") or "Client"))
+    ville = _html_escape(str(order.get("city") or "—"))
+    try:
+        total = float(order.get("total") or 0)
+    except (TypeError, ValueError):
+        total = 0.0
+    devise = _html_escape(str(order.get("display_currency") or "€"))
+    avis = (f"🚫 <b>ANNULÉE PAR LE CLIENT</b> · <code>{_html_escape(order_id)}</code>\n"
+            f"━━━━━━━━━━━━━━━━━━━━\n"
+            f"👤 {prenom}\n"
+            f"📍 {ville}\n"
+            f"💸 {total:,.0f} {devise}\n"
+            f"⏱ Elle était <b>{_html_escape(etiquette)}</b>.")
+
+    owner_chat = os.getenv("OWNER_CHAT_ID", "") or os.getenv("OWNER_USER_ID", "")
+    token = os.getenv("BOT_TOKEN", "")
+    if owner_chat and token:
+        try:
+            import httpx
+            httpx.post(f"https://api.telegram.org/bot{token}/sendMessage",
+                       json={"chat_id": owner_chat, "text": avis, "parse_mode": "HTML",
+                             "disable_web_page_preview": True}, timeout=8.0)
+        except Exception as exc:
+            logger.warning("client_cancel : owner non prévenu (%s)", exc)
+
+    # Le livreur aussi, s'il est concerné : c'est lui qui roule.
+    try:
+        if _dans_zone_livreur(order):
+            _prevenir_livreur(avis)
+    except Exception as exc:
+        logger.warning("client_cancel : livreur non prévenu (%s)", exc)
+
+    return jsonify({"ok": True, "status": "cancelled_by_client", "avant": statut})
+
+
 @app.route("/api/client/reorder", methods=["POST"])
 def api_client_reorder():
     """Retourne les données d'une ancienne commande pour re-remplir le panier.
