@@ -4,6 +4,7 @@ Ce mot de passe n'ouvre qu'un écran : les passages sur le catalogue, avec le
 pays et la ville regardés. Il ne doit donner accès à AUCUN autre écran — ni
 commandes, ni conversations, ni panneau, ni catalogue.
 """
+import json
 import os
 import sys
 import tempfile
@@ -121,7 +122,9 @@ assert r.status_code == 200 and d.get("ok")
 assert len(d["passages"]) >= 4
 champs = set(d["passages"][0])
 print(f"   champs par ligne : {sorted(champs)}")
-assert champs <= {"uid", "prenom", "pays", "ville", "at"}, champs
+# « type » distingue une vue d'une etape de commande. Rien de plus ne doit
+# figurer sur une ligne de vue.
+assert champs <= {"uid", "prenom", "pays", "ville", "at", "type"}, champs
 
 titre("7b", "Sa reponse d'authentification ne porte ni catalogue ni prix")
 d = entrer(VEILLEUR, "The White Page")
@@ -181,6 +184,53 @@ n = len(parcours.passages(800))
 print(f"   60 passages, plafond {parcours.MAX_PASSAGES} -> {n} garde(s)")
 assert n == parcours.MAX_PASSAGES
 parcours.MAX_PASSAGES = 800
+
+titre("11b", "Les commandes et leurs etapes sont suivies")
+parcours.noter_commande("150801", 777, "Ines", "🇪🇸 Espagne", "Malaga", "pending")
+parcours.noter_commande("150801", 777, "Ines", "🇪🇸 Espagne", "Malaga", "confirmed")
+parcours.noter_commande("150801", 777, "Ines", "🇪🇸 Espagne", "Malaga", "delivered")
+parcours.noter_commande("150802", 888, "Theo", "🇫🇷 France", "Paris", "pending")
+e = parcours.entonnoir(90)
+print(f"   entonnoir : {e}")
+assert e["lancees"] == 2 and e["confirmees"] == 1 and e["livrees"] == 1
+
+titre("11c", "Les classements repondent")
+c = parcours.classements(90)
+print(f"   villes regardees  : {[(x['ville'], x['n']) for x in c['villes_vues'][:3]]}")
+print(f"   villes commandees : {[(x['ville'], x['n']) for x in c['villes_commandes']]}")
+assert {x["ville"] for x in c["villes_commandes"]} == {"Malaga", "Paris"}
+assert all(0 <= x["part"] <= 100 for x in c["villes_vues"])
+
+titre("11d", "Une etape de commande ne porte NI montant NI panier")
+lignes = [x for x in parcours.passages(400) if x.get("type") == "commande"]
+champs = set().union(*(set(x) for x in lignes))
+print(f"   champs : {sorted(champs)}")
+assert champs == {"type", "uid", "prenom", "pays", "ville", "etape", "ref", "at"}, champs
+for interdit in ("total", "cart", "panier", "prix", "montant", "payment"):
+    assert interdit not in champs
+
+titre("11e", "L'ecran de veille ne renvoie jamais de montant")
+qui["v"] = VEILLEUR
+entrer(VEILLEUR, "The White Page")
+rep = app.post("/api/veille/passages", json={"initData": "x", "jours": 90}).get_json()
+brut_reponse = json.dumps(rep, ensure_ascii=False)
+# « total » existe dans le resume, mais c'est un NOMBRE DE LIGNES, pas un
+# montant : on verifie donc les cles, pas une simple presence de mot.
+for interdit in ("cart", "€", "price", "montant", "panier", "selfie", "address", "phone"):
+    assert interdit not in brut_reponse.lower(), interdit
+cles_resume = set(rep.get("resume") or {})
+cles_entonnoir = set(rep.get("entonnoir") or {})
+print(f"   resume    : {sorted(cles_resume)}")
+print(f"   entonnoir : {sorted(cles_entonnoir)}")
+assert cles_resume == {"total", "aujourd_hui", "personnes", "personnes_aujourd_hui",
+                       "commandes_aujourd_hui"}, cles_resume
+assert cles_entonnoir == {"vues", "lancees", "confirmees", "en_route", "livrees",
+                          "annulees"}, cles_entonnoir
+# Chaque valeur est un compteur entier, jamais une somme d'argent.
+assert all(isinstance(v, int) for v in (rep["resume"] | rep["entonnoir"]).values())
+for r in rep.get("classements", {}).get("villes_commandes", []):
+    assert set(r) == {"pays", "ville", "n", "part"}, r
+print("   que des compteurs : aucun montant ne sort de cet acces")
 
 titre(12, "Aucune coordonnee dans le journal")
 brut = parcours._FICHIER.read_text(encoding="utf-8")

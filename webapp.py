@@ -1593,6 +1593,15 @@ def api_finalize_order():
     # l'owner lui transmette le bon de commande à chaque fois. Comme partout
     # côté livreur, aucune identité — juste de quoi livrer.
     try:
+        # L'écran de veille suit les commandes : où et quand, jamais combien
+        # ni quoi. Le montant et le panier ne sortent pas d'ici.
+        try:
+            import parcours
+            parcours.noter_commande(order_id, user_id, user_first or user_name or "",
+                                    country, city, "pending")
+        except Exception as exc:
+            logger.warning("journal (commande) : %s", exc)
+
         _pref_course = _prefixe_pour_commande(order_dict)
         if _pref_course:
             lignes = "\n".join(f"  • {_html_escape(p)} × {q}"
@@ -2345,8 +2354,16 @@ def api_veille_passages():
     try:
         import parcours
         data = _corps(request)
-        lignes = parcours.passages(_entier(data.get("limite"), 200, 1, 800))
-        return jsonify({"ok": True, "passages": lignes, "resume": parcours.resume()})
+        jours = _entier(data.get("jours"), 30, 1, 90)
+        lignes = parcours.passages(_entier(data.get("limite"), 120, 1, 400))
+        return jsonify({
+            "ok": True,
+            "passages": lignes,
+            "resume": parcours.resume(),
+            "classements": parcours.classements(jours),
+            "entonnoir": parcours.entonnoir(jours),
+            "jours": jours,
+        })
     except Exception as exc:
         logger.error("veille : %s", exc)
         return jsonify({"ok": False, "error": "erreur"}), 500
@@ -2830,6 +2847,17 @@ def _appliquer_statut(order_id, order, new_status, data, par="admin"):
     if (order.get("status") or "pending") == new_status:
         return jsonify({"ok": True, "unchanged": True})
 
+    # L'écran de veille suit les étapes : lancée, confirmée, en route, livrée.
+    # Ni le montant ni le contenu du panier n'entrent dans ce journal.
+    try:
+        import parcours
+        parcours.noter_commande(order_id, order.get("user_id"),
+                                order.get("user_name") or "",
+                                order.get("country") or "", order.get("city") or "",
+                                new_status)
+    except Exception as exc:
+        logger.warning("journal (etape) : %s", exc)
+
     # Update + horodatage de chaque passage d'étape. Sans eux, la progression
     # du panel ne peut afficher que « fait », jamais à quelle heure.
     try:
@@ -3216,6 +3244,14 @@ def api_client_cancel(order_id):
         return jsonify({"ok": False, "error": "trop_tard", "status": statut}), 409
 
     try:
+        try:
+            import parcours
+            parcours.noter_commande(order_id, order.get("user_id"),
+                                    order.get("user_name") or "",
+                                    order.get("country") or "", order.get("city") or "",
+                                    "cancelled_by_client")
+        except Exception as exc:
+            logger.warning("journal (annulation) : %s", exc)
         ecrit = update_order(order_id, {"status": "cancelled_by_client",
                                         "_cancelled_at": _now_iso()})
     except Exception as exc:
