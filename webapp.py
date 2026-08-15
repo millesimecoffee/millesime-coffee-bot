@@ -666,14 +666,12 @@ def api_auth():
     # testé en premier : il ouvre le panel depuis n'importe quel compte et
     # n'importe quel téléphone, c'est lui qui donne le droit, pas l'identité.
     mdp_admin = _admin_password()
-    est_admin = bool(mdp_admin) and hmac.compare_digest(
-        _normalise_mdp(pwd), _normalise_mdp(mdp_admin))
+    est_admin = bool(mdp_admin) and _meme_mdp(pwd, mdp_admin)
 
     # Puis celui du livreur : même principe, mais il n'ouvre que les courses
     # de sa zone, sans aucune identité de client.
     mdp_livreur = _livreur_password()
-    est_livreur = (not est_admin and bool(mdp_livreur) and hmac.compare_digest(
-        _normalise_mdp(pwd), _normalise_mdp(mdp_livreur)))
+    est_livreur = not est_admin and bool(mdp_livreur) and _meme_mdp(pwd, mdp_livreur)
 
     if (not est_admin and not est_livreur
             and (not pwd or _normalise_mdp(pwd) != _normalise_mdp(expected))):
@@ -1694,6 +1692,23 @@ def _normalise_mdp(s: str) -> str:
     return " ".join((s or "").split()).casefold()
 
 
+def _meme_mdp(fourni: str, attendu: str) -> bool:
+    """Compare deux mots de passe en temps constant, quels que soient les
+    caractères.
+
+    `hmac.compare_digest` refuse les chaînes contenant du non-ASCII : il lève
+    TypeError. Un client qui tapait un accent — ou n'importe quel caractère
+    cyrillique depuis l'ajout du russe — recevait donc une erreur 500 au lieu
+    d'un simple « mot de passe incorrect », et la boutique paraissait en panne.
+    Constaté en production. Sur des octets, la comparaison accepte tout et
+    reste à temps constant.
+    """
+    return hmac.compare_digest(
+        _normalise_mdp(fourni).encode("utf-8"),
+        _normalise_mdp(attendu).encode("utf-8"),
+    )
+
+
 def _admin_is_unlocked(uid) -> bool:
     with _admin_lock:
         maintenant = time.time()
@@ -1958,6 +1973,11 @@ def _resoudre_ref_chat(ref: str):
     ref = _texte(ref, 64)
     if not ref:
         return None, None
+    # La référence vient du client : elle peut contenir n'importe quoi, et
+    # `compare_digest` lève une TypeError — donc une erreur 500 — sur une
+    # chaîne non-ASCII. Une vraie référence est un condensat hexadécimal ;
+    # tout le reste est refusé avant même la comparaison.
+    ref_octets = ref.encode("utf-8")
     try:
         from storage import _load as _load_all
         commandes = _load_all() or []
@@ -1965,7 +1985,8 @@ def _resoudre_ref_chat(ref: str):
         return None, None
     for o in commandes:
         oid = str(o.get("order_id") or "")
-        if oid and _dans_zone_livreur(o) and hmac.compare_digest(_ref_chat(oid), ref):
+        if oid and _dans_zone_livreur(o) and hmac.compare_digest(
+                _ref_chat(oid).encode("utf-8"), ref_octets):
             try:
                 return int(o.get("user_id") or 0) or None, o
             except (TypeError, ValueError):
@@ -2248,7 +2269,7 @@ def api_admin_unlock():
 
     # compare_digest : temps constant, pour ne pas laisser deviner le mot de
     # passe caractère par caractère en mesurant le temps de réponse.
-    if not hmac.compare_digest(_normalise_mdp(fourni), _normalise_mdp(attendu)):
+    if not _meme_mdp(fourni, attendu):
         logger.warning("panel admin : mot de passe refuse pour %s", uid)
         return jsonify({"ok": False, "error": "wrong_password"}), 403
 
