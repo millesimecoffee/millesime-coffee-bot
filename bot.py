@@ -3197,10 +3197,21 @@ def main():
     else:
         logger.warning("NGROK_AUTH_TOKEN absent — selfie WebApp désactivé")
 
+    async def _post_shutdown(app: Application) -> None:
+        """Arrêt propre. Render tue le processus à chaque redéploiement ;
+        sans cette fermeture, les boucles internes de Telethon partent en
+        vrille et remplissent les journaux d'erreurs qui n'en sont pas."""
+        try:
+            import personal_sender
+            await personal_sender.fermer_client()
+        except Exception as exc:
+            logger.warning("Arrêt Telethon : %s", exc)
+
     app = (
         Application.builder()
         .token(BOT_TOKEN)
         .post_init(_post_init)
+        .post_shutdown(_post_shutdown)
         .build()
     )
     app.add_handler(build_conv_handler())

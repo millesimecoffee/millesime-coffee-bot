@@ -671,7 +671,8 @@ def api_auth():
     # Puis celui du livreur : même principe, mais il n'ouvre que les courses
     # de sa zone, sans aucune identité de client.
     mdp_livreur = _livreur_password()
-    est_livreur = not est_admin and bool(mdp_livreur) and _meme_mdp(pwd, mdp_livreur)
+    est_livreur = (not est_admin and bool(mdp_livreur) and _meme_mdp(pwd, mdp_livreur)
+                   and _compte_livreur_autorise(uid))
 
     if (not est_admin and not est_livreur
             and (not pwd or _normalise_mdp(pwd) != _normalise_mdp(expected))):
@@ -1934,6 +1935,28 @@ def _prevenir_livreur(texte: str, cle_anti_repetition: str = "") -> int:
         except Exception as exc:
             logger.warning("notif livreur %s : %s", cible, exc)
     return envoyes
+
+
+def _compte_livreur_autorise(uid) -> bool:
+    """Ce compte a-t-il le droit d'ouvrir le panneau livreur ?
+
+    Le bon mot de passe ne suffit plus : il faut aussi être sur la liste des
+    comptes déclarés (LIVREUR_CHAT_ID). Un mot de passe finit toujours par
+    circuler — celui-ci est arrivé entre les mains d'un client, qui l'avait
+    saisi et se retrouvait inscrit comme livreur. Avec cette liste, un mot de
+    passe qui fuite ne donne accès à rien.
+
+    Tant que LIVREUR_CHAT_ID n'est pas renseigné, on garde l'ancien
+    comportement : le premier qui connaît le mot de passe entre. C'est ce qui
+    permet d'inscrire un nouveau livreur sans toucher à la configuration.
+    """
+    autorises = [x.strip() for x in os.getenv("LIVREUR_CHAT_ID", "").split(",") if x.strip()]
+    if not autorises:
+        return True
+    if str(uid) in autorises:
+        return True
+    logger.warning("panel livreur REFUSE a %s : bon mot de passe, compte non declare", uid)
+    return False
 
 
 def _livreur_is_unlocked(uid) -> bool:
@@ -4124,31 +4147,22 @@ def _selfie_avatar(client_id, pour_livreur: bool = False) -> str:
 
 
 def _filtrer_contacts(req, client_id) -> bool:
-    """Faut-il empêcher l'échange de coordonnées dans ce fil ?
+    """Faut-il empêcher l'échange de coordonnées dans ce message ?
 
-    Oui dès qu'un livreur est impliqué : quand c'est lui qui écrit, et quand
-    le client répond alors qu'une de ses commandes est en cours dans une zone
-    livreur. L'owner n'est jamais filtré — c'est sa boutique, il donne son
-    numéro à qui il veut.
+    Oui pour tout le monde sauf l'owner. C'est sa boutique : il donne son
+    numéro à qui il veut. Tous les autres sont filtrés, sans condition.
+
+    La version précédente ne filtrait le client que pendant qu'une course
+    était entre les mains d'un livreur. C'était une erreur de raisonnement :
+    un fil de discussion appartient à un CLIENT, pas à une commande, et le
+    livreur qui l'ouvre y lit tout. Un numéro écrit « au vendeur » à un
+    moment quelconque se retrouvait donc sous les yeux du livreur à la course
+    suivante. C'est arrivé en production le 15 août 2026.
     """
     uid = _uid_authentifie(req)
-    if uid is None or _a_acces_admin(uid):
-        return False
-    if _a_acces_livreur(uid):
-        return True
-    if not _livreur_password():
-        return False
-    # Côté client : seulement pendant qu'une course est entre les mains d'un
-    # livreur. Une fois livré, il redialogue normalement avec la boutique.
-    try:
-        from storage import _load as _load_all
-        return any(
-            str(o.get("user_id") or "") == str(client_id)
-            and (o.get("status") or "pending") in ("pending", "confirmed", "delivering")
-            and _dans_zone_livreur(o)
-            for o in (_load_all() or []))
-    except Exception:
-        return False
+    if uid is None:
+        return True                       # dans le doute, on filtre
+    return not _a_acces_admin(uid)
 
 
 def _profil_client(uid) -> dict:
@@ -4197,7 +4211,12 @@ def api_chat_thread():
             "sous_titre": " · ".join(x for x in [
                 f"Commande {commande.get('order_id', '')}".strip(),
                 commande.get("city") or ""] if x.strip()),
-            "messages": chat.messages(client_id),
+            # Le livreur ne voit que la conversation de SA course, pas tout
+            # l'historique du client avec la boutique. Un fil appartient à un
+            # client et en garde jusqu'à 500 messages : sans cette borne, le
+            # livreur d'une course du jour lisait tout ce que ce client avait
+            # pu écrire depuis toujours, coordonnées comprises.
+            "messages": chat.messages_depuis(client_id, commande.get("created_at") or ""),
             "profil": {},
             "ma_langue": "fr",
             "lu_par_autre": chat.lu_par(client_id, chat.CLIENT),

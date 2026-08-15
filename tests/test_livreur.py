@@ -286,18 +286,25 @@ for texte in PASSENT:
     print(f"   passe   {texte[:34]:36s} HTTP {r.status_code}")
     assert r.status_code == 200, f"faux positif sur : {texte}"
 
-titre("11d", "Le client non plus, tant qu'une course est en cours")
+titre("11d", "Le client non plus, JAMAIS, course en cours ou pas")
+# Ce test affirmait l'inverse : le client redevenait libre d'écrire son numéro
+# une fois sa commande livrée. C'était le raisonnement qui a laissé passer un
+# numéro WhatsApp en production le 15 août 2026 — un fil appartient à un
+# CLIENT, pas à une commande, et le livreur qui l'ouvre y lit ce qui s'y
+# trouve. L'assertion est donc inversée volontairement.
 BASE.append(dict(CMD_BXL, order_id="BXL99", status="delivering"))
 qui["v"] = CLIENT_BXL
 r = app.post("/api/chat/send", json={"initData": "x", "texte": "mon num : 0470112233"})
-print(f"   course en cours  : HTTP {r.status_code} ({r.json.get('motif')})")
+print(f"   course en cours    : HTTP {r.status_code} ({r.json.get('motif')})")
 assert r.status_code == 400
-# Une fois tout livré, il redialogue normalement avec la boutique.
 BASE[-1]["status"] = "delivered"
 r = app.post("/api/chat/send", json={"initData": "x", "texte": "mon num : 0470112233"})
-print(f"   plus rien en cours : HTTP {r.status_code}")
-assert r.status_code == 200
+print(f"   plus rien en cours : HTTP {r.status_code} ({r.json.get('motif')})")
+assert r.status_code == 400, "un numero ne doit jamais entrer dans le fil"
 BASE.pop()
+r = app.post("/api/chat/send", json={"initData": "x", "texte": "Je suis en bas"})
+print(f"   message normal     : HTTP {r.status_code}")
+assert r.status_code == 200, "mais la conversation normale reste libre"
 
 titre("11e", "… mais l'owner reste libre d'échanger ce qu'il veut")
 qui["v"] = OWNER

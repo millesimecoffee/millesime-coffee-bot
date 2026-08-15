@@ -73,6 +73,30 @@ async def send_personal_message(user_id: int, text: str) -> bool:
         return False
 
 
+async def fermer_client() -> None:
+    """Déconnecte proprement Telethon à l'arrêt du bot.
+
+    Sans ça, Render tue le processus pendant que les boucles internes de
+    Telethon (réception, envoi, keepalive) tournent encore. Elles remontent
+    alors « Fatal error handling updates », « Unhandled error while receiving
+    data » et une trentaine de « Task was destroyed but it is pending » — à
+    chaque redéploiement. Ce ne sont pas des pannes, mais elles noient les
+    vraies erreurs dans les journaux, ce qui revient au même quand on cherche
+    un bug.
+    """
+    global _client, _ready
+    _ready = False
+    if _client is None:
+        return
+    try:
+        await _client.disconnect()
+        logger.info("Telethon déconnecté proprement")
+    except Exception as exc:
+        logger.warning("Telethon déconnexion : %s", exc)
+    finally:
+        _client = None
+
+
 def is_ready() -> bool:
     """True si l'envoi personnel est opérationnel."""
     return _ready

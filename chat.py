@@ -12,6 +12,7 @@ Le disque de Render est éphémère : chaque média est donc aussi poussé dans 
 dépôt GitHub de sauvegarde, et retéléchargé à la demande s'il a disparu.
 """
 import base64
+import datetime as _dt
 import json
 import logging
 import os
@@ -312,6 +313,37 @@ def supprimer(client_id, message_id: str, par: str) -> dict:
 
 def messages(client_id) -> list:
     return list(_fil(_lire(), client_id).get("messages", []))
+
+
+def messages_depuis(client_id, depuis_iso: str) -> list:
+    """Messages postérieurs à une date ISO. Tout le fil si la date est vide.
+
+    Sert à borner ce qu'un livreur voit : un fil appartient à un client, pas à
+    une commande, et il en garde jusqu'à 500 messages. Sans cette borne, le
+    livreur d'une course du jour lisait tout ce que le client avait pu écrire
+    à la boutique depuis toujours.
+    """
+    tous = messages(client_id)
+    if not depuis_iso:
+        return tous
+    try:
+        seuil = _dt.datetime.fromisoformat(str(depuis_iso).replace("Z", "+00:00"))
+    except (ValueError, TypeError):
+        return tous
+    if seuil.tzinfo is None:
+        seuil = seuil.astimezone()
+    gardes = []
+    for m in tous:
+        try:
+            quand = _dt.datetime.fromisoformat(str(m.get("at", "")).replace("Z", "+00:00"))
+        except (ValueError, TypeError):
+            gardes.append(m)          # date illisible : on ne cache rien par erreur
+            continue
+        if quand.tzinfo is None:
+            quand = quand.astimezone()
+        if quand >= seuil:
+            gardes.append(m)
+    return gardes
 
 
 def langue_ecrite(client_id) -> str:
