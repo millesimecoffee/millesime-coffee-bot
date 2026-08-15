@@ -1,7 +1,8 @@
-"""Deux livreurs, deux zones, deux mots de passe — et aucun croisement.
+"""Plusieurs livreurs, plusieurs zones — et aucun croisement.
 
-Le livreur de Bruxelles ne doit rien voir de l'Espagne, et réciproquement.
-Chacun reçoit ses propres notifications de course.
+Bruxelles (une ville), l'Espagne (trois villes) et le Sud (trois PAYS
+entiers : Italie, Croatie, Grèce). Aucun ne doit voir les courses d'un autre,
+ni pouvoir agir dessus, et chacun reçoit ses propres notifications.
 """
 import os
 import sys
@@ -22,6 +23,11 @@ webapp = preparer(
     LIVREUR2_ZONES="Espagne:Barcelone, Espagne:Marbella, Espagne:Malaga",
     LIVREUR2_CHAT_ID="",
     LIVREUR2_USERNAME="",
+    # Livreur 3 — trois pays entiers, sans preciser de ville
+    LIVREUR3_PASSWORD="SIROCCO SUD 83",
+    LIVREUR3_ZONES="Italie, Croatie, Grece",
+    LIVREUR3_CHAT_ID="",
+    LIVREUR3_USERNAME="",
     DATA_DIR=tempfile.mkdtemp(prefix="millesime_2lv_"))
 
 import github_backup
@@ -50,6 +56,18 @@ COMMANDES = [
      "created_at": "2026-08-15T10:00:00+02:00"},
     {"order_id": "PAR1", "user_id": 555, "status": "pending", "total": 90,
      "country": "🇫🇷 France", "city": "Paris", "cart": {}, "user_name": "Zoe",
+     "created_at": "2026-08-15T10:00:00+02:00"},
+    {"order_id": "ROM1", "user_id": 666, "status": "pending", "total": 150,
+     "country": "🇮🇹 Italie", "city": "Rome", "cart": {}, "user_name": "Gio",
+     "created_at": "2026-08-15T10:00:00+02:00"},
+    {"order_id": "SPL1", "user_id": 777, "status": "confirmed", "total": 180,
+     "country": "🇭🇷 Croatie", "city": "Split", "cart": {}, "user_name": "Ana",
+     "created_at": "2026-08-15T10:00:00+02:00"},
+    {"order_id": "MYK1", "user_id": 888, "status": "pending", "total": 300,
+     "country": "🇬🇷 Grèce", "city": "Mykonos", "cart": {}, "user_name": "Nikos",
+     "created_at": "2026-08-15T10:00:00+02:00"},
+    {"order_id": "MIL1", "user_id": 999, "status": "pending", "total": 200,
+     "country": "🇮🇹 Italie", "city": "Milan", "cart": {}, "user_name": "Luca",
      "created_at": "2026-08-15T10:00:00+02:00"},
 ]
 storage._load = lambda: [dict(o) for o in COMMANDES]
@@ -175,5 +193,43 @@ titre(10, "Une entree de l'ancien format reste lisible")
 webapp._livreurs_connus["123456"] = 1786700000.0        # ancien format
 print(f"   ancien format -> livreur {webapp._prefixe_connu(webapp._livreurs_connus['123456'])}")
 assert webapp._prefixe_connu(webapp._livreurs_connus["123456"]) == "LIVREUR"
+
+titre(11, "Un troisieme livreur couvre trois PAYS entiers")
+SUD = 800000321
+d = entrer(SUD, "sirocco sud 83")
+print(f"   acces -> ok={d.get('ok')}")
+assert d.get("ok")
+r = courses().get_json()
+ids = sorted(c["order_id"] for c in r["courses"])
+print(f"   zones : {r['zones']}")
+print(f"   courses : {ids}")
+assert ids == ["MIL1", "MYK1", "ROM1", "SPL1"], ids
+
+titre(12, "Il ne voit rien des autres zones")
+for interdit in ("BXL1", "BCN1", "MRB1", "MLG1", "PAR1"):
+    assert interdit not in ids, interdit
+print("   ni Bruxelles, ni Espagne, ni Paris")
+
+titre(13, "Et les autres ne voient rien du sud")
+entrer(BXL, "livreur bruxelles")
+a = sorted(c["order_id"] for c in courses().get_json()["courses"])
+entrer(ESP, "livreur espagne")
+b = sorted(c["order_id"] for c in courses().get_json()["courses"])
+print(f"   Bruxelles : {a}")
+print(f"   Espagne   : {b}")
+for interdit in ("ROM1", "SPL1", "MYK1", "MIL1"):
+    assert interdit not in a + b, interdit
+
+titre(14, "Chaque course part au bon livreur")
+webapp._livreurs_connus.clear()
+os.environ["LIVREUR3_CHAT_ID"] = str(SUD)
+for cmd, attendu in ((COMMANDES[5], str(SUD)), (COMMANDES[7], str(SUD)),
+                     (COMMANDES[0], str(BXL))):
+    envois.clear()
+    webapp._prevenir_livreur("test", prefixe=webapp._prefixe_pour_commande(cmd))
+    cibles = [str(e.get("chat_id")) for e in envois]
+    print(f"   {cmd['city']:10s} -> {cibles}")
+    assert cibles == [attendu], (cmd["city"], cibles)
+os.environ["LIVREUR3_CHAT_ID"] = ""
 
 fin()
