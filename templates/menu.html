@@ -2558,89 +2558,200 @@
     filter: drop-shadow(0 10px 30px rgba(255,45,155,0.45));
   }
 
-  /* ═══ SPLASH / écran de chargement au démarrage ═══ */
+  /* ═══ SPLASH / écran de chargement au démarrage ═══════════════════════════
+     Ambiance Miami nocturne. Tout le décor est dessiné en CSS et en SVG en
+     ligne : aucune image à télécharger, aucune bibliothèque. Le logo est le
+     vrai fichier de la boutique, déjà présent dans la feuille sous .mc-logo. */
   .splash {
     position: fixed; inset: 0;
     z-index: 100000;
-    background:
-      radial-gradient(120% 90% at 50% 10%, rgba(255,45,155,0.16), transparent 60%),
-      radial-gradient(120% 90% at 50% 100%, rgba(236,72,153,0.10), transparent 60%),
-      #07070c;
+    overflow: hidden;
+    background: #05060e;
     display: flex; align-items: center; justify-content: center;
+    padding:
+      calc(env(safe-area-inset-top, 0px) + 16px) 20px
+      calc(env(safe-area-inset-bottom, 0px) + 16px);
     opacity: 1;
-    transition: opacity .55s var(--ease-out), visibility .55s;
+    transition: opacity .6s var(--ease-out), transform .6s var(--ease-out), visibility .6s;
   }
-  .splash.hide { opacity: 0; visibility: hidden; pointer-events: none; }
-  .splash-inner {
+  /* Sortie : fondu accompagné d'un très léger agrandissement. */
+  .splash.hide {
+    opacity: 0; visibility: hidden; pointer-events: none;
+    transform: scale(1.02);
+  }
+
+  /* ── Décor ─────────────────────────────────────────────────────────────── */
+  .sp-decor { position: absolute; inset: 0; pointer-events: none; }
+  /* Halo violet derrière le centre + reprise rose près du sol. */
+  .sp-lueur {
+    position: absolute; inset: 0;
+    background:
+      radial-gradient(78% 46% at 50% 34%, rgba(124,40,190,0.30), transparent 68%),
+      radial-gradient(120% 40% at 50% 100%, rgba(190,40,150,0.20), transparent 70%);
+    animation: spRespire 9s ease-in-out infinite;
+  }
+  @keyframes spRespire { 50% { opacity: 0.72; } }
+
+  /* Hauteur laissée au ratio du viewBox : en la forçant, le motif de fenêtres
+     était étiré avec le reste et devenait un damier géant. */
+  .sp-ville {
+    position: absolute; left: 0; right: 0; bottom: 17%;
+    width: 100%; height: auto;
+    opacity: 0.5;
+  }
+  /* Décalés vers l'extérieur : les couronnes encadrent le contenu au lieu de
+     lui passer dessus. */
+  .sp-palme {
+    position: absolute; bottom: 6%;
+    width: clamp(165px, 52vw, 330px); height: auto;
+    opacity: 0.92;
+  }
+  .sp-palme.gauche { left: -17%; }
+  .sp-palme.droite { right: -17%; transform: scaleX(-1); }
+
+  /* Sol : reflets néon très étirés, comme une chaussée mouillée. */
+  .sp-sol {
+    position: absolute; left: 0; right: 0; bottom: 0; height: 21%;
+    background:
+      linear-gradient(180deg, rgba(5,6,14,0) 0%, rgba(5,6,14,0.9) 8%, #05060e 100%),
+      repeating-linear-gradient(90deg,
+        rgba(255,45,155,0.16) 0 3px, transparent 3px 26px),
+      repeating-linear-gradient(90deg,
+        rgba(34,211,238,0.12) 13px 16px, transparent 16px 39px),
+      linear-gradient(180deg, rgba(150,40,190,0.30), transparent 75%);
+    filter: blur(1.5px);
+  }
+
+  /* ── Contenu ───────────────────────────────────────────────────────────── */
+  /* Une seule colonne centrée : tout partage le même axe vertical, donc la
+     symétrie gauche/droite est acquise quelle que soit la largeur. */
+  .sp-contenu {
+    position: relative; z-index: 1;
     display: flex; flex-direction: column; align-items: center;
-    animation: splashIn .7s var(--ease-out) both;
+    width: 100%; max-width: 520px;
+    text-align: center;
   }
-  @keyframes splashIn {
-    from { opacity: 0; transform: translateY(14px) scale(0.96); }
+
+  .sp-logo {
+    position: relative;
+    width: clamp(150px, 42vw, 250px); aspect-ratio: 1;
+    display: grid; place-items: center;
+    animation: spEntree .75s var(--ease-out) both;
+  }
+  /* Aura : posée DERRIÈRE le logo, elle ne touche pas à l'image elle-même. */
+  .sp-aura {
+    position: absolute; inset: -14%;
+    border-radius: 50%;
+    background:
+      radial-gradient(circle, rgba(255,45,155,0.34) 0%, rgba(255,45,155,0) 62%),
+      radial-gradient(circle, rgba(34,211,238,0.20) 30%, rgba(34,211,238,0) 72%);
+    filter: blur(10px);
+    animation: spAura 4.5s ease-in-out infinite;
+  }
+  @keyframes spAura { 50% { opacity: 0.65; transform: scale(1.04); } }
+  /* Le logo d'origine est carré à fond noir : le cercle le détoure sans le
+     déformer. Aucune retouche de l'image, aucun recadrage. */
+  .sp-image {
+    position: relative;
+    width: 100%; height: 100%;
+    border-radius: 50%;
+    animation: spSouffle 3s ease-in-out infinite;
+    transition: filter .35s ease;
+  }
+  @keyframes spSouffle {
+    0%, 100% { transform: scale(1); }
+    50%      { transform: scale(1.02); }
+  }
+  /* Petit éclat au moment de partir. */
+  .splash.fini .sp-image { filter: brightness(1.25) saturate(1.1); }
+
+  .sp-titre {
+    margin: clamp(18px, 4.4vh, 30px) 0 0;
+    font-size: clamp(27px, 8.4vw, 46px);
+    font-weight: 800; letter-spacing: -0.5px; line-height: 1.1;
+    background: linear-gradient(90deg, #ff3d9e 0%, #b06bff 52%, #22d3ee 100%);
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+    animation: spEntree .7s var(--ease-out) .18s both;
+  }
+
+  .sp-sous {
+    display: flex; align-items: center; justify-content: center;
+    gap: clamp(9px, 3vw, 15px);
+    margin-top: clamp(9px, 1.8vh, 14px);
+    animation: spEntree .7s var(--ease-out) .32s both;
+  }
+  .sp-sous .txt {
+    font-size: clamp(9.5px, 2.9vw, 13px); font-weight: 700;
+    letter-spacing: 0.32em; text-transform: uppercase;
+    color: #ece9f5; white-space: nowrap;
+    /* La lettre-espacement ajoute un vide après la dernière lettre : on le
+       reprend pour que le texte reste centré entre les deux traits. */
+    text-indent: 0.32em;
+  }
+  /* Les deux traits partagent la même largeur : la symétrie ne dépend pas du
+     texte qui les sépare. */
+  .sp-sous .trait { width: clamp(26px, 9vw, 54px); height: 2px; border-radius: 2px; }
+  .sp-sous .trait.g { background: linear-gradient(90deg, rgba(255,61,158,0), #ff3d9e); }
+  .sp-sous .trait.d { background: linear-gradient(90deg, #22d3ee, rgba(34,211,238,0)); }
+
+  /* ── Barre de chargement ───────────────────────────────────────────────── */
+  .sp-barre {
+    position: relative;
+    width: min(68vw, 330px); height: clamp(28px, 7.4vw, 34px);
+    margin-top: clamp(34px, 9vh, 78px);
+    border-radius: 999px;
+    background: rgba(8,6,20,0.92);
+    border: 1px solid rgba(176,107,255,0.55);
+    box-shadow: 0 0 16px rgba(150,60,220,0.30), inset 0 1px 3px rgba(0,0,0,0.6);
+    overflow: hidden;
+    animation: spEntree .7s var(--ease-out) .46s both;
+  }
+  .sp-remplissage {
+    position: absolute; left: 0; top: 0; bottom: 0;
+    width: 0;
+    border-radius: 999px;
+    background: linear-gradient(90deg, #ff2d9b 0%, #b026ff 38%, #4f7dff 70%, #22d3ee 100%);
+    box-shadow: 0 0 14px rgba(255,45,155,0.45);
+    /* La largeur est posée à chaque image par le script : pas de transition,
+       sinon l'affichage traînerait derrière le pourcentage annoncé. */
+  }
+  .sp-pct {
+    position: absolute; right: 12px; top: 50%; transform: translateY(-50%);
+    font-size: clamp(11px, 3.1vw, 13.5px); font-weight: 700;
+    color: #fff; font-variant-numeric: tabular-nums;
+    text-shadow: 0 1px 3px rgba(0,0,0,0.7);
+  }
+
+  .sp-etat {
+    margin-top: clamp(14px, 2.6vh, 22px);
+    font-size: clamp(12px, 3.4vw, 14.5px);
+    color: #cfc9de; letter-spacing: 0.2px;
+    animation: spEntree .7s var(--ease-out) .58s both;
+  }
+  /* Réservé pour les trois points : sans ça le texte se recentrerait à chaque
+     point qui apparaît. */
+  .sp-etat .pts { display: inline-block; width: 1.6em; text-align: left; }
+
+  @keyframes spEntree {
+    from { opacity: 0; transform: translateY(16px); }
     to   { opacity: 1; transform: none; }
   }
-  .splash-logo {
-    position: relative;
-    width: 156px; height: 156px;
-    display: flex; align-items: center; justify-content: center;
-    margin-bottom: 26px;
-  }
-  /* Anneau de chargement qui tourne */
-  .splash-ring {
-    position: absolute; inset: 0;
-    border-radius: 50%;
-    background: conic-gradient(from 0deg, transparent 0deg, #ff2d9b 90deg, #b026ff 210deg, #22d3ee 300deg, transparent 360deg);
-    -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 4px), #000 calc(100% - 3px));
-            mask: radial-gradient(farthest-side, transparent calc(100% - 4px), #000 calc(100% - 3px));
-    animation: splashSpin 1.1s linear infinite;
-  }
-  @keyframes splashSpin { to { transform: rotate(360deg); } }
-  /* Médaillon central avec le logo */
-  .splash-medallion {
-    width: 128px; height: 128px;
-    border-radius: 50%;
-    background: linear-gradient(160deg, #1c1c28, #131320);
-    border: 1px solid rgba(255,255,255,0.06);
-    display: flex; align-items: center; justify-content: center;
-    box-shadow: inset 0 2px 10px rgba(0,0,0,0.5), 0 10px 40px rgba(255,45,155,0.35);
-  }
-  .splash-mark {
-    width: 100%; height: 100%;
-    object-fit: cover;
-    border-radius: 50%;
-    display: block;
-    animation: splashPulse 1.8s ease-in-out infinite;
-    filter: drop-shadow(0 6px 20px rgba(236,72,153,0.5));
-  }
-  @keyframes splashPulse {
-    0%, 100% { transform: scale(1); }
-    50%      { transform: scale(1.08); }
-  }
-  .splash-title {
-    font-size: 26px; font-weight: 900; letter-spacing: -0.5px;
-    background: var(--accent-grad);
-    -webkit-background-clip: text; background-clip: text; color: transparent;
-    filter: drop-shadow(0 4px 20px rgba(255,45,155,0.3));
-  }
-  .splash-sub {
-    font-size: 11px; font-weight: 800; letter-spacing: 3px;
-    text-transform: uppercase; color: var(--txt-tertiary);
-    margin-top: 6px;
-  }
-  .splash-dots { display: flex; gap: 7px; margin-top: 22px; }
-  .splash-dots span {
-    width: 8px; height: 8px; border-radius: 50%;
-    background: var(--accent);
-    animation: splashDot 1.2s ease-in-out infinite both;
-  }
-  .splash-dots span:nth-child(2) { animation-delay: .18s; background: var(--accent-2); }
-  .splash-dots span:nth-child(3) { animation-delay: .36s; background: #f59e0b; }
-  @keyframes splashDot {
-    0%, 80%, 100% { opacity: 0.25; transform: scale(0.8); }
-    40%           { opacity: 1;    transform: scale(1.15); }
-  }
+
   @media (prefers-reduced-motion: reduce) {
-    .splash-ring, .splash-mark, .splash-dots span { animation: none; }
+    .sp-image, .sp-aura, .sp-lueur { animation: none; }
+    .sp-logo, .sp-titre, .sp-sous, .sp-barre, .sp-etat { animation: none; opacity: 1; transform: none; }
+    .splash { transition: opacity .3s linear, visibility .3s; }
+    .splash.hide { transform: none; }
+  }
+  /* Écran très bas (paysage, petit téléphone) : on resserre plutôt que de
+     laisser la barre sortir du cadre. */
+  @media (max-height: 620px) {
+    /* La hauteur commande, sinon un écran bas et large donnerait un logo plus
+       grand que sur un écran haut — c'est l'inverse qu'on veut. */
+    .sp-logo { width: min(38vw, 24vh); }
+    .sp-titre { margin-top: clamp(12px, 3vh, 20px); }
+    .sp-barre { margin-top: clamp(18px, 5vh, 34px); }
+    .sp-palme { display: none; }
   }
 
   /* Logo image sur les écrans d'accueil (remplace l'emoji tasse) */
@@ -2660,18 +2771,98 @@
 </head>
 <body>
 
-<!-- SPLASH / ÉCRAN DE CHARGEMENT (logo animé au démarrage) -->
-<div id="splash" class="splash">
-  <div class="splash-inner">
-    <div class="splash-logo">
-      <div class="splash-ring"></div>
-      <div class="splash-medallion">
-        <div class="splash-mark mc-logo" role="img" aria-label="Millésime Coffee"></div>
-      </div>
+<!-- SPLASH / ÉCRAN DE CHARGEMENT AU DÉMARRAGE
+     Décor Miami nocturne entièrement vectoriel : rien à télécharger, donc
+     l'écran est complet dès la première image. Le logo est le vrai fichier de
+     la boutique (classe .mc-logo, déjà dans la feuille de style). -->
+<div id="splash" class="splash" role="status" aria-label="Chargement de Millésime Coffee">
+
+  <div class="sp-decor" aria-hidden="true">
+    <div class="sp-lueur"></div>
+
+    <!-- Skyline : la silhouette est dessinée une fois, puis repassée avec un
+         motif de fenêtres. Deux passes valent mieux que cent rectangles. -->
+    <svg class="sp-ville" viewBox="0 0 400 150">
+      <defs>
+        <pattern id="spFenetres" width="8" height="13" patternUnits="userSpaceOnUse">
+          <rect x="2" y="3" width="2.4" height="4" fill="#ff2d9b" opacity="0.32"/>
+          <rect x="2" y="9" width="2.4" height="2" fill="#b06bff" opacity="0.20"/>
+        </pattern>
+        <path id="spImmeubles" d="
+          M0,150 V96 h22 V70 h16 V96 h14 V58 h20 V44 h10 V58 h18 V88 h16 V66 h22 V150 Z
+          M140,150 V74 h18 V40 h12 V22 h8 V40 h14 V74 h16 V92 h20 V62 h18 V150 Z
+          M248,150 V84 h20 V54 h16 V34 h10 V54 h16 V84 h18 V70 h24 V96 h20 V78 h28 V150 Z"/>
+      </defs>
+      <use href="#spImmeubles" fill="#0b0818"/>
+      <use href="#spImmeubles" fill="url(#spFenetres)"/>
+      <!-- Antennes -->
+      <g stroke="#ff2d9b" stroke-width="1" opacity="0.5">
+        <line x1="178" y1="22" x2="178" y2="8"/><line x1="293" y1="34" x2="293" y2="20"/>
+      </g>
+    </svg>
+
+    <!-- Palmier : un tronc courbe et neuf palmes. Le second est le même,
+         retourné, ce qui garantit la symétrie des deux côtés. -->
+    <svg class="sp-palme gauche" viewBox="0 0 200 400" fill="#0d0a1c">
+      <!-- Tronc : il monte de la base vers la couronne, en s'affinant. -->
+      <path d="M88,126 C76,196 58,288 30,400 L60,400 C76,294 92,206 101,128 Z"/>
+      <!-- Palmes. Chacune est une lentille : une courbe qui bombe d'un côté à
+           l'aller, de l'autre au retour — ce qui lui donne de l'épaisseur. Les
+           extrémités retombent plus bas que la couronne : c'est ce port en
+           fontaine qui fait lire un palmier, pas des rayons droits. -->
+      <g>
+        <path d="M95,118 Q45,95 6,150 Q52,130 95,118 Z"/>
+        <path d="M95,118 Q48,76 14,100 Q56,112 95,118 Z"/>
+        <path d="M95,118 Q48,74 44,40 Q84,80 95,118 Z"/>
+        <path d="M95,118 Q80,64 98,24 Q110,70 95,118 Z"/>
+        <path d="M95,118 Q144,76 152,42 Q108,82 95,118 Z"/>
+        <path d="M95,118 Q148,78 184,102 Q138,114 95,118 Z"/>
+        <path d="M95,118 Q152,96 192,150 Q142,130 95,118 Z"/>
+      </g>
+      <g><circle cx="90" cy="126" r="3.5"/><circle cx="99" cy="129" r="3.5"/><circle cx="94" cy="135" r="3.5"/></g>
+    </svg>
+    <svg class="sp-palme droite" viewBox="0 0 200 400" fill="#0d0a1c">
+      <!-- Tronc : il monte de la base vers la couronne, en s'affinant. -->
+      <path d="M88,126 C76,196 58,288 30,400 L60,400 C76,294 92,206 101,128 Z"/>
+      <!-- Palmes. Chacune est une lentille : une courbe qui bombe d'un côté à
+           l'aller, de l'autre au retour — ce qui lui donne de l'épaisseur. Les
+           extrémités retombent plus bas que la couronne : c'est ce port en
+           fontaine qui fait lire un palmier, pas des rayons droits. -->
+      <g>
+        <path d="M95,118 Q45,95 6,150 Q52,130 95,118 Z"/>
+        <path d="M95,118 Q48,76 14,100 Q56,112 95,118 Z"/>
+        <path d="M95,118 Q48,74 44,40 Q84,80 95,118 Z"/>
+        <path d="M95,118 Q80,64 98,24 Q110,70 95,118 Z"/>
+        <path d="M95,118 Q144,76 152,42 Q108,82 95,118 Z"/>
+        <path d="M95,118 Q148,78 184,102 Q138,114 95,118 Z"/>
+        <path d="M95,118 Q152,96 192,150 Q142,130 95,118 Z"/>
+      </g>
+      <g><circle cx="90" cy="126" r="3.5"/><circle cx="99" cy="129" r="3.5"/><circle cx="94" cy="135" r="3.5"/></g>
+    </svg>
+
+    <div class="sp-sol"></div>
+  </div>
+
+  <div class="sp-contenu">
+    <div class="sp-logo">
+      <div class="sp-aura"></div>
+      <div class="sp-image mc-logo" role="img" aria-label="Millésime Coffee"></div>
     </div>
-    <div class="splash-title">Millésime Coffee</div>
-    <div class="splash-sub">Premium Delivery</div>
-    <div class="splash-dots"><span></span><span></span><span></span></div>
+
+    <div class="sp-titre">Millésime Coffee</div>
+
+    <div class="sp-sous">
+      <span class="trait g"></span>
+      <span class="txt">Premium Delivery</span>
+      <span class="trait d"></span>
+    </div>
+
+    <div class="sp-barre">
+      <div class="sp-remplissage" id="splashFill"></div>
+      <div class="sp-pct" id="splashPct">0%</div>
+    </div>
+
+    <div class="sp-etat" id="splashEtat">Chargement en cours<span class="pts" id="splashPts"></span></div>
   </div>
 </div>
 
@@ -8964,30 +9155,120 @@ sendBroadcast = async function() {
 applyI18n();
 updateCartBar();
 
-// Splash de démarrage : on le masque en fondu une fois la page prête
-// (min ~5,5 s pour laisser voir le logo animé, puis fade-out).
-(function dismissSplash() {
+// ═══════════════════════════════════════════════════════════════════════════
+// SPLASH DE DÉMARRAGE
+// ═══════════════════════════════════════════════════════════════════════════
+// Le pourcentage suit une vraie progression, pas une animation décorative :
+// il monte vite, ralentit, puis s'arrête à 92 % tant que la page n'est pas
+// chargée. Il ne finit à 100 % que lorsqu'elle l'est réellement — et un filet
+// de sécurité force la fin au bout de 9 s pour ne jamais rester coincé.
+(function splashDemarrage() {
   const splash = document.getElementById("splash");
   if (!splash) return;
-  const start = Date.now();
-  const MIN_MS = 5500;
-  function hide() {
-    const wait = Math.max(0, MIN_MS - (Date.now() - start));
+  const barre = document.getElementById("splashFill");
+  const pct   = document.getElementById("splashPct");
+  const etat  = document.getElementById("splashEtat");
+  const pts   = document.getElementById("splashPts");
+
+  const PLAFOND = 92;          // au-delà, il faut que la page soit prête
+  const FIN_MS  = 380;         // durée de la remontée finale vers 100
+  const PAUSE   = 320;         // temps d'affichage du message de bienvenue
+  const FONDU   = 620;         // doit correspondre à la transition CSS
+
+  const depart = performance.now();
+  let pretA = 0;               // instant où la page est devenue prête
+  let depuis = 0;              // pourcentage atteint à cet instant
+  let valeur = 0;
+  let termine = false;
+
+  // Courbe d'attente : 0 → 70 en 0,9 s, puis 70 → 92 en 1,5 s. C'est la forme
+  // d'un chargement qui commence bien puis attend le réseau.
+  function courbe(t) {
+    if (t < 900)  return (t / 900) * 70;
+    if (t < 2400) return 70 + ((t - 900) / 1500) * (PLAFOND - 70);
+    return PLAFOND;
+  }
+
+  function poser(v) {
+    valeur = v;
+    const arrondi = Math.round(v);
+    if (barre) barre.style.width = v.toFixed(2) + "%";
+    if (pct)   pct.textContent = arrondi + "%";
+  }
+
+  let boucleActive = false;
+  function relancer() {
+    if (termine || boucleActive) return;
+    boucleActive = true;
+    requestAnimationFrame(image);
+  }
+
+  function image(maintenant) {
+    boucleActive = false;
+    if (termine) return;
+    const t = maintenant - depart;
+    if (!pretA) {
+      poser(courbe(t));
+    } else {
+      // Remontée depuis la valeur atteinte au moment où la page s'est dite
+      // prête — jamais un saut, même si elle l'était déjà à 3 %.
+      const avance = Math.min(1, (maintenant - pretA) / FIN_MS);
+      poser(depuis + (100 - depuis) * (1 - Math.pow(1 - avance, 3)));
+      if (avance >= 1) { termine = true; conclure(); return; }
+    }
+    relancer();
+  }
+
+  function pret() {
+    if (pretA || termine) return;
+    pretA = performance.now();
+    depuis = valeur;
+    // requestAnimationFrame ne s'exécute pas quand la page est masquée — et
+    // c'est le cas si le client ouvre la boutique puis passe à autre chose.
+    // Sans ce relais, la remontée finale n'aurait jamais lieu et l'écran de
+    // chargement resterait posé sur l'application, clics compris.
+    setTimeout(() => { if (!termine) { termine = true; conclure(); } }, FIN_MS + 150);
+  }
+
+  function conclure() {
+    poser(100);
+    if (etat) etat.textContent = "Bienvenue chez Millésime Coffee";
+    clearInterval(minuteurPoints);
+    splash.classList.add("fini");          // le logo s'éclaircit un instant
     setTimeout(() => {
       splash.classList.add("hide");
-      setTimeout(() => { try { splash.remove(); } catch {} }, 650);
-    }, wait);
+      setTimeout(() => { try { splash.remove(); } catch {} }, FONDU + 40);
+    }, PAUSE);
   }
-  if (document.readyState === "complete") hide();
-  else window.addEventListener("load", hide, { once: true });
-  // Filet de sécurité : ne jamais rester bloqué sur le splash.
-  // Doit rester au-dessus de MIN_MS, sinon il coupe l'animation avant l'heure.
-  setTimeout(() => {
-    if (document.getElementById("splash")) {
-      splash.classList.add("hide");
-      setTimeout(() => { try { splash.remove(); } catch {} }, 650);
-    }
-  }, 9000);
+
+  // Les trois points du texte, animés tant que ça charge.
+  let n = 0;
+  const minuteurPoints = setInterval(() => {
+    if (pts) pts.textContent = ".".repeat(n % 4);
+    n++;
+  }, 420);
+
+  relancer();
+
+  // On laisse l'animation se dérouler au moins le temps de la courbe : une
+  // page servie depuis le cache est prête en 80 ms, et l'écran disparaîtrait
+  // avant même d'avoir été vu.
+  const MIN_MS = 2600;
+  function quandPret() {
+    setTimeout(pret, Math.max(0, MIN_MS - (performance.now() - depart)));
+  }
+  if (document.readyState === "complete") quandPret();
+  else window.addEventListener("load", quandPret, { once: true });
+
+  // Filet de sécurité : une ressource qui ne répond jamais ne doit pas laisser
+  // le client devant un écran figé à 92 %. `pret` garantit la suite même sans
+  // animation, donc ce minuteur suffit à faire partir l'écran dans tous les cas.
+  setTimeout(pret, 9000);
+
+  // Retour au premier plan : on relance la boucle, arrêtée pendant l'absence.
+  document.addEventListener("visibilitychange", () => {
+    if (!document.hidden) relancer();
+  });
 })();
 </script>
 </body>
