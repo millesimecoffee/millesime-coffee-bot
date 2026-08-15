@@ -17,6 +17,7 @@ new_session*.txt
 orders.json
 blacklist.json
 blocked.json
+parcours.json
 
 # Logs (toutes variantes)
 *.log
