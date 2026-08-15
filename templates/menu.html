@@ -7383,7 +7383,13 @@ async function chatCharger(forcer) {
                     + "|" + chatEtat.luParAutre;
     if (!forcer && signature === chatEtat._signature) return;
     chatEtat._signature = signature;
-    chatEtat.messages = d.messages || [];
+    // Les bulles encore en vol survivent au relevé : sans ça, un message en
+    // cours d'envoi disparaissait puis réapparaissait, et l'utilisateur
+    // croyait l'avoir perdu.
+    const enVol = chatEtat.messages.filter(m => String(m.id).startsWith("tmp"));
+    const recus = d.messages || [];
+    const connus = new Set(recus.map(m => m.id));
+    chatEtat.messages = recus.concat(enVol.filter(m => !connus.has(m.id)));
     chatDessiner();
   } catch { /* réseau : on retentera au prochain tour */ }
 }
@@ -7450,7 +7456,7 @@ function chatDessiner() {
         + (moi ? `<button class="ch-repondre ch-effacer" aria-label="Supprimer"
            onclick="chatSupprimer('${m.id}')">🗑</button>` : "");
     return sep + `
-      <div class="ch-ligne ${moi ? "moi" : ""}"${
+      <div class="ch-ligne ${moi ? "moi" : ""}" data-id="${escHtml(String(m.id))}"${
           provisoire ? "" : ` onclick="chatToucherBulle(this, event)"`}>
         ${actions}
         <div class="ch-bulle ${moi ? "moi" : ""} ${efface ? "vide" : ""}">${
@@ -7460,7 +7466,37 @@ function chatDessiner() {
       </div>`;
   }).join("");
 
+  // Le fil se redessine des qu'un message arrive ou qu'un accusé de lecture
+  // change — y compris pendant l'écoute d'un vocal. Sans ce rebranchement, le
+  // bouton repassait sur ▶ alors que le son continuait, et la barre de
+  // progression se figeait : elle pointait sur des éléments qui n'étaient plus
+  // dans la page.
+  chatRebrancherAudio();
+
   if (enBas) chatAllerEnBas();
+}
+
+// Remet le vocal en cours d'écoute dans l'état où il était : bouton en pause
+// et onde branchée sur les nouveaux éléments.
+function chatRebrancherAudio() {
+  const son = chatEtat.audioEnCours;
+  if (!son || son.paused) return;
+  const bloc = document.querySelector(
+    `#chatFil .ch-audio[data-media="${son.dataset.media}"]`);
+  if (!bloc) return;                     // le message est sorti du fil
+  const bouton = bloc.querySelector(".play");
+  if (bouton) bouton.textContent = "❚❚";
+  chatSuivreOnde(son, bloc);
+}
+
+// Fait avancer l'onde d'un vocal. Isolée pour être rebranchée à volonté.
+function chatSuivreOnde(son, bloc) {
+  const barres = [...bloc.querySelectorAll(".onde i")];
+  son.ontimeupdate = () => {
+    if (!son.duration || !isFinite(son.duration)) return;
+    const avance = son.currentTime / son.duration;
+    barres.forEach((b, i) => b.classList.toggle("lu", i / barres.length <= avance));
+  };
 }
 
 // Une pression sur une bulle révèle son bouton « répondre ». Une seule bulle
@@ -7616,34 +7652,56 @@ function chatAjusterHauteur(el) {
 async function chatEnvoyer(charge, apercu) {
   // Bulle optimiste : le message s'affiche tout de suite, en pâle, puis se
   // confirme. Sans ça l'envoi paraît figé le temps de l'aller-retour.
+  //
+  // Tout se repère ici par IDENTIFIANT, jamais par position dans le tableau :
+  // le relevé tourne toutes les 3 secondes et peut remplacer la liste pendant
+  // que l'envoi est en vol. En visant « le dernier », on écrasait le message
+  // que l'autre venait d'envoyer — il disparaissait de l'écran.
+  const idProv = "tmp" + Date.now() + Math.random().toString(36).slice(2, 6);
   const provisoire = {
-    id: "tmp" + Date.now(), de: chatEtat.role, at: new Date().toISOString(),
+    id: idProv, de: chatEtat.role, at: new Date().toISOString(),
     ...apercu,
   };
   chatEtat.messages.push(provisoire);
   chatDessiner();
   chatAllerEnBas();
-  const bulle = document.querySelector("#chatFil .ch-bulle:last-child");
+  // La bulle de CE message. `.ch-bulle:last-child` désignait toutes les
+  // bulles — chacune étant la dernière de sa ligne — et renvoyait donc la
+  // première du fil, qui pâlissait à chaque envoi.
+  const bulle = document.querySelector(
+    `#chatFil .ch-ligne[data-id="${idProv}"] .ch-bulle`);
   if (bulle) bulle.classList.add("envoi");
+
+  const retirer = () => {
+    chatEtat.messages = chatEtat.messages.filter(m => m.id !== idProv);
+    chatDessiner();
+  };
 
   try {
     const r = await apiFetch("/api/chat/send", { method: "POST", body: chatCorps(charge) });
     const d = await r.json();
     if (!d.ok) {
-      chatEtat.messages = chatEtat.messages.filter(m => m.id !== provisoire.id);
-      chatDessiner();
+      retirer();
       showToast(chatErreur(d.error, d.motif), true);
       return false;
     }
-    chatEtat.messages[chatEtat.messages.length - 1] = d.message;
+    // Le relevé a pu ramener le message entre-temps : dans ce cas on retire
+    // seulement la bulle provisoire, sinon on la remplace.
+    const i = chatEtat.messages.findIndex(m => m.id === idProv);
+    const dejaLa = d.message && chatEtat.messages.some(m => m.id === d.message.id);
+    if (i >= 0) {
+      if (dejaLa) chatEtat.messages.splice(i, 1);
+      else chatEtat.messages[i] = d.message;
+    } else if (!dejaLa && d.message) {
+      chatEtat.messages.push(d.message);
+    }
     chatEtat._signature = null;      // force le redessin au prochain tour
     chatAnnulerCitation();
     chatDessiner();
     hapticSuccess();
     return true;
   } catch {
-    chatEtat.messages = chatEtat.messages.filter(m => m.id !== provisoire.id);
-    chatDessiner();
+    retirer();
     showToast(t("err_network"), true);
     return false;
   }
@@ -7839,12 +7897,7 @@ function chatJouer(bouton, media) {
   const son = new Audio(chatUrlMedia(media));
   son.dataset.media = media;
   chatEtat.audioEnCours = son;
-  const barres = [...bouton.parentElement.querySelectorAll(".onde i")];
-  son.ontimeupdate = () => {
-    if (!son.duration || !isFinite(son.duration)) return;
-    const avance = son.currentTime / son.duration;
-    barres.forEach((b, i) => b.classList.toggle("lu", i / barres.length <= avance));
-  };
+  chatSuivreOnde(son, bouton.parentElement);
   son.onended = () => chatArreterAudio();
   son.onerror = () => { chatArreterAudio(); showToast("Audio indisponible", true); };
   son.play().then(() => { bouton.textContent = "❚❚"; })

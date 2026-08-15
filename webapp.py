@@ -4335,8 +4335,17 @@ def api_chat_send():
             return jsonify({"ok": False, "error": "bad_photo"}), 400
         # Recompressée comme les selfies : une photo de téléphone fait 3 Mo,
         # une bulle de conversation n'en a pas besoin.
+        #
+        # Une compression qui échoue veut dire que ce n'est pas une image
+        # lisible. On refusait de le voir : les octets d'origine partaient
+        # quand même dans le fil, et la bulle affichait une image cassée pour
+        # toujours, sans que personne puisse rien y faire. Mieux vaut le dire
+        # tout de suite à celui qui envoie.
         compresse = _compresser_jpeg(brut, max_dim=1280, quality=72)
-        media_id = chat.ecrire_media(compresse or brut, "photo")
+        if not compresse:
+            logger.info("photo refusee dans le chat : illisible (%d octets)", len(brut))
+            return jsonify({"ok": False, "error": "bad_photo"}), 400
+        media_id = chat.ecrire_media(compresse, "photo")
         if not media_id:
             return jsonify({"ok": False, "error": "media_too_big"}), 413
         kind = "photo"
