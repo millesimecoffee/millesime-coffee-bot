@@ -560,6 +560,17 @@ def api_notify_city():
     except Exception:
         return jsonify({"ok": False, "error": "catalog_failed"}), 500
 
+    # On garde une trace du passage. Ces informations partaient déjà en
+    # notification ; elles ne survivaient simplement à rien, donc personne ne
+    # pouvait les consulter après coup.
+    try:
+        import parcours
+        # Le veilleur ne doit pas apparaître dans sa propre liste.
+        if not _a_acces_veille(uid):
+            parcours.noter(uid, user_obj.get("first_name") or "", country, city)
+    except Exception as exc:
+        logger.warning("journal des parcours : %s", exc)
+
     import pushover
     envoyes = []
     owner_chat = os.getenv("OWNER_CHAT_ID", "")
@@ -688,7 +699,13 @@ def api_auth():
                 break
     est_livreur = bool(prefixe_livreur)
 
-    if (not est_admin and not est_livreur
+    # Accès de veille : ni admin, ni livreur, ni client — il ne donne à voir
+    # que les passages sur le catalogue.
+    mdp_veille = _veille_password()
+    est_veille = (not est_admin and not est_livreur and bool(mdp_veille)
+                  and _meme_mdp(pwd, mdp_veille))
+
+    if (not est_admin and not est_livreur and not est_veille
             and (not pwd or _normalise_mdp(pwd) != _normalise_mdp(expected))):
         with _pwd_lock:
             for k in keys:
@@ -700,6 +717,11 @@ def api_auth():
         with _admin_lock:
             _admin_unlocked[uid] = time.time() + _ADMIN_SESSION_TTL
         logger.info("panel admin ouvert par mot de passe pour %s", uid)
+
+    if est_veille and uid:
+        with _veille_lock:
+            _veille_unlocked[str(uid)] = time.time() + _ADMIN_SESSION_TTL
+        logger.info("acces veille ouvert pour %s", uid)
 
     if est_livreur and uid:
         with _livreur_lock:
@@ -721,6 +743,7 @@ def api_auth():
             "ok":         True,
             "admin":      est_admin,   # la Mini App bascule direct sur le panel
             "livreur":    est_livreur, # … ou sur les courses de sa zone
+            "veille":     est_veille,  # … ou sur l'écran de veille, et rien d'autre
             "catalog":    catalog_mod.CATALOG,
             "min_orders": catalog_mod.MIN_ORDER,
             "currencies": catalog_mod.CURRENCIES,
@@ -749,6 +772,13 @@ def api_auth():
                 "crypto_usdt":  os.getenv("CRYPTO_USDT", ""),
             },
         }
+        # L'accès de veille ne sert qu'à regarder passer les visiteurs : il n'a
+        # aucune raison de recevoir le catalogue, les prix, les minimums de
+        # commande ni les coordonnées de paiement. On ne lui envoie que de quoi
+        # ouvrir son écran.
+        if est_veille:
+            resp = {"ok": True, "admin": False, "livreur": False, "veille": True}
+
         # Notif owner : "client entré dans le catalogue" (si initData valide)
         bot_token = os.getenv("BOT_TOKEN", "")
         init_data = (data or {}).get("initData", "") if isinstance(data, dict) else ""
@@ -756,7 +786,7 @@ def api_auth():
         # Une entrée par le mot de passe admin ou livreur n'est pas une visite
         # client : elle ne doit pas déclencher « UN CLIENT EST ENTRÉE DANS LE
         # SHOP », sinon l'owner serait notifié à chaque connexion de son livreur.
-        if parsed and not est_admin and not est_livreur:
+        if parsed and not est_admin and not est_livreur and not est_veille:
             try:
                 _notify_owner_client_entry(parsed)
             except Exception:
@@ -2126,6 +2156,30 @@ def _prevenir_livreur(texte: str, cle_anti_repetition: str = "",
     return envoyes
 
 
+# ── Accès de veille ──────────────────────────────────────────────────────────
+# Un mot de passe qui n'ouvre qu'une chose : la liste des gens qui consultent
+# le catalogue, avec le pays et la ville qu'ils regardent. Rien d'autre — ni
+# commandes, ni conversations, ni coordonnées, ni panneau.
+_veille_unlocked: dict[str, float] = {}
+_veille_lock = threading.RLock()
+
+
+def _veille_password() -> str:
+    return os.getenv("VEILLE_PASSWORD", "").strip()
+
+
+def _veille_is_unlocked(uid) -> bool:
+    with _veille_lock:
+        maintenant = time.time()
+        for k in [k for k, exp in _veille_unlocked.items() if exp <= maintenant]:
+            del _veille_unlocked[k]
+        return _veille_unlocked.get(str(uid), 0) > maintenant
+
+
+def _a_acces_veille(uid) -> bool:
+    return uid is not None and bool(_veille_password()) and _veille_is_unlocked(uid)
+
+
 def _compte_livreur_autorise(uid, prefixe: str = "LIVREUR") -> bool:
     """Ce compte a-t-il le droit d'ouvrir le panneau livreur ?
 
@@ -2273,6 +2327,29 @@ def _course_pour_livreur(o: dict) -> dict:
         # Pour ouvrir la conversation sans jamais exposer le compte Telegram.
         "chat_ref":   _ref_chat(oid),
     }
+
+
+@app.route("/api/veille/passages", methods=["POST"])
+def api_veille_passages():
+    """Qui consulte le catalogue, et pour quelle destination.
+
+    Volontairement pauvre : un prénom, un pays, une ville, une date. Cet accès
+    ne donne rien d'autre — ni commandes, ni conversations, ni coordonnées.
+    L'owner y a droit aussi, c'est sa boutique.
+    """
+    uid = _uid_authentifie(request)
+    if uid is None:
+        return jsonify({"ok": False, "error": "auth_failed"}), 401
+    if not (_a_acces_veille(uid) or _a_acces_admin(uid)):
+        return jsonify({"ok": False, "error": "veille_locked"}), 403
+    try:
+        import parcours
+        data = _corps(request)
+        lignes = parcours.passages(_entier(data.get("limite"), 200, 1, 800))
+        return jsonify({"ok": True, "passages": lignes, "resume": parcours.resume()})
+    except Exception as exc:
+        logger.error("veille : %s", exc)
+        return jsonify({"ok": False, "error": "erreur"}), 500
 
 
 @app.route("/api/livreur/courses", methods=["POST"])
@@ -2426,6 +2503,7 @@ def api_livreur_etat():
     return jsonify({
         "ok": True,
         "livreur": _a_acces_livreur(uid),
+        "veille": _a_acces_veille(uid),
         "password_set": _role_livreur_actif(),
         "zones": [" · ".join(x for x in z if x) for z in _zones_livreur(uid)],
     })
