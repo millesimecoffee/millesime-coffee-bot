@@ -183,12 +183,22 @@ r = app.post("/api/veille/passages", json={"initData": "x"})
 print(f"   client ordinaire -> HTTP {r.status_code}")
 assert r.status_code == 403
 
-titre(10, "L'owner y a droit aussi, c'est sa boutique")
+titre(10, "L'owner voit exactement le meme tableau de bord")
 qui["v"] = OWNER
 app.post("/api/admin/unlock", json={"initData": "x", "password": "RICH PORTER"})
-r = app.post("/api/veille/passages", json={"initData": "x"})
+r = app.post("/api/veille/passages", json={"initData": "x", "jours": 30})
+d_owner = r.get_json()
 print(f"   owner -> HTTP {r.status_code}")
-assert r.status_code == 200
+assert r.status_code == 200 and d_owner.get("ok")
+# Il doit recevoir les memes blocs que l'acces White Page, pas un sous-ensemble.
+assert set(d_owner) == {"ok", "passages", "resume", "classements", "entonnoir", "jours"},     sorted(d_owner)
+print(f"   blocs recus : {sorted(d_owner)}")
+qui["v"] = VEILLEUR
+entrer(VEILLEUR, "The White Page")
+d_veille = app.post("/api/veille/passages", json={"initData": "x", "jours": 30}).get_json()
+print(f"   identiques a ceux de la veille : {set(d_owner) == set(d_veille)}")
+assert set(d_owner) == set(d_veille)
+assert d_owner["entonnoir"] == d_veille["entonnoir"]
 
 titre(11, "Le journal ne grossit pas indefiniment")
 parcours.MAX_PASSAGES = 20

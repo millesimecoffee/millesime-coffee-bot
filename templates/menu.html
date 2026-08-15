@@ -4040,6 +4040,14 @@
         <span class="arrow">›</span>
       </div>
     </div>
+    <div class="card" onclick="ouvrirActivite()" style="margin-top:8px;">
+      <span class="emoji">📊</span>
+      <div class="info">
+        <div class="name">Activité</div>
+        <div class="meta" id="activiteResume">Qui regarde, où l'on commande</div>
+      </div>
+      <span class="arrow">›</span>
+    </div>
     <div class="card" onclick="ouvrirListeChats()" style="margin-top:8px;">
       <span class="emoji">💬</span>
       <div class="info">
@@ -4963,6 +4971,12 @@ document.getElementById("backBtn").addEventListener("click", () => {
   else { document.getElementById("header").style.display = "flex"; updateHeader(name); }
   // Stopper auto-refresh si on quitte le panel owner
   if (!prev.startsWith("screen-owner-")) stopOwnerAutoRefresh();
+  // L'écran d'activité a sa propre boucle : elle n'a plus lieu d'être une
+  // fois qu'on l'a quitté, et celle du panneau doit reprendre.
+  if (curId === "screen-veille") {
+    arreterBoucleVeille();
+    if (prev.startsWith("screen-owner-")) startOwnerAutoRefresh();
+  }
   updateCartBar();
   window.scrollTo({ top: 0, behavior: "instant" });
 });
@@ -5742,16 +5756,34 @@ function submitCart() {
 const VEILLE_RAFRAICHIR_MS = 20000;
 let veilleTimer = null;
 
-function showVeilleHome() {
-  state.is_veille = true;
+// Depuis le panneau admin : le même écran, sans passer en mode veille — on
+// reste owner, et le bouton retour ramène au panneau.
+function ouvrirActivite() {
+  hapticSelect();
   state._veilleJours = state._veilleJours || 30;
   setScreen("veille");
   chargerVeille(true);
+  demarrerBoucleVeille();
+}
+
+function demarrerBoucleVeille() {
   if (veilleTimer) clearInterval(veilleTimer);
   veilleTimer = setInterval(() => {
     if (!document.hidden && document.getElementById("screen-veille").classList.contains("active"))
       chargerVeille(false);
   }, VEILLE_RAFRAICHIR_MS);
+}
+
+function arreterBoucleVeille() {
+  if (veilleTimer) { clearInterval(veilleTimer); veilleTimer = null; }
+}
+
+function showVeilleHome() {
+  state.is_veille = true;
+  state._veilleJours = state._veilleJours || 30;
+  setScreen("veille");
+  chargerVeille(true);
+  demarrerBoucleVeille();
 }
 
 function veillePeriode(jours) {
@@ -8333,6 +8365,18 @@ function enterClientMode() {
   buildCountryScreen();
   setScreen("country");
 }
+
+// Titre de l'en-tête pour l'écran d'activité, sinon il garde celui d'avant.
+const _updateHeaderAvantVeille = updateHeader;
+updateHeader = function (name) {
+  if (name === "veille") {
+    const t = document.getElementById("headerTitle");
+    if (t) t.textContent = "Activité";
+    return;
+  }
+  return _updateHeaderAvantVeille(name);
+};
+
 
 function backToOwnerHome() {
   state.is_owner = true;
