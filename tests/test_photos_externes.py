@@ -114,7 +114,25 @@ n = storage.migrer_photos()
 print(f"   deuxieme passage : {n} migration(s), fichier {poids_fichier()} octets")
 assert n == 0 and poids_fichier() == poids
 
-titre(9, "Photo disparue du disque : la commande reste lisible")
+titre(9, "Photo disparue du disque : elle est reprise depuis la sauvegarde")
+# Render n'a AUCUN disque persistant : apres chaque redemarrage, les fichiers
+# photos ont disparu. Il faut donc savoir les retelecharger a la demande,
+# sinon tous les selfies deviennent introuvables au premier redeploiement.
+chemin = storage._chemin_photo("P1", "selfie_b64")
+sauvegarde = chemin.read_text(encoding="utf-8")
+chemin.unlink()
+github_backup.telecharger_binaire = lambda chemin_repo: (
+    sauvegarde.encode("utf-8") if chemin_repo.endswith("P1.selfie_b64.txt") else b"")
+storage._order_index.clear()
+storage._FILE_CACHE["cle"] = None
+o = storage.get_order("P1")
+print(f"   selfie repris : {len(o.get('selfie_b64') or '')} caracteres")
+print(f"   fichier reecrit sur le disque : {chemin.exists()}")
+assert o["selfie_b64"] == SELFIE, "la photo doit revenir de la sauvegarde"
+assert chemin.exists(), "et etre remise sur le disque pour les fois suivantes"
+github_backup.telecharger_binaire = lambda *a, **k: b""
+
+titre("9b", "Photo introuvable partout : la commande reste lisible")
 chemin = storage._chemin_photo("P1", "selfie_b64")
 chemin.unlink()
 storage._order_index.clear()
