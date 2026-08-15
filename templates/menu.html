@@ -3224,13 +3224,15 @@
     font-size: 22px; cursor: pointer; transition: transform 0.12s, background 0.15s;
   }
   .ch-barre .rond:active { transform: scale(0.9); }
-  .ch-barre .rond.envoyer, .ch-barre .rond.micro {
+  .ch-barre .rond.envoyer {
     background: var(--ch-vert); color: #fff; font-size: 19px;
   }
-  .ch-barre .rond.micro.actif { background: #ef4444; animation: chPulse 1.1s infinite; }
-  @keyframes chPulse { 50% { box-shadow: 0 0 0 9px rgba(239,68,68,0); } 0% { box-shadow: 0 0 0 0 rgba(239,68,68,0.55); } }
-  /* Champ + micro secondaire : le micro est posé par-dessus la fin du champ,
-     donc le texte doit s'arrêter avant lui. */
+  /* Champ vide : le bouton reste là mais s'efface, pour ne pas inviter à
+     envoyer du vide. */
+  .ch-barre .rond.envoyer:disabled { opacity: 0.4; cursor: default; }
+  .ch-barre .rond.envoyer:disabled:active { transform: none; }
+  /* Le micro est posé par-dessus la fin du champ, donc le texte doit
+     s'arrêter avant lui. */
   .ch-champ { flex: 1; min-width: 0; position: relative; display: flex; }
   .ch-saisie {
     flex: 1; min-width: 0; resize: none; max-height: 120px;
@@ -3905,9 +3907,8 @@
                 autocomplete="off" oninput="chatAjusterHauteur(this)"></textarea>
       <button class="ch-micro-champ" id="chatMicroChamp" aria-label="Message vocal">🎙</button>
     </div>
-    <button class="rond micro" id="chatMicro" aria-label="Message vocal">🎙</button>
     <button class="rond envoyer" id="chatEnvoyer" aria-label="Envoyer"
-            onclick="chatEnvoyerTexte()" style="display:none;">➤</button>
+            onclick="chatEnvoyerTexte()" disabled>➤</button>
   </div>
 
   <input type="file" id="chatFichier" accept="image/*" style="display:none;"
@@ -7019,14 +7020,14 @@ function _dureeCourte(s) {
 function chatAjusterHauteur(el) {
   el.style.height = "auto";
   el.style.height = Math.min(el.scrollHeight, 120) + "px";
-  // Champ vide : le micro (comme sur la référence). Dès qu'on tape, il laisse
-  // la place au bouton envoyer, et le micro du champ s'efface pour ne pas
-  // proposer deux actions contradictoires.
-  const vide = !el.value.trim();
-  document.getElementById("chatEnvoyer").style.display = vide ? "none" : "flex";
-  document.getElementById("chatMicro").style.display   = vide ? "flex" : "none";
+  // Un seul micro, dans le champ ; le gros bouton vert envoie, toujours. Le
+  // micro s'efface dès qu'il y a du texte : à ce moment-là c'est l'envoi qu'on
+  // veut, et laisser les deux ferait hésiter.
+  const rempli = !!el.value.trim();
   const microChamp = document.getElementById("chatMicroChamp");
-  if (microChamp) microChamp.style.display = vide ? "flex" : "none";
+  if (microChamp) microChamp.style.display = rempli ? "none" : "flex";
+  const envoi = document.getElementById("chatEnvoyer");
+  if (envoi) envoi.disabled = !rempli;
 }
 
 // ── Envoi ───────────────────────────────────────────────────────────────────
@@ -7210,26 +7211,30 @@ async function chatFinirEnreg() {
                     { type: "audio", media: "", duree, texte: "" });
 }
 
+// Appelable autant de fois qu'on veut : on pose les gestionnaires en
+// propriété plutôt qu'en écouteur, donc reposer n'empile rien.
+//
+// C'est indispensable ici : pendant un vocal, la barre entière est remplacée,
+// puis restaurée depuis son HTML. Les éléments restaurés sont des nœuds neufs,
+// sans aucun écouteur — un garde-fou par attribut aurait cru le travail déjà
+// fait et laissé le micro et la touche Entrée sans effet après le premier
+// enregistrement.
 function chatBrancherBarre() {
-  const micro = document.getElementById("chatMicro");
-  if (!micro || micro.dataset.branche) return;
-  micro.dataset.branche = "1";
-  const basculerEnreg = () => {
-    if (chatEtat.enregistreur) chatFinirEnreg();
-    else chatDemarrerEnreg();
-  };
-  micro.addEventListener("click", basculerEnreg);
-  // Le micro posé dans le champ fait la même chose que le gros bouton vert :
-  // deux fois la même icône sur la référence, il serait déroutant que l'une
-  // des deux ne réponde pas.
   const microChamp = document.getElementById("chatMicroChamp");
-  if (microChamp) microChamp.addEventListener("click", basculerEnreg);
+  if (microChamp) {
+    microChamp.onclick = () => {
+      if (chatEtat.enregistreur) chatFinirEnreg();
+      else chatDemarrerEnreg();
+    };
+  }
   const zone = document.getElementById("chatSaisie");
-  if (zone && !zone.dataset.branche) {
-    zone.dataset.branche = "1";
-    zone.addEventListener("keydown", e => {
+  if (zone) {
+    zone.onkeydown = e => {
       if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); chatEnvoyerTexte(); }
-    });
+    };
+    // Remet micro et bouton d'envoi en accord avec le contenu du champ : à
+    // l'ouverture, et après un vocal qui a reconstruit la barre.
+    chatAjusterHauteur(zone);
   }
 }
 
