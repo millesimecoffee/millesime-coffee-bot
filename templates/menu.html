@@ -3,8 +3,8 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<meta name="color-scheme" content="dark">
-<meta name="theme-color" content="#0a0a0f">
+<meta name="color-scheme" content="light">
+<meta name="theme-color" content="#F7F7FA">
 <title>Millésime Coffee</title>
 <script src="https://telegram.org/js/telegram-web-app.js"></script>
 <!-- Leaflet pour la carte de tracking livreur -->
@@ -39,7 +39,7 @@
   }
   input::placeholder, textarea::placeholder { color: rgba(255,255,255,0.4); }
   /* Force le fond du body même si Telegram inject des styles inline */
-  html, body { background: #0a0a0f !important; color: #ffffff !important; }
+  html, body { background: #F7F7FA !important; color: #0C0B2E !important; }
 
   * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
 
@@ -1819,7 +1819,7 @@
     --r-xl: 26px;
   }
 
-  html, body { background: #07070c !important; }
+  html, body { background: #F7F7FA !important; }
   body {
     font-feature-settings: "ss01", "cv01", "cv11";
     -webkit-font-smoothing: antialiased;
@@ -3155,6 +3155,194 @@ body.admin-clair .od2-fiche {
   border-radius: var(--r-xl); box-shadow: var(--shadow-lg);
 }
 
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   LE RESTE DE L'APPLICATION EN CLAIR
+   Repéré écran par écran : ce qui suit ne suivait pas les variables du thème,
+   soit parce que la couleur était écrite en dur, soit parce que l'élément a
+   ses propres variables.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* ── Messagerie ─────────────────────────────────────────────────────────────
+   Le chat a sa propre palette (--ch-*), calquée sur WhatsApp sombre. On la
+   repeint en clair : fil gris très pâle, bulle reçue blanche, bulle envoyée
+   violette. Le vert d'origine n'appartenait pas à la charte. */
+body.admin-clair #screen-chat {
+  --ch-fond:    #F7F7FA;
+  --ch-carte:   #FFFFFF;
+  --ch-moi:     #982BFF;
+  --ch-txt:     #0C0B2E;
+  --ch-txt-2:   #77778A;
+  --ch-bordure: rgba(12,11,46,.07);
+  --ch-vert:    #982BFF;
+}
+body.admin-clair .ch-entete {
+  background: #FFFFFF !important;
+  border-bottom: 1px solid var(--ch-bordure);
+  box-shadow: 0 2px 12px rgba(30,20,80,.04);
+}
+body.admin-clair .ch-bulle {
+  box-shadow: 0 2px 10px rgba(30,20,80,.05);
+}
+/* Texte blanc dans la bulle envoyée, qui est violette. */
+body.admin-clair .ch-ligne.moi .ch-bulle,
+body.admin-clair .ch-ligne.moi .ch-bulle * { color: #FFFFFF; }
+body.admin-clair .ch-ligne.moi .ch-bulle .ch-heure { color: rgba(255,255,255,.75); }
+body.admin-clair .ch-barre {
+  background: #FFFFFF !important;
+  border-top: 1px solid var(--ch-bordure);
+}
+body.admin-clair .ch-saisie {
+  background: #F2F2F7 !important; color: var(--ch-txt);
+  border: none !important;
+}
+body.admin-clair .ch-saisie::placeholder { color: var(--ch-txt-2); }
+body.admin-clair .ch-avatar { background: var(--accent-grad) !important; color: #fff; }
+body.admin-clair .ch-date,
+body.admin-clair .ch-capsule {
+  background: rgba(12,11,46,.05) !important; color: var(--ch-txt-2);
+}
+
+/* ── Écran de veille : mêmes cartes que partout ailleurs ─────────────────── */
+body.admin-clair .vl-carte,
+body.admin-clair .vl-tunnel,
+body.admin-clair .vl-rang,
+body.admin-clair .vl-ligne {
+  background: #FFFFFF !important;
+  border: none !important;
+  box-shadow: var(--shadow-md);
+  color: var(--txt-primary);
+}
+body.admin-clair .vl-etape .barre { background: #EFEFF6; }
+body.admin-clair .vl-rafraichir {
+  background: #FFFFFF !important; border: none !important;
+  box-shadow: var(--shadow-md);
+}
+body.admin-clair .vl-periode button {
+  background: #FFFFFF !important; border: none !important;
+  color: var(--txt-secondary); box-shadow: var(--shadow-sm);
+}
+body.admin-clair .vl-periode button.on {
+  background: var(--accent-grad) !important; color: #fff;
+  box-shadow: var(--shadow-accent);
+}
+body.admin-clair .vl-rond { color: #fff; }
+
+/* ── Écran livreur ──────────────────────────────────────────────────────── */
+body.admin-clair .lv-course,
+body.admin-clair .lv-entete .lv-rafraichir {
+  background: #FFFFFF !important; border: none !important;
+  box-shadow: var(--shadow-md); color: var(--txt-primary);
+}
+body.admin-clair .lv-course .act {
+  border-radius: var(--r-md);
+}
+body.admin-clair .lv-course .act.parler {
+  background: #F2F0FB !important; color: var(--accent-3) !important;
+  border: none !important;
+}
+
+/* ── Boutons désactivés : gris clair, pas noir ───────────────────────────── */
+body.admin-clair .next-btn:disabled,
+body.admin-clair .next-btn[disabled] {
+  background: #E8E8F0 !important; color: #A5A5B8 !important;
+  box-shadow: none !important; opacity: 1;
+}
+
+/* ── Répertoire client : le compteur était blanc sur blanc ───────────────── */
+body.admin-clair .card .num,
+body.admin-clair .cd-num {
+  background: #F2F0FB !important; color: var(--accent-3) !important;
+}
+
+/* ── Le viseur de la caméra reste sombre : on y regarde une image ────────── */
+body.admin-clair .cam-wrap { background: #0C0B2E !important; }
+
+/* ── Écrans de mot de passe et de langue ─────────────────────────────────── */
+body.admin-clair #screen-pwd .pwd-dot,
+body.admin-clair #screen-admin-pwd .pwd-dot {
+  background: rgba(12,11,46,.12);
+}
+body.admin-clair #screen-pwd .pwd-dot.on,
+body.admin-clair #screen-admin-pwd .pwd-dot.on { background: var(--accent-3); }
+body.admin-clair .key,
+body.admin-clair .lang-card {
+  background: #FFFFFF !important; border: none !important;
+  color: var(--txt-primary); box-shadow: var(--shadow-sm);
+}
+
+/* ── Suivi de commande ──────────────────────────────────────────────────── */
+body.admin-clair .track-card,
+body.admin-clair .tk-carte,
+body.admin-clair #trackMap { background: #FFFFFF !important; }
+body.admin-clair .tk-etape .pastille { background: #EFEFF6; }
+body.admin-clair .tk-etape.faite .pastille { background: var(--accent-grad); }
+
+/* ── Barre du panier, flottante en bas ──────────────────────────────────── */
+body.admin-clair .cart-bar {
+  background: rgba(255,255,255,.92) !important;
+  border-top: 1px solid var(--border);
+  backdrop-filter: saturate(180%) blur(20px);
+  box-shadow: 0 -6px 26px rgba(30,20,80,.07);
+}
+
+/* ── Fenêtres surgissantes ──────────────────────────────────────────────── */
+body.admin-clair .modal-backdrop,
+body.admin-clair .od2-loupe { background: rgba(12,11,46,.45); }
+body.admin-clair .toast {
+  background: #0C0B2E; color: #fff; box-shadow: var(--shadow-lg);
+}
+
+
+/* Bouton secondaire : la même forme que le principal, sans le dégradé. */
+.next-btn.secondaire { background: #444; box-shadow: none; }
+body.admin-clair .next-btn.secondaire {
+  background: #FFFFFF !important;
+  color: var(--txt-primary) !important;
+  border: 1px solid var(--border) !important;
+  box-shadow: var(--shadow-sm) !important;
+}
+body.admin-clair #screen-chat { --ch-champ: #F2F2F7; }
+body.admin-clair #screen-chat .rond,
+body.admin-clair #screen-chat button.rond { color: var(--accent-3) !important; }
+
+
+/* ── Contrastes ─────────────────────────────────────────────────────────────
+   Le violet pâle #c4b5fd était lisible sur fond sombre ; sur blanc il
+   disparaît. On le remplace par le violet de la charte, qui tient sur clair. */
+body.admin-clair .hero-badge,
+body.admin-clair .banner,
+body.admin-clair .lv-course .n,
+body.admin-clair .badge-soft { color: var(--accent-3) !important; }
+body.admin-clair .hero-badge,
+body.admin-clair .banner { background: #F4F0FF !important; border: none !important; }
+
+/* Le bouton d'envoi du chat est violet plein : son texte doit être blanc,
+   sinon l'icône disparaît dedans. */
+body.admin-clair #screen-chat .rond.envoyer,
+body.admin-clair #screen-chat .rond.envoyer * { color: #FFFFFF !important; }
+
+/* Pastille de l'écran de suivi : gris trop pâle sur blanc. */
+body.admin-clair #screen-tracking .rond { color: var(--txt-secondary) !important; }
+
+
+/* Onglets de l'écran livreur : l'actif était un violet translucide sur fond
+   sombre, illisible une fois posé sur du blanc. */
+body.admin-clair .lv-onglet {
+  background: #FFFFFF !important; border: none !important;
+  color: var(--txt-secondary) !important; box-shadow: var(--shadow-sm);
+}
+body.admin-clair .lv-onglet.actif {
+  background: var(--accent-grad) !important; color: #FFFFFF !important;
+  box-shadow: var(--shadow-accent);
+}
+body.admin-clair .lv-onglet .n {
+  background: #F2F0FB !important; color: var(--accent-3) !important;
+}
+body.admin-clair .lv-onglet.actif .n {
+  background: rgba(255,255,255,.3) !important; color: #FFFFFF !important;
+}
+
 </style>
 </head>
 <body>
@@ -3611,7 +3799,7 @@ body.admin-clair .od2-fiche {
   .ch-avatar {
     width: 38px; height: 38px; flex: 0 0 38px; border-radius: 50%;
     display: flex; align-items: center; justify-content: center;
-    background: #2A3942;
+    background: var(--ch-champ, #2A3942);
     font-weight: 800; font-size: 16px; color: #fff;
     overflow: hidden;      /* le selfie remplit le rond sans déborder */
     border: 1.5px solid rgba(33,163,102,0.75);
@@ -3788,7 +3976,7 @@ body.admin-clair .od2-fiche {
   .ch-barre .rond {
     width: 44px; height: 44px; flex: 0 0 44px; border-radius: 50%; border: none;
     display: flex; align-items: center; justify-content: center;
-    background: #2A3942; color: var(--ch-txt);
+    background: var(--ch-champ, #2A3942); color: var(--ch-txt);
     font-size: 22px; cursor: pointer; transition: transform 0.12s, background 0.15s;
   }
   .ch-barre .rond:active { transform: scale(0.9); }
@@ -3805,7 +3993,7 @@ body.admin-clair .od2-fiche {
   .ch-saisie {
     flex: 1; min-width: 0; resize: none; max-height: 120px;
     padding: 12px 44px 12px 16px; border-radius: 22px; font: inherit; font-size: 16px;
-    background: #2A3942; border: none;
+    background: var(--ch-champ, #2A3942); border: none;
     color: var(--ch-txt); line-height: 1.3;
   }
   .ch-saisie::placeholder { color: var(--ch-txt-2); }
@@ -3944,7 +4132,7 @@ body.admin-clair .od2-fiche {
     <button class="pwd-btn" id="adminPwdBtn" onclick="unlockAdmin()">
       <span>Déverrouiller</span>
     </button>
-    <button class="next-btn" style="background:#444; box-shadow:none; margin-top:12px;"
+    <button class="next-btn secondaire" style="margin-top:12px;"
             onclick="quitterAdmin()">Continuer comme client</button>
   </div>
 </div>
@@ -4121,7 +4309,7 @@ body.admin-clair .od2-fiche {
       Ouvrez la page de paiement, saisissez ce montant, puis payez par carte ou Apple Pay.
     </div>
     <a id="linkAnchor" class="next-btn" style="display:block; text-decoration:none; text-align:center;" target="_blank" rel="noopener" data-i18n="pay_link_open_btn">🔗 Ouvrir la page de paiement</a>
-    <button class="next-btn" style="background:#444; box-shadow:none;" onclick="afterPaymentMethodChosen()" data-i18n="i_paid">✅ J'ai payé</button>
+    <button class="next-btn secondaire" onclick="afterPaymentMethodChosen()" data-i18n="i_paid">✅ J'ai payé</button>
   </div>
 </div>
 
@@ -4426,7 +4614,7 @@ body.admin-clair .od2-fiche {
     <p data-i18n="success_msg">Nous vous contactons très bientôt pour la livraison.</p>
     <button class="next-btn" id="successTrackBtn" style="max-width:280px; margin: 24px auto 0;" onclick="openTracking(state._lastOrderId)" data-i18n="success_track">📦 Suivre ma commande</button>
     <button class="next-btn" id="successAdminBackBtn" style="max-width:280px; margin: 12px auto 0; display:none;" onclick="backToOwnerHome()">👑 Retour au panel admin</button>
-    <button class="next-btn" style="max-width:240px; margin: 12px auto 0; background:#444; box-shadow:none;" onclick="tg.close()" data-i18n="close">Fermer</button>
+    <button class="next-btn secondaire" style="max-width:240px; margin: 12px auto 0;" onclick="tg.close()" data-i18n="close">Fermer</button>
   </div>
 </div>
 
@@ -5125,6 +5313,7 @@ const state = {
 
 tg.ready();
 tg.expand();
+document.body.classList.add("admin-clair");
 try { tg.enableClosingConfirmation(); } catch {}
 
 // Lecture lang depuis Telegram en fallback
@@ -5163,15 +5352,14 @@ function showToast(msg, isErr) {
   showToast._t = setTimeout(() => el.className = "toast" + (isErr?" err":""), 1800);
 }
 
-// L'espace admin s'affiche en clair, le reste de l'application en sombre.
-// On pose la classe sur <body> plutôt que sur l'écran : l'en-tête et les
-// éléments flottants vivent en dehors des écrans et doivent suivre aussi.
-function majThemeAdmin(name) {
-  const clair = String(name || "").startsWith("owner-");
-  document.body.classList.toggle("admin-clair", clair);
+// Toute la mini-app est en clair. La classe reste posée sur <body> plutôt que
+// d'être fondue dans :root — l'en-tête et les éléments flottants vivent en
+// dehors des écrans, et un seul point d'entrée reste plus simple à défaire.
+function majThemeAdmin() {
+  document.body.classList.add("admin-clair");
   try {
-    tg.setHeaderColor(clair ? "#F7F7FA" : "#0a0a0f");
-    tg.setBackgroundColor(clair ? "#F7F7FA" : "#0a0a0f");
+    tg.setHeaderColor("#F7F7FA");
+    tg.setBackgroundColor("#F7F7FA");
   } catch {}
 }
 
@@ -6403,7 +6591,7 @@ function showSelectedAddr() {
       <div class="addr-line">${escHtml(a.short || a.formatted).replace(/\n/g,'<br>')}</div>
       ${a.maps_link ? `<a class="map-link" href="${a.maps_link}" target="_blank" rel="noopener">${t("address_view_map")}</a>` : ""}
       <button class="next-btn" onclick="goToSelfie()">${t("address_confirm")}</button>
-      <button class="next-btn" style="background:#444; box-shadow:none;" onclick="resetAddrSelection()">${t("address_change")}</button>
+      <button class="next-btn secondaire" onclick="resetAddrSelection()">${t("address_change")}</button>
     </div>`;
 }
 

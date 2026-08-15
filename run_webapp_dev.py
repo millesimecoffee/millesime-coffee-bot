@@ -23,6 +23,8 @@ app.config["TEMPLATES_AUTO_RELOAD"] = True
 app.jinja_env.auto_reload = True
 
 if __name__ == "__main__":
-    port = int(os.getenv("DEV_PORT", "5000"))
+    # PORT est impose par l'outil d'apercu ; DEV_PORT reste pour un
+    # lancement a la main.
+    port = int(os.getenv("PORT") or os.getenv("DEV_PORT") or "5000")
     print(f"Mini App de dev : http://localhost:{port}/menu")
     app.run(host="127.0.0.1", port=port, debug=False, use_reloader=False, threaded=True)
