@@ -28,6 +28,16 @@ webapp = preparer(
     LIVREUR3_ZONES="Italie, Croatie, Grece",
     LIVREUR3_CHAT_ID="",
     LIVREUR3_USERNAME="",
+    # Livreur 4 — deux iles espagnoles, PAS le reste de l'Espagne
+    LIVREUR4_PASSWORD="SALINAS ILES 71",
+    LIVREUR4_ZONES="Espagne:Ibiza, Espagne:Palma De Majorque",
+    LIVREUR4_CHAT_ID="",
+    LIVREUR4_USERNAME="",
+    # Livreur 5 — le Portugal en entier
+    LIVREUR5_PASSWORD="ALGARVE PORTUGAL 28",
+    LIVREUR5_ZONES="Portugal",
+    LIVREUR5_CHAT_ID="",
+    LIVREUR5_USERNAME="",
     DATA_DIR=tempfile.mkdtemp(prefix="millesime_2lv_"))
 
 import github_backup
@@ -81,6 +91,20 @@ COMMANDES = [
      "country": "🇬🇷 Grèce", "city": "Athènes", "cart": {}, "user_name": "Elia",
      "created_at": "2026-08-14T10:00:00+02:00",
      "_delivered_at": "2026-08-14T12:00:00+02:00"},
+    # Les iles, et le reste de l'Espagne qui ne doit PAS leur revenir.
+    {"order_id": "PLM1", "user_id": 1201, "status": "pending", "total": 260,
+     "country": "🇪🇸 Espagne", "city": "Palma De Majorque", "cart": {},
+     "user_name": "Neus", "created_at": "2026-08-15T09:00:00+02:00"},
+    {"order_id": "TEN1", "user_id": 1202, "status": "pending", "total": 190,
+     "country": "🇪🇸 Espagne", "city": "Tenerife", "cart": {}, "user_name": "Aday",
+     "created_at": "2026-08-15T09:00:00+02:00"},
+    # Le Portugal.
+    {"order_id": "LIS1", "user_id": 1301, "status": "pending", "total": 210,
+     "country": "🇵🇹 Portugal", "city": "Lisbonne", "cart": {}, "user_name": "Rui",
+     "created_at": "2026-08-15T09:00:00+02:00"},
+    {"order_id": "ALB1", "user_id": 1302, "status": "confirmed", "total": 340,
+     "country": "🇵🇹 Portugal", "city": "Albufeira", "cart": {}, "user_name": "Ana",
+     "created_at": "2026-08-15T09:00:00+02:00"},
 ]
 storage._load = lambda: [dict(o) for o in COMMANDES]
 storage.get_order = lambda oid: next((dict(o) for o in COMMANDES if o["order_id"] == oid), None)
@@ -206,8 +230,8 @@ webapp._livreurs_connus["123456"] = 1786700000.0        # ancien format
 print(f"   ancien format -> livreur {webapp._prefixe_connu(webapp._livreurs_connus['123456'])}")
 assert webapp._prefixe_connu(webapp._livreurs_connus["123456"]) == "LIVREUR"
 
-titre(11, "Un troisieme livreur couvre trois PAYS entiers")
 SUD = 800000321
+titre(11, "Un troisieme livreur couvre trois PAYS entiers")
 d = entrer(SUD, "sirocco sud 83")
 print(f"   acces -> ok={d.get('ok')}")
 assert d.get("ok")
@@ -266,5 +290,61 @@ for cmd, attendu in ((COMMANDES[5], str(SUD)), (COMMANDES[7], str(SUD)),
     print(f"   {cmd['city']:10s} -> {cibles}")
     assert cibles == [attendu], (cmd["city"], cibles)
 os.environ["LIVREUR3_CHAT_ID"] = ""
+
+titre(15, "Un acces pour deux iles seulement")
+ILES = 810000111
+d = entrer(ILES, "salinas iles 71")
+print(f"   acces -> ok={d.get('ok')}")
+assert d.get("ok")
+r = courses().get_json()
+ids = sorted(c["order_id"] for c in r["courses"])
+print(f"   zones   : {r['zones']}")
+print(f"   courses : {ids}")
+assert ids == ["PLM1"], ids
+print("   Tenerife (Espagne, hors zone) reste dehors : "
+      f"{'TEN1' not in ids}")
+assert "TEN1" not in ids, "les iles ne prennent pas toute l'Espagne"
+for interdit in ("BCN1", "MRB1", "MLG1"):
+    assert interdit not in ids, interdit
+print("   ni Barcelone, ni Marbella, ni Malaga")
+
+titre(16, "Un acces pour tout le Portugal")
+PORT = 820000222
+d = entrer(PORT, "algarve portugal 28")
+assert d.get("ok")
+r = courses().get_json()
+ids_p = sorted(c["order_id"] for c in r["courses"])
+print(f"   zones   : {r['zones']}")
+print(f"   courses : {ids_p}")
+assert ids_p == ["ALB1", "LIS1"], ids_p
+
+titre(17, "Les cinq acces ne se recouvrent jamais")
+vues = {}
+for nom, uid, mdp in (("Bruxelles", BXL, "livreur bruxelles"),
+                      ("Espagne", ESP, "livreur espagne"),
+                      ("Sud", SUD, "sirocco sud 83"),
+                      ("Iles", ILES, "salinas iles 71"),
+                      ("Portugal", PORT, "algarve portugal 28")):
+    entrer(uid, mdp)
+    vues[nom] = {c["order_id"] for c in courses().get_json()["courses"]}
+    print(f"   {nom:10s} : {sorted(vues[nom])}")
+noms = list(vues)
+for i in range(len(noms)):
+    for j in range(i + 1, len(noms)):
+        commun = vues[noms[i]] & vues[noms[j]]
+        assert not commun, f"{noms[i]} et {noms[j]} partagent {commun}"
+print("   aucun recouvrement entre les cinq")
+
+titre(18, "Une ville sans livreur ne revient a personne")
+# Tenerife et Lanzarote ne sont dans aucune zone : elles ne doivent apparaitre
+# nulle part, et aucune notification ne doit partir pour elles.
+toutes_vues = set().union(*vues.values())
+print(f"   TEN1 (Tenerife) visible quelque part : {'TEN1' in toutes_vues}")
+assert "TEN1" not in toutes_vues
+# Par numero, pas par index : l'ordre de la liste change des qu'on l'etoffe.
+tene = next(o for o in COMMANDES if o["order_id"] == "TEN1")
+prefixe = webapp._prefixe_pour_commande(tene)
+print(f"   livreur attribue a Tenerife : {prefixe or '(aucun)'}")
+assert prefixe == "", f"Tenerife ne doit revenir a personne, or : {prefixe}"
 
 fin()
