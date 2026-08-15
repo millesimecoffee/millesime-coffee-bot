@@ -1513,51 +1513,82 @@
     flex: 0 0 auto; position: relative; z-index: 10;
     margin-top: -28px; max-height: 68vh; overflow-y: auto;
     -webkit-overflow-scrolling: touch;
+    /* Pas de barre de défilement : sur les navigateurs qui la dessinent en dur
+       elle laissait une bande claire à droite du bandeau collant. */
+    scrollbar-width: none;
     background: var(--tk-fond);
     border-radius: 30px 30px 0 0;
     box-shadow: 0 -10px 34px rgba(15,15,30,0.13);
     padding: 0 20px calc(18px + env(safe-area-inset-bottom, 0px));
   }
+  /* La poignée reste en haut pendant qu'on fait défiler la feuille : sans ça,
+     le contenu remontait derrière le bord arrondi, qui ne masque rien, et la
+     feuille avait l'air coupée. */
+  .tk-feuille::-webkit-scrollbar { display: none; }
+  /* Hauteur totale 32 px, soit un peu plus que le rayon des coins (30 px) :
+     en dessous, le contenu qui défile réapparaissait dans la courbe. */
   .tk-poignee {
-    width: 38px; height: 5px; border-radius: 999px;
-    background: #dcdce4; margin: 9px auto 14px;
+    position: sticky; top: 0; z-index: 2;
+    height: 32px; margin: 0 -20px 10px; padding-top: 10px;
+    background: var(--tk-fond);
+    border-radius: 30px 30px 0 0;
+  }
+  .tk-poignee::before {
+    content: ""; display: block; width: 38px; height: 5px; margin: 0 auto;
+    border-radius: 999px; background: #dcdce4;
   }
 
-  .tk-entete { display: flex; align-items: flex-start; gap: 12px; }
-  .tk-entete .bloc { flex: 1; min-width: 0; }
+  .tk-entete { display: block; }
+  .tk-ligne2 {
+    display: flex; align-items: center; justify-content: space-between;
+    gap: 12px; margin-top: 4px;
+  }
+  .tk-ligne2 .tk-sous { flex: 1; min-width: 0; margin-top: 0; }
+  /* Le titre suit la largeur de l'écran : à 22 px fixes, « Livreur en route ! »
+     se coupait en deux lignes sur un petit téléphone, le bloc ETA lui prenant
+     un tiers de la place. */
   .tk-titre {
-    font-size: 22px; font-weight: 800; letter-spacing: -0.5px;
+    font-size: clamp(18px, 5.4vw, 22px); font-weight: 800; letter-spacing: -0.5px;
     line-height: 1.2; color: var(--tk-txt);
   }
   .tk-sous {
-    font-size: 13.5px; color: var(--tk-txt-2); margin-top: 5px; line-height: 1.35;
+    font-size: 13px; color: var(--tk-txt-2); margin-top: 4px; line-height: 1.35;
   }
+  /* Bloc ETA resserré : il annonce une heure, pas le sujet de l'écran. Sa
+     valeur était plus grosse que le titre, ce qui inversait la hiérarchie. */
   .tk-eta {
-    flex: 0 0 auto; text-align: center; padding: 9px 14px;
-    border-radius: 17px; background: var(--tk-violet-c);
+    flex: 0 0 auto; text-align: center; padding: 7px 11px;
+    border-radius: 15px; background: var(--tk-violet-c);
   }
   .tk-eta .lbl {
-    font-size: 10px; font-weight: 700; color: var(--tk-violet);
-    text-transform: uppercase; letter-spacing: 0.4px; line-height: 1;
+    font-size: 9.5px; font-weight: 700; color: var(--tk-violet);
+    text-transform: uppercase; letter-spacing: 0.2px; line-height: 1;
+    white-space: nowrap;
   }
   .tk-eta .val {
-    font-size: 25px; font-weight: 800; color: var(--tk-violet);
-    margin-top: 5px; line-height: 1; letter-spacing: -0.6px;
+    font-size: 20px; font-weight: 800; color: var(--tk-violet);
+    margin-top: 4px; line-height: 1; letter-spacing: -0.5px;
     font-variant-numeric: tabular-nums;
   }
 
   /* ── Progression en 4 étapes ─────────────────────────────────────────── */
+  /* Aucun padding latéral : les quatre colonnes font alors exactement 25 %
+     chacune, donc les pastilles sont centrées sur 12,5 / 37,5 / 62,5 / 87,5 %.
+     C'est ce qui permet au rail de commencer et finir pile sur la première et
+     la dernière — avec un padding, il dépassait d'environ 3 px de chaque côté. */
   .tk-etapes {
     position: relative; display: flex; justify-content: space-between;
-    margin: 22px 0 4px; padding: 0 2px;
+    margin: 20px 0 4px;
   }
-  /* Rail de fond + portion parcourue, tracés derrière les pastilles. */
+  /* Rail de fond + portion parcourue, tracés derrière les pastilles.
+     `top` place le rail sur le centre des pastilles : 35 px de haut, donc
+     centre à 17,5 px, donc rail de 3 px à partir de 16. */
   .tk-etapes::before, .tk-etapes::after {
-    content: ""; position: absolute; top: 17px; height: 3px; border-radius: 2px;
+    content: ""; position: absolute; top: 16px; height: 3px; border-radius: 2px;
   }
-  .tk-etapes::before { left: 12%; right: 12%; background: var(--tk-trait); }
+  .tk-etapes::before { left: 12.5%; right: 12.5%; background: var(--tk-trait); }
   .tk-etapes::after {
-    left: 12%; width: calc((100% - 24%) * var(--tk-avance, 0));
+    left: 12.5%; width: calc(75% * var(--tk-avance, 0));
     background: var(--tk-grad); transition: width 0.5s ease;
   }
   .tk-etape { position: relative; z-index: 1; flex: 1; text-align: center; }
@@ -1593,7 +1624,7 @@
   /* ── Bandeau d'information ───────────────────────────────────────────── */
   .tk-info {
     display: flex; gap: 11px; align-items: flex-start;
-    margin-top: 20px; padding: 13px 15px;
+    margin-top: 16px; padding: 12px 14px;
     border-radius: 17px; background: var(--tk-carte);
   }
   .tk-info .ic {
@@ -1611,7 +1642,13 @@
   }
   .tk-details .ligne {
     display: flex; justify-content: space-between; gap: 12px; padding: 5px 0;
+    align-items: baseline;
   }
+  /* La valeur de droite ne se coupe jamais : « × 3 » se retrouvait avec le
+     « × » sur une ligne et le « 3 » sur la suivante dès qu'un nom d'article
+     etait long. C'est le nom qui cède la place, pas la quantité. */
+  .tk-details .ligne > :last-child { flex: 0 0 auto; white-space: nowrap; }
+  .tk-details .ligne > :first-child { min-width: 0; }
   .tk-details .ligne .q { color: var(--tk-txt-2); font-variant-numeric: tabular-nums; }
   .tk-details .sep { height: 1px; background: var(--tk-trait); margin: 8px 0; }
   .tk-details .total { font-weight: 800; font-size: 15.5px; }
@@ -1619,7 +1656,7 @@
 
   /* ── Actions ─────────────────────────────────────────────────────────── */
   .tk-cta {
-    width: 100%; margin-top: 18px; padding: 17px;
+    width: 100%; margin-top: 15px; padding: 16px;
     border: none; border-radius: 21px; cursor: pointer;
     background: var(--tk-grad); color: #fff;
     font-size: 16.5px; font-weight: 750; letter-spacing: -0.2px;
@@ -1648,9 +1685,11 @@
   .tk-cta2:active { background: #ededf2; }
 
   @media (max-height: 700px) {
-    .tk-feuille { max-height: 74vh; }
-    .tk-titre { font-size: 20px; }
-    .tk-etapes { margin-top: 18px; }
+    .tk-feuille { max-height: 76vh; }
+    .tk-etapes { margin-top: 16px; }
+    .tk-info { margin-top: 13px; }
+    .tk-cta { margin-top: 12px; padding: 15px; }
+    .tk-cta2 { margin-top: 8px; padding: 13px; }
   }
 
   /* ── Marqueurs Leaflet (fond de carte clair) ─────────────────────────── */
@@ -3837,14 +3876,17 @@
   <div class="tk-feuille">
     <div class="tk-poignee"></div>
 
+    <!-- Le titre occupe sa propre ligne : à côté du bloc ETA il se coupait en
+         deux sur les petits écrans. L'heure d'arrivée descend d'un cran, en
+         face du sous-titre. -->
     <div class="tk-entete">
-      <div class="bloc">
-        <div class="tk-titre" id="trackStatusBig">Préparation</div>
+      <div class="tk-titre" id="trackStatusBig">Préparation</div>
+      <div class="tk-ligne2">
         <div class="tk-sous" id="trackStatusSub">Votre commande est en cours de préparation</div>
-      </div>
-      <div class="tk-eta" id="trackEtaCarte" style="display:none;">
-        <div class="lbl" id="trackEtaLabel">Arrivée estimée</div>
-        <div class="val" id="trackEta">--:--</div>
+        <div class="tk-eta" id="trackEtaCarte" style="display:none;">
+          <div class="lbl" id="trackEtaLabel">Arrivée estimée</div>
+          <div class="val" id="trackEta">--:--</div>
+        </div>
       </div>
     </div>
 
