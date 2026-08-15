@@ -347,4 +347,53 @@ prefixe = webapp._prefixe_pour_commande(tene)
 print(f"   livreur attribue a Tenerife : {prefixe or '(aucun)'}")
 assert prefixe == "", f"Tenerife ne doit revenir a personne, or : {prefixe}"
 
+titre(19, "Le livreur peut se faire envoyer la photo du client")
+# Le selfie est dans la commande de sa zone.
+COMMANDES[0]["selfie_b64"] = "/9j/4AAQSkZJRg=="        # contenu factice
+envois.clear()
+entrer(BXL, "livreur bruxelles")
+r = app.post("/api/livreur/course/BXL1/selfie/envoyer", json={"initData": "x"})
+print(f"   sa propre course -> HTTP {r.status_code} {r.get_json()}")
+assert r.status_code == 200 and r.get_json().get("ok")
+
+titre(20, "Mais PAS celle d'une course hors de sa zone")
+COMMANDES[5]["selfie_b64"] = "/9j/4AAQSkZJRg=="        # Rome, zone du Sud
+r = app.post("/api/livreur/course/ROM1/selfie/envoyer", json={"initData": "x"})
+print(f"   Bruxelles -> photo d'une course de Rome : HTTP {r.status_code}")
+assert r.status_code == 404, r.status_code
+entrer(SUD, "sirocco sud 83")
+r = app.post("/api/livreur/course/ROM1/selfie/envoyer", json={"initData": "x"})
+print(f"   le livreur du Sud, lui -> HTTP {r.status_code}")
+assert r.status_code == 200
+
+titre(21, "Une course sans photo le dit clairement")
+COMMANDES[5].pop("selfie_b64", None)
+r = app.post("/api/livreur/course/ROM1/selfie/envoyer", json={"initData": "x"})
+print(f"   sans photo -> HTTP {r.status_code} {r.get_json().get('error')}")
+assert r.status_code == 404 and r.get_json().get("error") == "no_photo"
+
+titre(22, "Le livreur peut annuler une course de sa zone")
+entrer(SUD, "sirocco sud 83")
+for depuis in ("pending", "confirmed", "delivering"):
+    COMMANDES[5]["status"] = depuis
+    r = app.post("/api/livreur/course/ROM1/status",
+                 json={"initData": "x", "status": "cancelled"})
+    print(f"   depuis « {depuis:11s} » -> HTTP {r.status_code}")
+    assert r.status_code == 200, (depuis, r.get_json())
+
+titre(23, "Mais pas celle d'un autre, ni une deja livree")
+COMMANDES[5]["status"] = "pending"
+entrer(BXL, "livreur bruxelles")
+r = app.post("/api/livreur/course/ROM1/status",
+             json={"initData": "x", "status": "cancelled"})
+print(f"   course d'un autre -> HTTP {r.status_code}")
+assert r.status_code in (403, 404)
+entrer(SUD, "sirocco sud 83")
+COMMANDES[5]["status"] = "delivered"
+r = app.post("/api/livreur/course/ROM1/status",
+             json={"initData": "x", "status": "cancelled"})
+print(f"   deja livree       -> HTTP {r.status_code} {r.get_json().get('error')}")
+assert r.status_code == 400
+COMMANDES[5]["status"] = "pending"
+
 fin()
