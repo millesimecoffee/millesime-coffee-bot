@@ -1459,12 +1459,15 @@ def api_finalize_order():
     # autres continuent d'accepter n'importe quelle devise en liquide, comme
     # avant, sans quoi on casserait le franc suisse ou le dirham des Émirats,
     # qui n'ont pas de symbole dans la liste du pays.
-    if methode == "cash" and catalog_mod.PAIEMENT_PAR_VILLE.get((country, city), {}).get("devises"):
+    # On n'encaisse que la monnaie du lieu. La règle de la ville l'emporte sur
+    # celle du pays ; à défaut, celle du pays s'applique — c'est elle qui dit
+    # qu'on prend des euros en France et des bahts en Thaïlande.
+    if methode == "cash":
         codes_ok = {_CODE_DEVISE.get(sym, sym).upper() for sym in allowed_currencies}
         devise_cash = str(payment.get("currency", "")).strip().upper()
         if devise_cash and devise_cash not in codes_ok:
-            logger.warning("commande refusee : liquide en %r interdit a %s (%s)",
-                           devise_cash, city, ", ".join(sorted(codes_ok)))
+            logger.warning("commande refusee : liquide en %r interdit a %s / %s (%s)",
+                           devise_cash, country, city, ", ".join(sorted(codes_ok)))
             return jsonify({"ok": False, "error": "devise_non_acceptee",
                             "acceptees": sorted(codes_ok)}), 400
 

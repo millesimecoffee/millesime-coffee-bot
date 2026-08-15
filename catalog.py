@@ -456,12 +456,27 @@ def get_currency(country: str) -> str:
 # ═══════════════════════════════════════════════════════════════════════════
 ALL_CURRENCIES = ["€", "$", "£"]   # "toutes les monnaies" pour le reste du monde
 
+# On encaisse la monnaie du pays, et elle seule : c'est ce qui circule sur
+# place, et le livreur n'a pas à faire de change à la porte du client.
 COUNTRY_CURRENCIES: dict[str, list[str]] = {
-    "🇺🇸 États-Unis": ["$"],              # dollars uniquement
-    "🇬🇧 Angleterre": ["£"],              # livres uniquement (Londres + Manchester)
-    "🇹🇭 Thaïlande":  ["฿"],              # bahts uniquement
-    "🇲🇦 Maroc":       ["dh", "€", "$"],  # dirham / euro / dollar
-    # Tous les autres pays → ALL_CURRENCIES (voir get_currencies)
+    # Zone euro
+    "🇫🇷 France":     ["€"],
+    "🇧🇪 Belgique":   ["€"],
+    "🇳🇱 Pays-Bas":   ["€"],
+    "🇪🇸 Espagne":    ["€"],
+    "🇮🇹 Italie":     ["€"],
+    "🇬🇷 Grèce":      ["€"],
+    "🇵🇹 Portugal":   ["€"],
+    "🇩🇪 Allemagne":  ["€"],
+    "🇭🇷 Croatie":    ["€"],
+    # Hors zone euro : la monnaie locale
+    "🇺🇸 États-Unis": ["$"],
+    "🇬🇧 Angleterre": ["£"],
+    "🇹🇭 Thaïlande":  ["฿"],
+    "🇲🇦 Maroc":      ["dh"],
+    # Hongrie et Albanie ne sont pas listées : leur monnaie n'est ni l'euro ni
+    # une de celles qu'on encaisse. Elles gardent donc le choix par défaut
+    # jusqu'à décision — mieux vaut une liste large qu'une devise inventée.
 }
 
 

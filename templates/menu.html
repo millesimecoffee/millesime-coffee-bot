@@ -5974,25 +5974,33 @@ function selectPaymentMethod(method) {
 // Symbole affiché → code de la devise encaissée.
 const _CODE_DEVISE = { "€": "EUR", "$": "USD", "£": "GBP", "dh": "MAD", "฿": "THB" };
 
+// Libellé de chaque devise encaissable. Toute devise proposée par un pays
+// doit figurer ici, sinon elle serait introuvable au moment de payer.
+const _LIBELLE_DEVISE = {
+  EUR: "🇪🇺 EUR — Euro",
+  USD: "🇺🇸 USD — Dollar",
+  GBP: "🇬🇧 GBP — Livre sterling",
+  THB: "🇹🇭 THB — Baht",
+  MAD: "🇲🇦 MAD — Dirham marocain",
+  CHF: "🇨🇭 CHF — Franc suisse",
+  AED: "🇦🇪 AED — Dirham EAU",
+};
+
 function buildCashCurrencies() {
   const cont = document.getElementById("cashCurrencies");
-  let list = [
-    ["EUR","🇪🇺 EUR — Euro"],
-    ["USD","🇺🇸 USD — Dollar"],
-    ["GBP","🇬🇧 GBP — Livre sterling"],
-    ["CHF","🇨🇭 CHF — Franc suisse"],
-    ["AED","🇦🇪 AED — Dirham EAU"],
-    ["MAD","🇲🇦 MAD — Dirham marocain"],
-  ];
-  // On ne restreint que les villes ayant une règle explicite, exactement comme
-  // le serveur : ailleurs, toutes les devises restent proposées, y compris
-  // celles qui n'ont pas de symbole dans la liste du pays (franc suisse,
-  // dirham des Émirats). Sinon on retirerait des devises qu'on encaisse.
-  const regle = reglesPaiement();
-  if (regle.devises && regle.devises.length) {
-    const permises = regle.devises.map(s => _CODE_DEVISE[s] || s);
-    const filtre = list.filter(([code]) => permises.includes(code));
-    if (filtre.length) list = filtre;
+  // La liste est CONSTRUITE à partir des devises acceptées sur place, elle
+  // n'est plus filtrée depuis une liste figée. La nuance compte : le baht
+  // n'était dans aucune liste, le filtre ne trouvait rien, et on retombait
+  // sur les six devises d'origine — la Thaïlande proposait donc des euros
+  // que le serveur refusait ensuite.
+  const permises = (state.allowedCurrencies || []).map(s => _CODE_DEVISE[s] || s);
+  let list = permises
+    .filter(code => _LIBELLE_DEVISE[code])
+    .map(code => [code, _LIBELLE_DEVISE[code]]);
+  if (!list.length) {
+    // Aucune règle exploitable : on retombe sur les devises courantes plutôt
+    // que d'afficher un écran vide où le client ne pourrait pas payer.
+    list = ["EUR", "USD", "GBP"].map(c => [c, _LIBELLE_DEVISE[c]]);
   }
   cont.innerHTML = "";
   list.forEach(([code, label]) => {
