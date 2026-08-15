@@ -182,12 +182,21 @@ def classements(jours: int = 30) -> dict:
     """Les villes où ça regarde le plus, et celles où ça commande le plus."""
     data = _depuis(_lire(), jours)
     vues, commandes, pays_vues = Counter(), Counter(), Counter()
+    sans_ville = 0
     for p in data:
-        lieu = f"{p.get('pays', '')}|{p.get('ville') or '—'}"
+        ville = p.get("ville") or ""
+        lieu = f"{p.get('pays', '')}|{ville}"
         if p.get("type", "vue") == "vue":
-            vues[lieu] += 1
             pays_vues[p.get("pays", "")] += 1
-        elif p.get("etape") == "lancée":
+            # Quelqu'un resté au choix du pays n'a regardé aucune ville : il
+            # n'a pas sa place dans un classement DE VILLES, où il apparaissait
+            # sous un tiret — et deux pays différents y donnaient deux lignes
+            # « — » impossibles à distinguer.
+            if ville:
+                vues[lieu] += 1
+            else:
+                sans_ville += 1
+        elif p.get("etape") == "lancée" and ville:
             commandes[lieu] += 1
 
     def _mettre_en_forme(compteur):
@@ -200,6 +209,9 @@ def classements(jours: int = 30) -> dict:
         "villes_vues": _mettre_en_forme(vues),
         "villes_commandes": _mettre_en_forme(commandes),
         "pays": [{"pays": p, "n": n} for p, n in pays_vues.most_common(6)],
+        # Combien se sont arrêtés au choix du pays : un signal d'hésitation,
+        # qui n'a pas sa place dans le classement des villes.
+        "sans_ville": sans_ville,
     }
 
 

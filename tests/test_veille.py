@@ -225,6 +225,16 @@ print(f"   villes commandees : {[(x['ville'], x['n']) for x in c['villes_command
 assert {x["ville"] for x in c["villes_commandes"]} == {"Malaga", "Paris"}
 assert all(0 <= x["part"] <= 100 for x in c["villes_vues"])
 
+titre("11c2", "Un visiteur reste au choix du pays n'entre pas dans les villes")
+parcours.noter(999001, "Sans", "🇮🇹 Italie")        # pays seul
+parcours.noter(999002, "Sans2", "🇵🇹 Portugal")     # pays seul
+c2 = parcours.classements(90)
+villes = [x["ville"] for x in c2["villes_vues"]]
+print(f"   villes classees : {villes}")
+print(f"   restes au pays  : {c2['sans_ville']}")
+assert "" not in villes and "—" not in villes, villes
+assert c2["sans_ville"] >= 2
+
 titre("11d", "Une etape de commande ne porte NI montant NI panier")
 lignes = [x for x in parcours.passages(400) if x.get("type") == "commande"]
 champs = set().union(*(set(x) for x in lignes))
