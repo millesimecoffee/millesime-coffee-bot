@@ -601,12 +601,15 @@ def api_notify_city():
 
     # Le livreur de la zone est prévenu qu'un client regarde chez lui : il peut
     # se tenir prêt. Même anti-répétition que pour l'owner.
-    if city and _dans_zone_livreur({"country": country, "city": city}):
+    _pref_ville = (_prefixe_pour_commande({"country": country, "city": city})
+                   if city else "")
+    if _pref_ville:
         drapeau, _ = pushover._separer_drapeau(country)
         if _prevenir_livreur(
                 f"👀 Un client consulte le catalogue <b>{_html_escape(city)}</b> "
                 f"{drapeau}\nTenez-vous prêt.",
-                cle_anti_repetition=f"lv:vue:{uid}:{city}"):
+                cle_anti_repetition=f"lv:vue:{uid}:{city}",
+                prefixe=_pref_ville):
             envoyes.append("livreur")
 
     return jsonify({"ok": True, "sent": envoyes})
@@ -675,9 +678,15 @@ def api_auth():
 
     # Puis celui du livreur : même principe, mais il n'ouvre que les courses
     # de sa zone, sans aucune identité de client.
-    mdp_livreur = _livreur_password()
-    est_livreur = (not est_admin and bool(mdp_livreur) and _meme_mdp(pwd, mdp_livreur)
-                   and _compte_livreur_autorise(uid))
+    # Chaque livreur a son mot de passe : on cherche celui qui correspond.
+    prefixe_livreur = ""
+    if not est_admin and pwd:
+        for p in _prefixes_livreur():
+            if _meme_mdp(pwd, os.getenv(f"{p}_PASSWORD", "")) and \
+                    _compte_livreur_autorise(uid, p):
+                prefixe_livreur = p
+                break
+    est_livreur = bool(prefixe_livreur)
 
     if (not est_admin and not est_livreur
             and (not pwd or _normalise_mdp(pwd) != _normalise_mdp(expected))):
@@ -694,11 +703,15 @@ def api_auth():
 
     if est_livreur and uid:
         with _livreur_lock:
-            _livreur_unlocked[uid] = time.time() + _ADMIN_SESSION_TTL
+            # On garde le préfixe : deux livreurs n'ont ni les mêmes zones ni
+            # les mêmes courses, et la session doit savoir lequel est entré.
+            _livreur_unlocked[str(uid)] = (time.time() + _ADMIN_SESSION_TTL,
+                                           prefixe_livreur)
         # Sa première connexion suffit à l'inscrire : plus besoin de relever
         # son identifiant Telegram à la main pour lui envoyer les courses.
-        _retenir_livreur(uid)
-        logger.info("panel livreur ouvert pour %s (zones %s)", uid, _zones_livreur())
+        _retenir_livreur(uid, prefixe_livreur)
+        logger.info("panel livreur ouvert pour %s — %s (zones %s)",
+                    uid, prefixe_livreur, _zones_du_prefixe(prefixe_livreur))
 
     # OK — recharger le catalogue (au cas où on l'aurait modifié)
     try:
@@ -1550,7 +1563,8 @@ def api_finalize_order():
     # l'owner lui transmette le bon de commande à chaque fois. Comme partout
     # côté livreur, aucune identité — juste de quoi livrer.
     try:
-        if _dans_zone_livreur(order_dict):
+        _pref_course = _prefixe_pour_commande(order_dict)
+        if _pref_course:
             lignes = "\n".join(f"  • {_html_escape(p)} × {q}"
                                for p, q in safe_cart.items())
             adresse_lv = (address.get("short") or address.get("formatted")
@@ -1562,7 +1576,8 @@ def api_finalize_order():
                 + (f"👤 Pour {_html_escape(prenom)}\n" if prenom else "")
                 + f"{lignes}\n"
                 f"💰 {total:,.0f} {_html_escape(disp_cur)} · {_html_escape(pay_label)}\n\n"
-                "Ouvrez la boutique pour l'accepter.")
+                "Ouvrez la boutique pour l'accepter.",
+                prefixe=_pref_course)
     except Exception as exc:
         logger.warning("notif course livreur : %s", exc)
 
@@ -1842,17 +1857,33 @@ _livreur_unlocked: dict[str, float] = {}
 _livreur_lock = threading.Lock()
 
 
-def _livreur_password() -> str:
-    return os.getenv("LIVREUR_PASSWORD", "").strip()
+# ── Les livreurs ─────────────────────────────────────────────────────────────
+# Chacun a son mot de passe, ses zones, ses comptes autorisés et ses
+# notifications. Le premier se configure avec LIVREUR_PASSWORD / LIVREUR_ZONES
+# / LIVREUR_CHAT_ID / LIVREUR_USERNAME ; les suivants avec LIVREUR2_*,
+# LIVREUR3_*… Ajouter un livreur ne demande donc que quatre variables, sans
+# toucher à ceux qui tournent déjà.
+_MAX_LIVREURS = 9
 
 
-def _zones_livreur() -> list[tuple[str, str]]:
-    """Zones confiées au livreur : liste de (pays_normalisé, ville_normalisée).
+def _prefixes_livreur() -> list[str]:
+    """Préfixes des livreurs qui ont un mot de passe, dans l'ordre."""
+    prefixes = []
+    for n in range(1, _MAX_LIVREURS + 1):
+        p = "LIVREUR" if n == 1 else f"LIVREUR{n}"
+        if os.getenv(f"{p}_PASSWORD", "").strip():
+            prefixes.append(p)
+    return prefixes
 
-    Format de LIVREUR_ZONES : « Belgique:Bruxelles, France:Paris ».
-    Une entrée sans ville couvre tout le pays : « Belgique ».
+
+def _zones_du_prefixe(prefixe: str) -> list[tuple[str, str]]:
+    """Zones d'un livreur : liste de (pays_normalisé, ville_normalisée).
+
+    Format : « Belgique:Bruxelles, France:Paris ». Une entrée sans ville
+    couvre tout le pays : « Belgique ».
     """
-    brut = os.getenv("LIVREUR_ZONES", "Belgique:Bruxelles")
+    defaut = "Belgique:Bruxelles" if prefixe == "LIVREUR" else ""
+    brut = os.getenv(f"{prefixe}_ZONES", defaut)
     zones = []
     for morceau in brut.split(","):
         morceau = morceau.strip()
@@ -1861,6 +1892,40 @@ def _zones_livreur() -> list[tuple[str, str]]:
         pays, _, ville = morceau.partition(":")
         zones.append((_sans_accent(pays), _sans_accent(ville)))
     return zones
+
+
+def _livreur_password() -> str:
+    """Mot de passe du premier livreur. Conservé pour les appels qui veulent
+    seulement savoir si le rôle livreur existe."""
+    return os.getenv("LIVREUR_PASSWORD", "").strip()
+
+
+def _role_livreur_actif() -> bool:
+    return bool(_prefixes_livreur())
+
+
+def _prefixe_du_livreur(uid) -> str:
+    """Préfixe du livreur connecté sous cet identifiant, "" s'il n'y en a pas."""
+    with _livreur_lock:
+        entree = _livreur_unlocked.get(str(uid))
+    if not entree:
+        return ""
+    return entree[1] if isinstance(entree, tuple) else "LIVREUR"
+
+
+def _zones_livreur(uid=None) -> list[tuple[str, str]]:
+    """Zones du livreur connecté. Sans identifiant, celles de TOUS les
+    livreurs — ce qui répond à « cette commande est-elle confiée à un
+    livreur ? », la question que se posent les notifications."""
+    if uid is not None:
+        prefixe = _prefixe_du_livreur(uid)
+        if prefixe:
+            return _zones_du_prefixe(prefixe)
+        return []
+    toutes = []
+    for p in _prefixes_livreur():
+        toutes.extend(_zones_du_prefixe(p))
+    return toutes
 
 
 def _sans_accent(s: str) -> str:
@@ -1872,16 +1937,30 @@ def _sans_accent(s: str) -> str:
     return "".join(c for c in s if not unicodedata.combining(c)).casefold()
 
 
-def _dans_zone_livreur(order: dict) -> bool:
+def _dans_zones(order: dict, zones) -> bool:
     pays = _sans_accent(order.get("country") or "")
     ville = _sans_accent(order.get("city") or "")
-    for z_pays, z_ville in _zones_livreur():
+    for z_pays, z_ville in zones:
         if z_pays and z_pays != pays:
             continue
         if z_ville and z_ville != ville:
             continue
         return True
     return False
+
+
+def _dans_zone_livreur(order: dict, uid=None) -> bool:
+    """La commande est-elle dans la zone de CE livreur ? Sans identifiant :
+    dans celle de n'importe lequel."""
+    return _dans_zones(order, _zones_livreur(uid))
+
+
+def _prefixe_pour_commande(order: dict) -> str:
+    """Le livreur à qui revient cette commande, "" si aucune zone ne la couvre."""
+    for p in _prefixes_livreur():
+        if _dans_zones(order, _zones_du_prefixe(p)):
+            return p
+    return ""
 
 
 # ── À qui envoyer les notifications de courses ───────────────────────────────
@@ -1891,7 +1970,7 @@ def _dans_zone_livreur(order: dict) -> bool:
 # La seconde évite d'avoir à relever un identifiant à la main : il se connecte
 # une fois avec son mot de passe, et il est inscrit.
 _LIVREURS_FICHIER = None
-_livreurs_connus: dict[str, float] = {}
+_livreurs_connus: dict[str, dict] = {}
 _livreurs_lock = threading.Lock()
 _LIVREUR_OUBLI = 90 * 24 * 3600      # inactif 90 jours → on ne le notifie plus
 
@@ -1907,22 +1986,41 @@ def _fichier_livreurs():
             with _LIVREURS_FICHIER.open(encoding="utf-8") as f:
                 donnees = _json.load(f)
             if isinstance(donnees, dict):
-                _livreurs_connus.update({str(k): float(v) for k, v in donnees.items()})
+                # Ancien format : {id: horodatage}. Nouveau : {id: {vu, livreur}}.
+                # Les deux coexistent le temps que le fichier soit réécrit.
+                for k, v in donnees.items():
+                    if isinstance(v, dict):
+                        _livreurs_connus[str(k)] = v
+                    else:
+                        _livreurs_connus[str(k)] = {"vu": float(v), "livreur": "LIVREUR"}
         except (OSError, ValueError):
             pass
     return _LIVREURS_FICHIER
 
 
-def _retenir_livreur(uid) -> None:
-    """Mémorise le compte Telegram d'un livreur qui vient de se connecter."""
+def _vu_le(info) -> float:
+    """Date de dernière connexion, quel que soit le format enregistré."""
+    return float(info.get("vu", 0)) if isinstance(info, dict) else float(info or 0)
+
+
+def _prefixe_connu(info) -> str:
+    """Livreur auquel ce compte s'est connecté. Les entrées écrites avant la
+    généralisation datent d'une époque où il n'y en avait qu'un."""
+    return info.get("livreur", "LIVREUR") if isinstance(info, dict) else "LIVREUR"
+
+
+def _retenir_livreur(uid, prefixe: str = "LIVREUR") -> None:
+    """Mémorise le compte Telegram d'un livreur qui vient de se connecter, et
+    à quel accès il appartient — deux livreurs ne reçoivent pas les mêmes
+    courses."""
     if not uid:
         return
     chemin = _fichier_livreurs()
     with _livreurs_lock:
         maintenant = time.time()
-        _livreurs_connus[str(uid)] = maintenant
-        for k in [k for k, t in _livreurs_connus.items()
-                  if maintenant - t > _LIVREUR_OUBLI]:
+        _livreurs_connus[str(uid)] = {"vu": maintenant, "livreur": prefixe}
+        for k in [k for k, info in _livreurs_connus.items()
+                  if maintenant - _vu_le(info) > _LIVREUR_OUBLI]:
             del _livreurs_connus[k]
         copie = dict(_livreurs_connus)
     try:
@@ -1934,10 +2032,24 @@ def _retenir_livreur(uid) -> None:
         logger.warning("enregistrement livreur : %s", exc)
 
 
-def _pseudos_livreur() -> set[str]:
-    """Pseudos Telegram déclarés comme livreurs, sans @ ni casse."""
-    brut = os.getenv("LIVREUR_USERNAME", "")
-    return {p.strip().lstrip("@").casefold() for p in brut.split(",") if p.strip()}
+def _pseudos_livreur(prefixe: str = "") -> set[str]:
+    """Pseudos Telegram déclarés comme livreurs, sans @ ni casse.
+    Sans préfixe : ceux de tous les livreurs."""
+    prefixes = [prefixe] if prefixe else _prefixes_livreur()
+    pseudos = set()
+    for p in prefixes:
+        brut = os.getenv(f"{p}_USERNAME", "")
+        pseudos |= {x.strip().lstrip("@").casefold() for x in brut.split(",") if x.strip()}
+    return pseudos
+
+
+def _prefixe_du_pseudo(pseudo: str) -> str:
+    """À quel livreur appartient ce pseudo Telegram ?"""
+    pseudo = (pseudo or "").lstrip("@").casefold()
+    for p in _prefixes_livreur():
+        if pseudo in _pseudos_livreur(p):
+            return p
+    return "" 
 
 
 def enregistrer_livreur_par_pseudo(uid, pseudo) -> bool:
@@ -1950,29 +2062,48 @@ def enregistrer_livreur_par_pseudo(uid, pseudo) -> bool:
     et on retient son identifiant.
     """
     pseudo = (pseudo or "").lstrip("@").casefold()
-    if not uid or not pseudo or pseudo not in _pseudos_livreur():
+    prefixe = _prefixe_du_pseudo(pseudo)
+    if not uid or not prefixe:
         return False
     deja = str(uid) in _livreurs_connus
-    _retenir_livreur(uid)
+    _retenir_livreur(uid, prefixe)
     if not deja:
-        logger.info("livreur reconnu au pseudo @%s → id %s", pseudo, uid)
+        logger.info("livreur reconnu au pseudo @%s → id %s (%s)", pseudo, uid, prefixe)
     return True
 
 
-def _destinataires_livreur() -> list[str]:
-    fixe = os.getenv("LIVREUR_CHAT_ID", "").strip()
-    if fixe:
-        return [x.strip() for x in fixe.split(",") if x.strip()]
-    _fichier_livreurs()
-    with _livreurs_lock:
-        return list(_livreurs_connus)
+def _destinataires_livreur(prefixe: str = "") -> list[str]:
+    """Comptes à prévenir pour ce livreur. Sans préfixe : tous les livreurs,
+    ce qui n'arrive plus que pour les messages qui ne visent aucune zone."""
+    prefixes = [prefixe] if prefixe else _prefixes_livreur()
+    cibles = []
+    for p in prefixes:
+        fixe = os.getenv(f"{p}_CHAT_ID", "").strip()
+        if fixe:
+            cibles.extend(x.strip() for x in fixe.split(",") if x.strip())
+        else:
+            # Pas d'identifiant déclaré : on prend ceux qui se sont connectés
+            # avec CE mot de passe. C'est ce qui permet d'inscrire un nouveau
+            # livreur sans connaître son Telegram à l'avance.
+            _fichier_livreurs()
+            with _livreurs_lock:
+                cibles.extend(u for u, info in _livreurs_connus.items()
+                              if _prefixe_connu(info) == p)
+    # Sans doublon, en gardant l'ordre.
+    vus, sortie = set(), []
+    for c in cibles:
+        if c not in vus:
+            vus.add(c)
+            sortie.append(c)
+    return sortie
 
 
-def _prevenir_livreur(texte: str, cle_anti_repetition: str = "") -> int:
-    """Envoie un message Telegram aux livreurs de la zone. Renvoie le nombre
+def _prevenir_livreur(texte: str, cle_anti_repetition: str = "",
+                      prefixe: str = "") -> int:
+    """Envoie un message Telegram au livreur concerné. Renvoie le nombre
     d'envois réussis. Silencieux si personne n'est enregistré."""
     token = os.getenv("BOT_TOKEN", "")
-    cibles = _destinataires_livreur()
+    cibles = _destinataires_livreur(prefixe)
     if not token or not cibles:
         return 0
     if cle_anti_repetition and _rate_limited(cle_anti_repetition, 1, _VILLE_COOLDOWN):
@@ -1995,7 +2126,7 @@ def _prevenir_livreur(texte: str, cle_anti_repetition: str = "") -> int:
     return envoyes
 
 
-def _compte_livreur_autorise(uid) -> bool:
+def _compte_livreur_autorise(uid, prefixe: str = "LIVREUR") -> bool:
     """Ce compte a-t-il le droit d'ouvrir le panneau livreur ?
 
     Le bon mot de passe ne suffit plus : il faut aussi être sur la liste des
@@ -2008,25 +2139,34 @@ def _compte_livreur_autorise(uid) -> bool:
     comportement : le premier qui connaît le mot de passe entre. C'est ce qui
     permet d'inscrire un nouveau livreur sans toucher à la configuration.
     """
-    autorises = [x.strip() for x in os.getenv("LIVREUR_CHAT_ID", "").split(",") if x.strip()]
+    autorises = [x.strip() for x in os.getenv(f"{prefixe}_CHAT_ID", "").split(",") if x.strip()]
     if not autorises:
         return True
     if str(uid) in autorises:
         return True
-    logger.warning("panel livreur REFUSE a %s : bon mot de passe, compte non declare", uid)
+    logger.warning("panel livreur REFUSE a %s (%s) : bon mot de passe, "
+                   "compte non declare", uid, prefixe)
     return False
+
+
+def _expiration_livreur(entree) -> float:
+    """La session stocke (expiration, préfixe). Les entrées d'avant la
+    généralisation ne contenaient qu'une expiration : on les lit encore."""
+    return entree[0] if isinstance(entree, tuple) else entree
 
 
 def _livreur_is_unlocked(uid) -> bool:
     with _livreur_lock:
         maintenant = time.time()
-        for k in [k for k, exp in _livreur_unlocked.items() if exp <= maintenant]:
+        for k in [k for k, e in _livreur_unlocked.items()
+                  if _expiration_livreur(e) <= maintenant]:
             del _livreur_unlocked[k]
-        return _livreur_unlocked.get(str(uid), 0) > maintenant
+        entree = _livreur_unlocked.get(str(uid))
+        return bool(entree) and _expiration_livreur(entree) > maintenant
 
 
 def _a_acces_livreur(uid) -> bool:
-    return uid is not None and bool(_livreur_password()) and _livreur_is_unlocked(uid)
+    return uid is not None and _role_livreur_actif() and _livreur_is_unlocked(uid)
 
 
 def _guard_livreur(req):
@@ -2048,8 +2188,8 @@ def _ref_chat(order_id: str) -> str:
     return hmac.new(cle, f"chat:{order_id}".encode(), hashlib.sha256).hexdigest()[:24]
 
 
-def _resoudre_ref_chat(ref: str):
-    """(client_id, commande) correspondant à une référence, dans la zone du
+def _resoudre_ref_chat(ref: str, uid=None):
+    """(client_id, commande) correspondant à une référence, dans la zone de CE
     livreur uniquement. Renvoie (None, None) si la référence est inconnue."""
     ref = _texte(ref, 64)
     if not ref:
@@ -2066,7 +2206,7 @@ def _resoudre_ref_chat(ref: str):
         return None, None
     for o in commandes:
         oid = str(o.get("order_id") or "")
-        if oid and _dans_zone_livreur(o) and hmac.compare_digest(
+        if oid and _dans_zone_livreur(o, uid) and hmac.compare_digest(
                 _ref_chat(oid).encode("utf-8"), ref_octets):
             try:
                 return int(o.get("user_id") or 0) or None, o
@@ -2150,7 +2290,7 @@ def api_livreur_courses():
         logger.error("livreur_courses load: %s", exc)
         return jsonify({"ok": False, "error": "load_failed"}), 500
 
-    miennes = [o for o in toutes if _dans_zone_livreur(o)]
+    miennes = [o for o in toutes if _dans_zone_livreur(o, uid)]
     miennes.sort(key=lambda o: o.get("created_at") or "", reverse=True)
     courses = [_course_pour_livreur(o) for o in miennes[:200]]
 
@@ -2200,7 +2340,7 @@ def api_livreur_courses():
 
     return jsonify({
         "ok": True,
-        "zones": [" · ".join(x for x in z if x) for z in _zones_livreur()],
+        "zones": [" · ".join(x for x in z if x) for z in _zones_livreur(uid)],
         "courses": courses,
         "a_traiter": len(a_traiter),
         "stats": stats,
@@ -2236,7 +2376,7 @@ def api_livreur_status(order_id):
         order = get_order(order_id)
     except Exception:
         return jsonify({"ok": False, "error": "load_failed"}), 500
-    if not order or not _dans_zone_livreur(order):
+    if not order or not _dans_zone_livreur(order, uid):
         return jsonify({"ok": False, "error": "hors_zone"}), 404
 
     actuel = order.get("status") or "pending"
@@ -2265,7 +2405,7 @@ def api_livreur_selfie(order_id):
         order = get_order(order_id)
     except Exception:
         return ("Server error", 500)
-    if not order or not _dans_zone_livreur(order):
+    if not order or not _dans_zone_livreur(order, uid):
         return ("Not found", 404)
     b64 = order.get("selfie_b64") or ""
     if not b64:
@@ -2286,8 +2426,8 @@ def api_livreur_etat():
     return jsonify({
         "ok": True,
         "livreur": _a_acces_livreur(uid),
-        "password_set": bool(_livreur_password()),
-        "zones": [" · ".join(x for x in z if x) for z in _zones_livreur()],
+        "password_set": _role_livreur_actif(),
+        "zones": [" · ".join(x for x in z if x) for z in _zones_livreur(uid)],
     })
 
 
@@ -3040,8 +3180,9 @@ def api_client_cancel(order_id):
 
     # Le livreur aussi, s'il est concerné : c'est lui qui roule.
     try:
-        if _dans_zone_livreur(order):
-            _prevenir_livreur(avis)
+        _pref = _prefixe_pour_commande(order)
+        if _pref:
+            _prevenir_livreur(avis, prefixe=_pref)
     except Exception as exc:
         logger.warning("client_cancel : livreur non prévenu (%s)", exc)
 
@@ -4090,7 +4231,7 @@ def _qui_parle(req):
     # l'identifiant Telegram du client : il parle « à la commande », pas à une
     # personne qu'il pourrait ensuite retrouver hors de l'application.
     if _a_acces_livreur(uid):
-        client_id, _cmd = _resoudre_ref_chat(data.get("chat_ref"))
+        client_id, _cmd = _resoudre_ref_chat(data.get("chat_ref"), uid)
         if not client_id:
             return None, None, (jsonify({"ok": False, "error": "ref_inconnue"}), 400)
         return chat.VENDEUR, client_id, None
@@ -4177,8 +4318,12 @@ def _traduire_message(texte: str, role: str, client_id):
     return source, trads
 
 
-def _selfie_avatar(client_id, pour_livreur: bool = False) -> str:
+def _selfie_avatar(client_id, pour_livreur=False) -> str:
     """Chemin de la photo de profil d'un fil : le dernier selfie du client.
+
+    `pour_livreur` porte l'identifiant du livreur qui regarde : il ne doit voir
+    que les clients de SA zone. Un simple booléen ne suffisait plus dès lors
+    qu'il y a plusieurs livreurs.
 
     Le selfie est déjà la photo de contrôle de la boutique — c'est ce visage
     que l'owner comme le livreur associent à la commande. On le sert par les
@@ -4193,7 +4338,7 @@ def _selfie_avatar(client_id, pour_livreur: bool = False) -> str:
     except Exception:
         return ""
     if pour_livreur:
-        siens = [o for o in siens if _dans_zone_livreur(o)]
+        siens = [o for o in siens if _dans_zone_livreur(o, pour_livreur)]
     if not siens:
         return ""
     siens.sort(key=lambda o: o.get("created_at") or "")
@@ -4255,7 +4400,7 @@ def api_chat_thread():
     livreur = _a_acces_livreur(_uid_authentifie(request)) and not _a_acces_admin(
         _uid_authentifie(request))
     if livreur:
-        _cid, commande = _resoudre_ref_chat(_corps(request).get("chat_ref"))
+        _cid, commande = _resoudre_ref_chat(_corps(request).get("chat_ref"), _uid_authentifie(request))
         commande = commande or {}
         prenom = _prenom_seul(commande)
         # Le prénom, et rien d'autre : ni pseudo Telegram, ni numéro, ni
@@ -4279,7 +4424,8 @@ def api_chat_thread():
             "ma_langue": "fr",
             "lu_par_autre": chat.lu_par(client_id, chat.CLIENT),
             "presence": _presence(client_id),
-            "avatar_path": _selfie_avatar(client_id, pour_livreur=True),
+            "avatar_path": _selfie_avatar(client_id,
+                                          pour_livreur=_uid_authentifie(request)),
         })
 
     profil = chat.profil(client_id) or (_profil_client(client_id) if role == chat.VENDEUR else {})
@@ -4443,7 +4589,7 @@ def api_chat_resume():
         try:
             from storage import _load as _load_all
             uids = {o.get("user_id") for o in (_load_all() or [])
-                    if o.get("user_id") and _dans_zone_livreur(o)}
+                    if o.get("user_id") and _dans_zone_livreur(o, uid)}
             total = sum(chat.non_lus(u, chat.VENDEUR) for u in uids)
         except Exception:
             total = 0
@@ -4467,7 +4613,7 @@ def api_chat_media(media_id):
         if not client_id:
             return ("Bad request", 400)
     elif _a_acces_livreur(uid):
-        client_id, _cmd = _resoudre_ref_chat(request.args.get("chat_ref"))
+        client_id, _cmd = _resoudre_ref_chat(request.args.get("chat_ref"), uid)
         if not client_id:
             return ("Bad request", 400)
     else:
