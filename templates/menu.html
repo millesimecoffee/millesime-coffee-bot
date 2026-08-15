@@ -9184,8 +9184,8 @@ updateCartBar();
   // Courbe d'attente : 0 → 70 en 0,9 s, puis 70 → 92 en 1,5 s. C'est la forme
   // d'un chargement qui commence bien puis attend le réseau.
   function courbe(t) {
-    if (t < 900)  return (t / 900) * 70;
-    if (t < 2400) return 70 + ((t - 900) / 1500) * (PLAFOND - 70);
+    if (t < 1400) return (t / 1400) * 70;
+    if (t < 3600) return 70 + ((t - 1400) / 2200) * (PLAFOND - 70);
     return PLAFOND;
   }
 
@@ -9253,7 +9253,12 @@ updateCartBar();
   // On laisse l'animation se dérouler au moins le temps de la courbe : une
   // page servie depuis le cache est prête en 80 ms, et l'écran disparaîtrait
   // avant même d'avoir été vu.
-  const MIN_MS = 2600;
+  //
+  // 3640 ms est calculé à rebours pour que l'écran dure 5 s en tout :
+  //   3640 (attente) + 380 (montée vers 100) + 320 (bienvenue) + 660 (fondu).
+  // La courbe atteint 92 % à 3600 ms, juste avant : la barre ne reste donc
+  // jamais immobile en attendant la fin.
+  const MIN_MS = 3640;
   function quandPret() {
     setTimeout(pret, Math.max(0, MIN_MS - (performance.now() - depart)));
   }
