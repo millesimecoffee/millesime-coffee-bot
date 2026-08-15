@@ -42,15 +42,25 @@ _INDICES = {
     "es": {"el", "la", "los", "las", "un", "una", "yo", "tu", "usted", "es",
            "son", "hola", "gracias", "sí", "no", "para", "con", "en", "sobre",
            "dónde", "cuándo", "cuánto", "pedido", "entrega", "dirección"},
+    "ru": {"и", "в", "не", "на", "я", "что", "он", "она", "как", "это",
+           "здравствуйте", "привет", "спасибо", "да", "нет", "для", "с", "где",
+           "когда", "сколько", "заказ", "доставка", "адрес", "хорошо", "пожалуйста"},
 }
+
+# Le russe s'écrit en cyrillique, qu'aucune des trois autres langues n'emploie :
+# c'est un indice bien plus sûr qu'une liste de mots.
+_CYRILLIQUE = re.compile(r"[Ѐ-ӿ]")
 
 
 def _mots(texte: str) -> list:
-    return re.findall(r"[a-zà-öø-ÿ']+", (texte or "").casefold())
+    return re.findall(r"[a-zà-öø-ÿЀ-ӿ']+", (texte or "").casefold())
 
 
 def detecter(texte: str) -> str:
-    """Langue probable du texte : « fr », « en », « es » ou "" si indécis."""
+    """Langue probable du texte : « fr », « en », « es », « ru », ou "" si
+    indécis."""
+    if _CYRILLIQUE.search(texte or ""):
+        return "ru"
     mots = _mots(texte)
     if not mots:
         return ""

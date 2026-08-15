@@ -42,7 +42,7 @@ from telegram.ext import (
 )
 
 import catalog as catalog_mod
-from translations import t
+from translations import t, LANGUES
 from storage import (
     save_order, update_order, get_order, get_stats, get_stats_period,
     get_orders_by_user, get_all_user_ids,
@@ -542,7 +542,7 @@ async def select_language(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     query = update.callback_query
     await query.answer()
     lang = query.data.split(":")[1]
-    if lang not in ("fr", "es", "en"):
+    if lang not in LANGUES:
         lang = "fr"
     context.user_data["lang"] = lang
     _touch(context.user_data)
@@ -2100,7 +2100,7 @@ async def handle_miniapp_cart(update: Update, context: ContextTypes.DEFAULT_TYPE
         return ConversationHandler.END
 
     # Validation des données reçues vs catalogue actuel (serveur = source de vérité)
-    lang    = payload.get("lang", "fr") if payload.get("lang") in ("fr","es","en") else "fr"
+    lang    = payload.get("lang", "fr") if payload.get("lang") in LANGUES else "fr"
     country = payload.get("country", "")
     city    = payload.get("city", "")
     cart    = payload.get("cart", {})

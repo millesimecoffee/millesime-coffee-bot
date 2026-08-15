@@ -16,6 +16,7 @@ import numpy as np
 from flask import Flask, jsonify, render_template, request
 
 import chat
+from translations import LANGUES
 
 logger = logging.getLogger(__name__)
 
@@ -839,7 +840,7 @@ def api_submit_cart():
         logger.error("submit_cart catalog: %s", exc)
         return jsonify({"ok": False, "error": "catalog_failed"}), 500
 
-    lang    = data.get("lang", "fr") if data.get("lang") in ("fr","es","en") else "fr"
+    lang    = data.get("lang", "fr") if data.get("lang") in LANGUES else "fr"
     country = data.get("country", "")
     city    = data.get("city", "")
     cart    = data.get("cart", {}) or {}
@@ -1144,7 +1145,7 @@ def _suggest_mapbox(q: str, lang: str, bias_lat, bias_lon, token: str):
         "access_token": token,
         "autocomplete": "true",
         "limit":        6,
-        "language":     lang if lang in ("fr", "en", "es", "de", "it", "pt", "nl") else "en",
+        "language":     lang if lang in ("fr", "en", "es", "ru", "de", "it", "pt", "nl") else "en",
         "types":        "address,street,place,locality,neighborhood",
     }
     try:
@@ -1316,7 +1317,7 @@ def api_finalize_order():
         logger.error("finalize catalog: %s", exc)
         return jsonify({"ok": False, "error": "catalog_failed"}), 500
 
-    lang    = data.get("lang", "fr") if data.get("lang") in ("fr","es","en") else "fr"
+    lang    = data.get("lang", "fr") if data.get("lang") in LANGUES else "fr"
     country = data.get("country", "")
     city    = data.get("city", "")
     cart    = data.get("cart", {}) or {}
@@ -2514,7 +2515,7 @@ def _appliquer_statut(order_id, order, new_status, data, par="admin"):
     notified = False
     notify_error = ""
     client_id = order.get("user_id")
-    client_lang = order.get("lang", "fr") if order.get("lang") in ("fr","es","en") else "fr"
+    client_lang = order.get("lang", "fr") if order.get("lang") in LANGUES else "fr"
     bot_token = os.getenv("BOT_TOKEN", "")
     if not client_id:
         notify_error = "no_client_id"
@@ -4002,7 +4003,7 @@ def _langue_client(client_id) -> str:
     siennes.sort(key=lambda o: o.get("created_at") or "")
     for o in reversed(siennes):
         lg = (o.get("lang") or "").strip().lower()
-        if lg in ("fr", "en", "es"):
+        if lg in LANGUES:
             return lg
     return ""
 

@@ -720,10 +720,26 @@
     display: flex; align-items: center; justify-content: center;
     flex-shrink: 0;
   }
-  .pay-card .info { flex: 1; }
+  .pay-card .info { flex: 1; min-width: 0; }
   .pay-card .title { font-size: 16px; font-weight: 700; margin-bottom: 3px; }
   .pay-card .desc  { font-size: 12px; opacity: 0.6; line-height: 1.4; }
-  .pay-card .arrow { font-size: 22px; opacity: 0.3; }
+  .pay-card .arrow { font-size: 22px; opacity: 0.3; align-self: center; }
+  .pay-card .ic svg { width: 26px; height: 26px; display: block; }
+
+  /* Marques acceptées : pastilles claires, comme sur une page de paiement.
+     Elles passent à la ligne plutôt que de déborder sur un petit écran. */
+  .pay-marques { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 9px; }
+  .pay-marques .mq {
+    display: inline-flex; align-items: center; gap: 3px;
+    height: 23px; padding: 0 7px; border-radius: 6px;
+    background: #f4f4f7; color: #14141f;
+    font-size: 11.5px; font-weight: 650; letter-spacing: -0.2px;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.28);
+  }
+  .pay-marques svg { display: block; height: 13px; width: auto; }
+  .pay-marques .g-apple { fill: #000; height: 14px; }
+  .pay-marques .g-google { height: 13px; }
+  .pay-marques .g-carte { height: 15px; }
 
   /* Adresse / IBAN à copier (boîte mono) */
   .copy-box {
@@ -3546,6 +3562,14 @@
         <div class="rc-info"><div class="rc-name">Español</div></div>
         <span class="rc-arrow">›</span>
       </div>
+      <div class="rich-card" onclick="setLang('ru')">
+        <div class="rc-thumb flag">
+          <img class="rc-flag" src="https://flagcdn.com/w320/ru.png" alt="" loading="lazy" onerror="this.style.display='none';this.nextElementSibling.style.display='flex';">
+          <span class="rc-flag-emoji" style="display:none;">🇷🇺</span>
+        </div>
+        <div class="rc-info"><div class="rc-name">Русский</div></div>
+        <span class="rc-arrow">›</span>
+      </div>
     </div>
   </div>
 </div>
@@ -3591,12 +3615,12 @@
   <div class="welcome">
     <div class="logo-img mc-logo" role="img" aria-label="Millésime Coffee"></div>
     <h1>Millésime Coffee</h1>
-    <p id="clientHomeGreeting">Content de vous revoir !</p>
+    <p id="clientHomeGreeting" data-i18n="home_greeting">Content de vous revoir !</p>
   </div>
   <div class="container">
     <!-- Commande en cours (si existe) -->
     <div id="activeClientOrderSection" style="display:none;">
-      <div class="section-title">🔥 Commande en cours</div>
+      <div class="section-title" data-i18n="home_active_order">🔥 Commande en cours</div>
       <div id="activeClientOrderCard"></div>
     </div>
     <!-- Actions principales -->
@@ -3604,8 +3628,8 @@
       <div class="card" onclick="startClientNewOrder()">
         <span class="emoji">🛍️</span>
         <div class="info">
-          <div class="name">Nouvelle commande</div>
-          <div class="meta">Parcourir le catalogue</div>
+          <div class="name" data-i18n="home_new_order">Nouvelle commande</div>
+          <div class="meta" data-i18n="home_browse">Parcourir le catalogue</div>
         </div>
         <span class="arrow">›</span>
       </div>
@@ -3620,8 +3644,8 @@
       <div class="card" onclick="ouvrirChat('')">
         <span class="emoji">💬</span>
         <div class="info">
-          <div class="name">Discuter avec le vendeur</div>
-          <div class="meta" id="chatBadgeClient">Écrire au vendeur</div>
+          <div class="name" data-i18n="home_chat">Discuter avec le vendeur</div>
+          <div class="meta" id="chatBadgeClient" data-i18n="home_write">Écrire au vendeur</div>
         </div>
         <span class="arrow">›</span>
       </div>
@@ -3632,7 +3656,7 @@
 <!-- ÉCRAN CLIENT HISTORY : liste des commandes passées -->
 <div class="screen" id="screen-client-history">
   <div class="container">
-    <div class="section-title">📜 Vos commandes</div>
+    <div class="section-title" data-i18n="history_title">📜 Vos commandes</div>
     <div id="clientOrdersList"></div>
   </div>
 </div>
@@ -3685,15 +3709,48 @@
 <!-- ÉCRAN 6 : Choix paiement -->
 <div class="screen" id="screen-payment">
   <div class="container">
-    <div class="section-title" id="paySectionTitle">Mode de paiement</div>
+    <div class="section-title" id="paySectionTitle" data-i18n="pay_section_title">Mode de paiement</div>
     <div class="pay-card" onclick="selectPaymentMethod('cash')">
       <div class="ic">💵</div>
       <div class="info"><div class="title" data-i18n="pay_cash_title">Cash</div><div class="desc" data-i18n="pay_cash_desc">Paiement à la livraison</div></div>
       <span class="arrow">›</span>
     </div>
     <div class="pay-card" onclick="selectPaymentMethod('link')">
-      <div class="ic">💳</div>
-      <div class="info"><div class="title" data-i18n="pay_link_title">Carte bancaire / Apple Pay</div><div class="desc" data-i18n="pay_link_desc">Paiement en ligne sécurisé</div></div>
+      <div class="ic">
+        <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+          <rect x="2.5" y="5" width="19" height="14" rx="2.6" fill="#fff" opacity="0.95"/>
+          <rect x="2.5" y="8.4" width="19" height="2.6" fill="#1a1a2e" opacity="0.75"/>
+          <rect x="5" y="14" width="6" height="1.8" rx="0.9" fill="#1a1a2e" opacity="0.45"/>
+        </svg>
+      </div>
+      <div class="info">
+        <div class="title" data-i18n="pay_link_title">Carte · Apple Pay · Google Pay</div>
+        <div class="desc" data-i18n="pay_link_desc">Paiement en ligne sécurisé</div>
+        <!-- Marques acceptées, comme sur une page de paiement classique. -->
+        <div class="pay-marques" aria-hidden="true">
+          <span class="mq">
+            <svg viewBox="0 0 24 24" class="g-apple"><path d="M12.9 5.6c.7-.85 1.18-2.02 1.05-3.2-1.01.04-2.24.68-2.97 1.53-.65.75-1.22 1.95-1.07 3.1 1.13.09 2.28-.58 2.99-1.43zM17.4 12.6c-.03-2.6 2.12-3.85 2.22-3.91-1.21-1.77-3.1-2.02-3.77-2.05-1.6-.16-3.13.94-3.94.94-.82 0-2.07-.92-3.4-.9-1.75.03-3.36 1.02-4.26 2.58-1.82 3.16-.47 7.83 1.3 10.39.87 1.25 1.9 2.66 3.25 2.61 1.31-.05 1.8-.85 3.38-.85 1.58 0 2.02.85 3.4.82 1.4-.02 2.29-1.28 3.15-2.53.99-1.45 1.4-2.86 1.42-2.93-.03-.01-2.72-1.05-2.75-4.17z"/></svg>
+            Pay
+          </span>
+          <span class="mq">
+            <svg viewBox="0 0 48 48" class="g-google">
+              <path fill="#4285F4" d="M45.12 24.5c0-1.56-.14-3.06-.4-4.5H24v8.51h11.84c-.51 2.75-2.06 5.08-4.39 6.64v5.52h7.11c4.16-3.83 6.56-9.47 6.56-16.17z"/>
+              <path fill="#34A853" d="M24 46c5.94 0 10.92-1.97 14.56-5.33l-7.11-5.52c-1.97 1.32-4.49 2.1-7.45 2.1-5.73 0-10.58-3.87-12.31-9.07H4.34v5.7C7.96 41.07 15.4 46 24 46z"/>
+              <path fill="#FBBC05" d="M11.69 28.18C11.25 26.86 11 25.45 11 24s.25-2.86.69-4.18v-5.7H4.34C2.85 17.09 2 20.45 2 24s.85 6.91 2.34 9.88l7.35-5.7z"/>
+              <path fill="#EA4335" d="M24 10.75c3.23 0 6.13 1.11 8.41 3.29l6.31-6.31C34.91 4.18 29.93 2 24 2 15.4 2 7.96 6.93 4.34 14.12l7.35 5.7c1.73-5.2 6.58-9.07 12.31-9.07z"/>
+            </svg>
+            Pay
+          </span>
+          <span class="mq">
+            <svg viewBox="0 0 24 16" class="g-carte">
+              <rect x="0.5" y="0.5" width="23" height="15" rx="2.4" fill="none" stroke="#1a1a2e" stroke-opacity="0.35"/>
+              <rect x="0.5" y="3.4" width="23" height="2.8" fill="#1a1a2e" opacity="0.7"/>
+              <circle cx="15.5" cy="11" r="3.1" fill="#EB001B" opacity="0.85"/>
+              <circle cx="19.3" cy="11" r="3.1" fill="#F79E1B" opacity="0.85"/>
+            </svg>
+          </span>
+        </div>
+      </div>
       <span class="arrow">›</span>
     </div>
     <div class="pay-card" onclick="selectPaymentMethod('crypto')">
@@ -3749,7 +3806,7 @@
 <!-- ÉCRAN 6e : Crypto QR + copier -->
 <div class="screen" id="screen-pay-crypto-qr">
   <div class="container">
-    <div class="section-title" id="cryptoQrTitle">Envoyez à cette adresse</div>
+    <div class="section-title" id="cryptoQrTitle" data-i18n="crypto_qr_title">Envoyez à cette adresse</div>
     <div class="qr-wrap" id="cryptoQrWrap">
       <img id="cryptoQrImg" alt="QR" />
     </div>
@@ -4020,7 +4077,7 @@
     <h2 data-i18n="success_title">Commande confirmée !</h2>
     <div class="order-num" id="successOrderNum">—</div>
     <p data-i18n="success_msg">Nous vous contactons très bientôt pour la livraison.</p>
-    <button class="next-btn" id="successTrackBtn" style="max-width:280px; margin: 24px auto 0;" onclick="openTracking(state._lastOrderId)">📦 Suivre ma commande</button>
+    <button class="next-btn" id="successTrackBtn" style="max-width:280px; margin: 24px auto 0;" onclick="openTracking(state._lastOrderId)" data-i18n="success_track">📦 Suivre ma commande</button>
     <button class="next-btn" id="successAdminBackBtn" style="max-width:280px; margin: 12px auto 0; display:none;" onclick="backToOwnerHome()">👑 Retour au panel admin</button>
     <button class="next-btn" style="max-width:240px; margin: 12px auto 0; background:#444; box-shadow:none;" onclick="tg.close()" data-i18n="close">Fermer</button>
   </div>
@@ -4054,9 +4111,9 @@
          deux sur les petits écrans. L'heure d'arrivée descend d'un cran, en
          face du sous-titre. -->
     <div class="tk-entete">
-      <div class="tk-titre" id="trackStatusBig">Préparation</div>
+      <div class="tk-titre" id="trackStatusBig" data-i18n="tk_confirmed_big">Préparation</div>
       <div class="tk-ligne2">
-        <div class="tk-sous" id="trackStatusSub">Votre commande est en cours de préparation</div>
+        <div class="tk-sous" id="trackStatusSub" data-i18n="tk_confirmed_sub">Votre commande est en cours de préparation</div>
         <div class="tk-eta" id="trackEtaCarte" style="display:none;">
           <div class="lbl" id="trackEtaLabel">Arrivée estimée</div>
           <div class="val" id="trackEta">--:--</div>
@@ -4078,23 +4135,23 @@
     <div class="tk-info">
       <span class="ic">📍</span>
       <div>
-        <div class="t1" id="trackInfoT1">Le livreur est en route vers votre adresse.</div>
-        <div class="t2" id="trackInfoT2">Vous pouvez suivre sa progression en temps réel sur la carte.</div>
+        <div class="t1" id="trackInfoT1" data-i18n="tk_msg_delivering_1">Le livreur est en route vers votre adresse.</div>
+        <div class="t2" id="trackInfoT2" data-i18n="tk_msg_delivering_2">Vous pouvez suivre sa progression en temps réel sur la carte.</div>
       </div>
     </div>
 
     <div class="tk-details" id="trackDetails" style="display:none;"></div>
 
     <button class="tk-cta" id="trackCta" onclick="ouvrirChatDepuisSuivi()">
-      <span id="trackCtaTexte">💬 Contacter le livreur</span>
+      <span id="trackCtaTexte" data-i18n="tk_cta_driver">💬 Contacter le livreur</span>
       <span class="tk-badge" id="trackChatBadge" style="display:none;">0</span>
     </button>
-    <button class="tk-cta2" onclick="basculerDetailsCommande()" id="trackDetailsBtn">
-      Voir les détails de la commande</button>
+    <button class="tk-cta2" onclick="basculerDetailsCommande()" id="trackDetailsBtn"
+            data-i18n="tk_details_show">Voir les détails de la commande</button>
     <!-- Retrait de la commande : possible tant qu'elle n'est pas remise en
          main propre. Discret, en dernier, pour ne pas être touché par erreur. -->
     <button class="tk-annuler" id="trackAnnuler" onclick="annulerMaCommande()"
-            style="display:none;">Annuler ma commande</button>
+            style="display:none;" data-i18n="tk_cancel_btn">Annuler ma commande</button>
   </div>
 </div>
 
@@ -4219,9 +4276,9 @@ const T = {
     err_network: "Erreur réseau, réessayez.", added: "Ajouté au panier",
     // Paiement
     pay_cash_title: "💵 Cash", pay_cash_desc: "Paiement à la livraison",
-    pay_link_title: "💳 Carte bancaire / Apple Pay",  pay_link_desc: "Paiement en ligne sécurisé",
+    pay_link_title: "Carte · Apple Pay · Google Pay",  pay_link_desc: "Paiement en ligne sécurisé",
     pay_link_amount_label: "Montant à saisir sur la page", pay_link_copy_amount: "📋 Copier le montant",
-    pay_link_instructions: "Ouvrez la page de paiement, saisissez ce montant, puis payez par carte ou Apple Pay.",
+    pay_link_instructions: "Ouvrez la page de paiement, saisissez ce montant, puis payez par carte, Apple Pay ou Google Pay.",
     pay_link_amount_copied: "Montant copié",
     pay_crypto_title: "₿ Crypto",            pay_crypto_desc: "ETH ou USDT (ERC-20)",
     pay_cash_currency: "Choisissez votre devise",
@@ -4267,6 +4324,51 @@ const T = {
     success_msg: "Nous vous contactons très bientôt pour la livraison.",
     success_close: "Vous pouvez fermer cette fenêtre.",
     close: "Fermer",
+    pay_section_title: "Mode de paiement",
+    crypto_qr_title: "Envoyez à cette adresse",
+    home_greeting: "Content de vous revoir !",
+    home_active_order: "🔥 Commande en cours",
+    home_new_order: "Nouvelle commande",
+    home_browse: "Parcourir le catalogue",
+    home_chat: "Discuter avec le vendeur",
+    home_write: "Écrire au vendeur",
+    home_unread: "{n} non lu(s)",
+    history_title: "📜 Vos commandes",
+    success_track: "📦 Suivre ma commande",
+    tk_pending_big: "⏳ Commande reçue",
+    tk_pending_sub: "En attente de confirmation par le commerçant",
+    tk_confirmed_big: "☕ Préparation en cours",
+    tk_confirmed_sub: "Votre commande est en préparation",
+    tk_delivering_big: "🛵 Livreur en route !",
+    tk_delivering_sub: "Le livreur arrive bientôt",
+    tk_delivered_big: "✅ Livrée",
+    tk_delivered_sub: "Merci d'avoir commandé chez nous !",
+    tk_cancelled_big: "❌ Commande annulée",
+    tk_cancelled_sub: "Cette commande a été annulée",
+    tk_cancelled_cli_big: "❌ Annulée",
+    tk_cancelled_cli_sub: "Vous avez annulé cette commande",
+    tk_msg_pending_1: "Votre commande vient d'être transmise.",
+    tk_msg_pending_2: "Vous serez prévenu dès qu'elle sera confirmée.",
+    tk_msg_confirmed_1: "Votre commande est en préparation.",
+    tk_msg_confirmed_2: "La carte s'affichera dès que le livreur sera parti.",
+    tk_msg_delivering_1: "Le livreur est en route vers votre adresse.",
+    tk_msg_delivering_2: "Vous pouvez suivre sa progression en temps réel sur la carte.",
+    tk_msg_delivered_1: "Votre commande a bien été livrée.",
+    tk_msg_delivered_2: "Merci de votre confiance — à très bientôt !",
+    tk_msg_cancelled_1: "Cette commande a été annulée.",
+    tk_msg_cancelled_2: "Contactez-nous si vous pensez qu'il s'agit d'une erreur.",
+    tk_cta_driver: "💬 Contacter le livreur",
+    tk_cta_write: "💬 Nous écrire",
+    tk_cta_shop: "💬 Contacter la boutique",
+    tk_details_show: "Voir les détails de la commande",
+    tk_details_hide: "Masquer les détails",
+    tk_cancel_btn: "Annuler ma commande",
+    tk_cancel_doing: "Annulation…",
+    tk_cancel_ask: "Annuler définitivement cette commande ?\n\nLa boutique en sera informée tout de suite. Cette action est irréversible.",
+    tk_cancel_done: "Commande annulée",
+    tk_cancel_late: "Trop tard : la commande a déjà été livrée",
+    tk_cancel_other: "Cette commande n'est pas la vôtre",
+    tk_cancel_fail: "Annulation impossible"
   },
   en: {
     pwd_title: "Password", pwd_subtitle: "Enter the catalog access password.",
@@ -4285,9 +4387,9 @@ const T = {
     subtotal: "Subtotal", total: "Total", items: "item(s)",
     err_network: "Network error, retry.", added: "Added to cart",
     pay_cash_title: "💵 Cash", pay_cash_desc: "Pay on delivery",
-    pay_link_title: "💳 Card / Apple Pay", pay_link_desc: "Secure online payment",
+    pay_link_title: "Card · Apple Pay · Google Pay", pay_link_desc: "Secure online payment",
     pay_link_amount_label: "Amount to enter on the page", pay_link_copy_amount: "📋 Copy amount",
-    pay_link_instructions: "Open the payment page, enter this amount, then pay by card or Apple Pay.",
+    pay_link_instructions: "Open the payment page, enter this amount, then pay by card, Apple Pay or Google Pay.",
     pay_link_amount_copied: "Amount copied",
     pay_crypto_title: "₿ Crypto", pay_crypto_desc: "ETH or USDT (ERC-20)",
     pay_cash_currency: "Choose currency",
@@ -4329,6 +4431,51 @@ const T = {
     success_msg: "We'll contact you very soon for delivery.",
     success_close: "You can close this window.",
     close: "Close",
+    pay_section_title: "Payment method",
+    crypto_qr_title: "Send to this address",
+    home_greeting: "Good to see you again!",
+    home_active_order: "🔥 Order in progress",
+    home_new_order: "New order",
+    home_browse: "Browse the catalog",
+    home_chat: "Chat with the shop",
+    home_write: "Write to the shop",
+    home_unread: "{n} unread",
+    history_title: "📜 Your orders",
+    success_track: "📦 Track my order",
+    tk_pending_big: "⏳ Order received",
+    tk_pending_sub: "Waiting for the shop to confirm",
+    tk_confirmed_big: "☕ Being prepared",
+    tk_confirmed_sub: "Your order is being prepared",
+    tk_delivering_big: "🛵 Driver on the way!",
+    tk_delivering_sub: "The driver will arrive soon",
+    tk_delivered_big: "✅ Delivered",
+    tk_delivered_sub: "Thank you for ordering with us!",
+    tk_cancelled_big: "❌ Order cancelled",
+    tk_cancelled_sub: "This order has been cancelled",
+    tk_cancelled_cli_big: "❌ Cancelled",
+    tk_cancelled_cli_sub: "You cancelled this order",
+    tk_msg_pending_1: "Your order has just been sent.",
+    tk_msg_pending_2: "You'll be notified as soon as it's confirmed.",
+    tk_msg_confirmed_1: "Your order is being prepared.",
+    tk_msg_confirmed_2: "The map will appear once the driver sets off.",
+    tk_msg_delivering_1: "The driver is on the way to your address.",
+    tk_msg_delivering_2: "You can follow the progress live on the map.",
+    tk_msg_delivered_1: "Your order has been delivered.",
+    tk_msg_delivered_2: "Thank you for your trust — see you soon!",
+    tk_msg_cancelled_1: "This order has been cancelled.",
+    tk_msg_cancelled_2: "Contact us if you think this is a mistake.",
+    tk_cta_driver: "💬 Contact the driver",
+    tk_cta_write: "💬 Write to us",
+    tk_cta_shop: "💬 Contact the shop",
+    tk_details_show: "View order details",
+    tk_details_hide: "Hide details",
+    tk_cancel_btn: "Cancel my order",
+    tk_cancel_doing: "Cancelling…",
+    tk_cancel_ask: "Cancel this order for good?\n\nThe shop will be informed right away. This cannot be undone.",
+    tk_cancel_done: "Order cancelled",
+    tk_cancel_late: "Too late: the order has already been delivered",
+    tk_cancel_other: "This order is not yours",
+    tk_cancel_fail: "Cancellation failed"
   },
   es: {
     pwd_title: "Contraseña", pwd_subtitle: "Introduce la contraseña para acceder al catálogo.",
@@ -4347,9 +4494,9 @@ const T = {
     subtotal: "Subtotal", total: "Total", items: "artículo(s)",
     err_network: "Error de red, reintenta.", added: "Añadido al carrito",
     pay_cash_title: "💵 Efectivo", pay_cash_desc: "Pago contra entrega",
-    pay_link_title: "💳 Tarjeta / Apple Pay", pay_link_desc: "Pago en línea seguro",
+    pay_link_title: "Tarjeta · Apple Pay · Google Pay", pay_link_desc: "Pago en línea seguro",
     pay_link_amount_label: "Importe a introducir en la página", pay_link_copy_amount: "📋 Copiar importe",
-    pay_link_instructions: "Abre la página de pago, introduce este importe y paga con tarjeta o Apple Pay.",
+    pay_link_instructions: "Abre la página de pago, introduce este importe y paga con tarjeta, Apple Pay o Google Pay.",
     pay_link_amount_copied: "Importe copiado",
     pay_crypto_title: "₿ Cripto", pay_crypto_desc: "ETH o USDT (ERC-20)",
     pay_cash_currency: "Elige tu moneda",
@@ -4391,6 +4538,175 @@ const T = {
     success_msg: "Te contactaremos muy pronto para la entrega.",
     success_close: "Puedes cerrar esta ventana.",
     close: "Cerrar",
+    pay_section_title: "Método de pago",
+    crypto_qr_title: "Envía a esta dirección",
+    home_greeting: "¡Me alegra verte de nuevo!",
+    home_active_order: "🔥 Pedido en curso",
+    home_new_order: "Nuevo pedido",
+    home_browse: "Explorar el catálogo",
+    home_chat: "Chatear con la tienda",
+    home_write: "Escribir a la tienda",
+    home_unread: "{n} sin leer",
+    history_title: "📜 Tus pedidos",
+    success_track: "📦 Seguir mi pedido",
+    tk_pending_big: "⏳ Pedido recibido",
+    tk_pending_sub: "Esperando la confirmación de la tienda",
+    tk_confirmed_big: "☕ En preparación",
+    tk_confirmed_sub: "Tu pedido se está preparando",
+    tk_delivering_big: "🛵 ¡Repartidor en camino!",
+    tk_delivering_sub: "El repartidor llegará pronto",
+    tk_delivered_big: "✅ Entregado",
+    tk_delivered_sub: "¡Gracias por tu pedido!",
+    tk_cancelled_big: "❌ Pedido cancelado",
+    tk_cancelled_sub: "Este pedido ha sido cancelado",
+    tk_cancelled_cli_big: "❌ Cancelado",
+    tk_cancelled_cli_sub: "Cancelaste este pedido",
+    tk_msg_pending_1: "Tu pedido acaba de enviarse.",
+    tk_msg_pending_2: "Te avisaremos en cuanto se confirme.",
+    tk_msg_confirmed_1: "Tu pedido se está preparando.",
+    tk_msg_confirmed_2: "El mapa aparecerá cuando el repartidor salga.",
+    tk_msg_delivering_1: "El repartidor va hacia tu dirección.",
+    tk_msg_delivering_2: "Puedes seguir su avance en el mapa en tiempo real.",
+    tk_msg_delivered_1: "Tu pedido ha sido entregado.",
+    tk_msg_delivered_2: "Gracias por tu confianza — ¡hasta pronto!",
+    tk_msg_cancelled_1: "Este pedido ha sido cancelado.",
+    tk_msg_cancelled_2: "Contáctanos si crees que es un error.",
+    tk_cta_driver: "💬 Contactar al repartidor",
+    tk_cta_write: "💬 Escríbenos",
+    tk_cta_shop: "💬 Contactar la tienda",
+    tk_details_show: "Ver detalles del pedido",
+    tk_details_hide: "Ocultar detalles",
+    tk_cancel_btn: "Cancelar mi pedido",
+    tk_cancel_doing: "Cancelando…",
+    tk_cancel_ask: "¿Cancelar definitivamente este pedido?\n\nLa tienda será informada de inmediato. No se puede deshacer.",
+    tk_cancel_done: "Pedido cancelado",
+    tk_cancel_late: "Demasiado tarde: el pedido ya fue entregado",
+    tk_cancel_other: "Este pedido no es tuyo",
+    tk_cancel_fail: "No se pudo cancelar"
+  },
+  ru: {
+    pwd_title: "Пароль",
+    pwd_subtitle: "Введите пароль доступа к каталогу.",
+    pwd_btn: "Открыть каталог",
+    pwd_wrong: "❌ Неверный пароль.",
+    pwd_blocked: "🚫 Слишком много попыток. Повторите позже.",
+    pwd_session: "⚠️ Сессия Telegram истекла — с паролем всё в порядке.\nПолностью закройте приложение и откройте снова.",
+    pwd_rouvrir: "Закрыть и открыть заново",
+    pwd_config: "⚠️ Магазин настроен неверно на сервере. Сообщите администратору.",
+    pwd_hors_telegram: "⚠️ Магазин открыт вне Telegram — с паролем всё в порядке.\nВернитесь к боту и нажмите кнопку КАТАЛОГ.",
+    pwd_ouvrir_bot: "Открыть бота",
+    select_country: "Выберите страну",
+    select_city: "Выберите город",
+    select_products: "Доступные товары",
+    your_cart: "Ваша корзина",
+    view_cart: "Открыть корзину",
+    confirm_cart: "Продолжить",
+    cart_empty: "Ваша корзина пуста",
+    min_amount: "Минимум {min} {cur} — не хватает {diff} {cur}",
+    min_qty: "Минимум {min} товаров в корзине",
+    subtotal: "Промежуточный итог",
+    total: "Итого",
+    items: "шт.",
+    err_network: "Ошибка сети, повторите.",
+    added: "Добавлено в корзину",
+    pay_cash_title: "💵 Наличные",
+    pay_cash_desc: "Оплата при доставке",
+    pay_link_title: "Карта · Apple Pay · Google Pay",
+    pay_link_desc: "Безопасная оплата онлайн",
+    pay_link_amount_label: "Сумма для ввода на странице",
+    pay_link_copy_amount: "📋 Скопировать сумму",
+    pay_link_instructions: "Откройте страницу оплаты, введите эту сумму и оплатите картой, Apple Pay или Google Pay.",
+    pay_link_amount_copied: "Сумма скопирована",
+    pay_crypto_title: "₿ Криптовалюта",
+    pay_crypto_desc: "ETH или USDT (ERC-20)",
+    pay_cash_currency: "Выберите валюту",
+    pay_link_not_configured: "⚠️ Ссылка на оплату не настроена.",
+    pay_link_open: "Ссылка на оплату",
+    pay_link_open_btn: "🔗 Открыть ссылку на оплату",
+    pay_crypto_choose: "Выберите криптовалюту",
+    pay_crypto_help: "После отправки нажмите кнопку ниже.",
+    pay_crypto_not_configured: "⚠️ Крипто-адрес не настроен.",
+    copy: "Копировать",
+    copied: "✓ Скопировано!",
+    i_paid: "✅ Я оплатил",
+    i_sent_crypto: "✅ Я отправил криптовалюту",
+    continue: "Продолжить",
+    address_title: "Адрес доставки",
+    address_help: "Введите адрес и выберите его из подсказок.",
+    address_verify: "🔍 Проверить адрес",
+    address_searching: "⏳ Поиск...",
+    address_no_results: "Адрес не найден — проверьте написание.",
+    address_manual: "Использовать адрес как введён",
+    address_found: "Адрес найден:",
+    address_unverified: "⚠️ Адрес не проверен — проверьте написание.",
+    address_service_down: "⚠️ Картографический сервис недоступен.",
+    address_confirm: "✅ Использовать этот адрес",
+    address_change: "✏️ Изменить",
+    address_view_map: "🗺️ Посмотреть на карте",
+    selfie_title: "Проверка по селфи",
+    selfie_help: "Поместите лицо в овал. Желательно хорошее освещение.",
+    selfie_take: "📷 Сделать селфи",
+    selfie_retake: "🔄 Переснять",
+    selfie_continue: "✅ Продолжить",
+    selfie_cam_denied: "❌ Доступ к камере запрещён",
+    selfie_processing: "⏳ Анализ лица...",
+    selfie_ok: "✅ Лицо распознано!",
+    selfie_no_face: "❌ Лицо не найдено — попробуйте снова",
+    confirm_title: "Сводка",
+    confirm_btn: "✅ Подтвердить заказ",
+    confirm_processing: "⏳ Отправка...",
+    confirm_city: "Город",
+    confirm_payment: "Оплата",
+    confirm_address: "Адрес",
+    success_title: "Заказ подтверждён!",
+    success_msg: "Мы свяжемся с вами в ближайшее время для доставки.",
+    success_close: "Можете закрыть это окно.",
+    close: "Закрыть",
+    pay_section_title: "Способ оплаты",
+    crypto_qr_title: "Отправьте на этот адрес",
+    home_greeting: "Рады видеть вас снова!",
+    home_active_order: "🔥 Текущий заказ",
+    home_new_order: "Новый заказ",
+    home_browse: "Открыть каталог",
+    home_chat: "Чат с продавцом",
+    home_write: "Написать продавцу",
+    home_unread: "{n} непрочит.",
+    history_title: "📜 Ваши заказы",
+    success_track: "📦 Отследить заказ",
+    tk_pending_big: "⏳ Заказ получен",
+    tk_pending_sub: "Ожидает подтверждения магазином",
+    tk_confirmed_big: "☕ Готовится",
+    tk_confirmed_sub: "Ваш заказ готовится",
+    tk_delivering_big: "🛵 Курьер в пути!",
+    tk_delivering_sub: "Курьер скоро приедет",
+    tk_delivered_big: "✅ Доставлен",
+    tk_delivered_sub: "Спасибо за ваш заказ!",
+    tk_cancelled_big: "❌ Заказ отменён",
+    tk_cancelled_sub: "Этот заказ был отменён",
+    tk_cancelled_cli_big: "❌ Отменён",
+    tk_cancelled_cli_sub: "Вы отменили этот заказ",
+    tk_msg_pending_1: "Ваш заказ только что отправлен.",
+    tk_msg_pending_2: "Мы сообщим, как только он будет подтверждён.",
+    tk_msg_confirmed_1: "Ваш заказ готовится.",
+    tk_msg_confirmed_2: "Карта появится, как только курьер отправится.",
+    tk_msg_delivering_1: "Курьер едет по вашему адресу.",
+    tk_msg_delivering_2: "Вы можете следить за ним на карте в реальном времени.",
+    tk_msg_delivered_1: "Ваш заказ доставлен.",
+    tk_msg_delivered_2: "Спасибо за доверие — до скорой встречи!",
+    tk_msg_cancelled_1: "Этот заказ был отменён.",
+    tk_msg_cancelled_2: "Свяжитесь с нами, если это ошибка.",
+    tk_cta_driver: "💬 Связаться с курьером",
+    tk_cta_write: "💬 Написать нам",
+    tk_cta_shop: "💬 Связаться с магазином",
+    tk_details_show: "Показать детали заказа",
+    tk_details_hide: "Скрыть детали",
+    tk_cancel_btn: "Отменить мой заказ",
+    tk_cancel_doing: "Отмена…",
+    tk_cancel_ask: "Окончательно отменить этот заказ?\n\nМагазин будет сразу уведомлён. Действие необратимо.",
+    tk_cancel_done: "Заказ отменён",
+    tk_cancel_late: "Слишком поздно: заказ уже доставлен",
+    tk_cancel_other: "Это не ваш заказ",
+    tk_cancel_fail: "Не удалось отменить"
   },
 };
 
@@ -7558,7 +7874,7 @@ async function majPastilleMessages() {
     const n = d.non_lus || 0;
     for (const id of ["chatBadgeOwner", "chatBadgeClient"]) {
       const el = document.getElementById(id);
-      if (el) el.textContent = n ? `${n} non lu${n > 1 ? "s" : ""}` : "Écrire au vendeur";
+      if (el) el.textContent = n ? t("home_unread", { n }) : t("home_write");
       if (el && id === "chatBadgeOwner") el.textContent = n ? `${n} non lu${n > 1 ? "s" : ""}` : "Aucun nouveau message";
     }
     const point = document.getElementById("chatPointOwner");
@@ -7793,12 +8109,12 @@ function renderTracking(data) {
 
   // Texte de statut
   const titleMap = {
-    pending:    { big: "⏳ Commande reçue",         sub: "En attente de confirmation par le commerçant" },
-    confirmed:  { big: "☕ Préparation en cours",   sub: "Votre commande est en préparation" },
-    delivering: { big: "🛵 Livreur en route !",     sub: "Le livreur arrive bientôt" },
-    delivered:  { big: "✅ Livrée",                  sub: "Merci d'avoir commandé chez nous !" },
-    cancelled:  { big: "❌ Commande annulée",       sub: "Cette commande a été annulée" },
-    cancelled_by_client: { big: "❌ Annulée",        sub: "Vous avez annulé cette commande" },
+    pending:    { big: t("tk_pending_big"),    sub: t("tk_pending_sub") },
+    confirmed:  { big: t("tk_confirmed_big"),  sub: t("tk_confirmed_sub") },
+    delivering: { big: t("tk_delivering_big"), sub: t("tk_delivering_sub") },
+    delivered:  { big: t("tk_delivered_big"),  sub: t("tk_delivered_sub") },
+    cancelled:  { big: t("tk_cancelled_big"),  sub: t("tk_cancelled_sub") },
+    cancelled_by_client: { big: t("tk_cancelled_cli_big"), sub: t("tk_cancelled_cli_sub") },
   };
   const info = titleMap[status] || titleMap.pending;
   document.getElementById("trackStatusBig").textContent = info.big;
@@ -7852,16 +8168,11 @@ function renderTracking(data) {
 
   // ── Bandeau d'information + actions, selon l'étape ─────────────────────
   const messages = {
-    pending:    ["Votre commande vient d'être transmise.",
-                 "Vous serez prévenu dès qu'elle sera confirmée."],
-    confirmed:  ["Votre commande est en préparation.",
-                 "La carte s'affichera dès que le livreur sera parti."],
-    delivering: ["Le livreur est en route vers votre adresse.",
-                 "Vous pouvez suivre sa progression en temps réel sur la carte."],
-    delivered:  ["Votre commande a bien été livrée.",
-                 "Merci de votre confiance — à très bientôt !"],
-    cancelled:  ["Cette commande a été annulée.",
-                 "Contactez-nous si vous pensez qu'il s'agit d'une erreur."],
+    pending:    [t("tk_msg_pending_1"),    t("tk_msg_pending_2")],
+    confirmed:  [t("tk_msg_confirmed_1"),  t("tk_msg_confirmed_2")],
+    delivering: [t("tk_msg_delivering_1"), t("tk_msg_delivering_2")],
+    delivered:  [t("tk_msg_delivered_1"),  t("tk_msg_delivered_2")],
+    cancelled:  [t("tk_msg_cancelled_1"),  t("tk_msg_cancelled_2")],
   };
   const msg = messages[annulee ? "cancelled" : status] || messages.pending;
   document.getElementById("trackInfoT1").textContent = msg[0];
@@ -7872,9 +8183,9 @@ function renderTracking(data) {
   // encore parti. Seul le texte change — la pastille de non-lus reste.
   const ctaTexte = document.getElementById("trackCtaTexte");
   if (ctaTexte) {
-    ctaTexte.textContent = status === "delivering" ? "💬 Contacter le livreur"
-                         : annulee || status === "delivered" ? "💬 Nous écrire"
-                         : "💬 Contacter la boutique";
+    ctaTexte.textContent = status === "delivering" ? t("tk_cta_driver")
+                         : annulee || status === "delivered" ? t("tk_cta_write")
+                         : t("tk_cta_shop");
   }
   majBadgeChatSuivi();
 
@@ -7886,7 +8197,7 @@ function renderTracking(data) {
     const possible = ["pending", "confirmed", "delivering"].includes(status);
     btnAnnul.style.display = possible ? "block" : "none";
     btnAnnul.disabled = false;
-    btnAnnul.textContent = "Annuler ma commande";
+    btnAnnul.textContent = t("tk_cancel_btn");
     // L'identifiant vient du relevé : sans lui, le bouton ne saurait pas quoi
     // annuler quand le client ouvre le suivi depuis une notification.
     if (data.order_id) btnAnnul.dataset.commande = data.order_id;
@@ -7910,38 +8221,35 @@ async function annulerMaCommande() {
 
   const ok = await new Promise((res) => {
     try {
-      tg.showConfirm("Annuler définitivement cette commande ?\n\n"
-                   + "La boutique en sera informée tout de suite. "
-                   + "Cette action est irréversible.", r => res(!!r));
-    } catch { res(confirm("Annuler définitivement cette commande ?")); }
+      tg.showConfirm(t("tk_cancel_ask"), r => res(!!r));
+    } catch { res(confirm(t("tk_cancel_ask"))); }
   });
   if (!ok) return;
 
   hapticMedium();
   btn.disabled = true;
-  btn.textContent = "Annulation…";
+  btn.textContent = t("tk_cancel_doing");
   try {
     const r = await apiFetch(`/api/client/order/${encodeURIComponent(id)}/cancel`,
                              { method: "POST", body: JSON.stringify({ initData: tg.initData || "" }) });
     const d = await r.json();
     if (!d.ok) {
       btn.disabled = false;
-      btn.textContent = "Annuler ma commande";
-      showToast(d.error === "trop_tard"
-                  ? "Trop tard : la commande a déjà été livrée"
-                : d.error === "not_yours" ? "Cette commande n'est pas la vôtre"
-                : "Annulation impossible", true);
+      btn.textContent = t("tk_cancel_btn");
+      showToast(d.error === "trop_tard" ? t("tk_cancel_late")
+                : d.error === "not_yours" ? t("tk_cancel_other")
+                : t("tk_cancel_fail"), true);
       return;
     }
     hapticSuccess();
-    showToast("Commande annulée");
+    showToast(t("tk_cancel_done"));
     // On relit le suivi tout de suite : le titre, les étapes et le bandeau
     // doivent basculer sur « annulée » sans attendre le prochain relevé.
     loadTrackingOnce();
   } catch {
     btn.disabled = false;
-    btn.textContent = "Annuler ma commande";
-    showToast("Réseau indisponible", true);
+    btn.textContent = t("tk_cancel_btn");
+    showToast(t("err_network"), true);
   }
 }
 
@@ -7980,8 +8288,7 @@ function basculerDetailsCommande() {
   hapticSelect();
   const ouvert = det.style.display !== "none";
   det.style.display = ouvert ? "none" : "block";
-  btn.textContent = ouvert ? "Voir les détails de la commande"
-                           : "Masquer les détails";
+  btn.textContent = ouvert ? t("tk_details_show") : t("tk_details_hide");
   if (!ouvert) {
     dessinerDetailsCommande();
     det.scrollIntoView({ behavior: "smooth", block: "nearest" });
