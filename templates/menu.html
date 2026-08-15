@@ -2918,6 +2918,243 @@
                text-transform:uppercase; letter-spacing:.4px; padding:1px 6px;
                border-radius:5px; margin-right:5px; vertical-align:1px; }
   .vl-quand  { font-size:10.5px; color:var(--muted); flex:none; text-align:right; }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   ESPACE ADMIN — THÈME CLAIR
+   Posé par la classe `admin-clair` sur <body>, retirée dès qu'on en sort :
+   le catalogue client, l'écran livreur et le chat restent en sombre.
+   Les variables du thème sont redéfinies ici, donc les règles existantes
+   suivent sans avoir à être réécrites une par une.
+   ═══════════════════════════════════════════════════════════════════════════ */
+body.admin-clair {
+  --bg-primary:    #F7F7FA;
+  --bg-secondary:  #FBFBFD;
+  --bg-card:       #FFFFFF;
+  --bg-card-hover: #F8F8FB;
+  --bg-elevated:   #FFFFFF;
+
+  --accent:        #FF17A8;
+  --accent-2:      #13C6EE;
+  --accent-3:      #982BFF;
+  --accent-grad:   linear-gradient(90deg, #FF17A8 0%, #A923FF 50%, #13C6EE 100%);
+  --accent-grad-soft: linear-gradient(135deg, rgba(169,35,255,.08), rgba(19,198,238,.06));
+  --accent-violet: linear-gradient(135deg, #B936FF 0%, #7B2DFF 100%);
+
+  --txt-primary:   #0C0B2E;
+  --txt-secondary: #77778A;
+  --txt-tertiary:  #9B9BAC;
+
+  --border:        rgba(12,11,46,.06);
+  --border-strong: rgba(12,11,46,.10);
+
+  --shadow-sm:     0 2px 8px rgba(30,20,80,.04);
+  --shadow-md:     0 8px 30px rgba(30,20,80,.06);
+  --shadow-lg:     0 14px 44px rgba(30,20,80,.09);
+  --shadow-accent: 0 8px 25px rgba(165,45,255,.18);
+
+  --r-sm: 14px; --r-md: 20px; --r-lg: 24px; --r-xl: 28px;
+
+  color-scheme: light;
+  background: var(--bg-primary);
+  color: var(--txt-primary);
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", Inter, sans-serif;
+}
+body.admin-clair .screen { background: var(--bg-primary); color: var(--txt-primary); }
+
+/* ── En-tête : deux boutons blancs flottants, titre bleu nuit ───────────── */
+body.admin-clair #header {
+  background: var(--bg-primary);
+  border-bottom: none;
+  box-shadow: none;
+  backdrop-filter: none;
+}
+body.admin-clair #header .title { color: var(--txt-primary); font-weight: 800; }
+body.admin-clair #backBtn,
+body.admin-clair .icon-btn {
+  background: #FFFFFF;
+  border: none;
+  border-radius: var(--r-sm);
+  color: var(--txt-primary);
+  box-shadow: var(--shadow-md);
+}
+
+/* ── Cartes ─────────────────────────────────────────────────────────────── */
+body.admin-clair .od-section,
+body.admin-clair .card,
+body.admin-clair .stat-mini,
+body.admin-clair .active-section,
+body.admin-clair .od2-carte {
+  background: #FFFFFF !important;
+  border: none !important;
+  border-radius: var(--r-xl);
+  box-shadow: var(--shadow-md);
+  color: var(--txt-primary);
+}
+body.admin-clair .card { border-radius: var(--r-lg); }
+body.admin-clair .card:active { background: var(--bg-card-hover) !important; }
+body.admin-clair .stat-mini::before { display: none; }
+
+/* Les petites lueurs colorées du thème sombre n'ont plus lieu d'être. */
+body.admin-clair .od-section::before,
+body.admin-clair .active-section::before { display: none !important; }
+
+/* ── Titres de section : gris, petits, en majuscules ─────────────────────── */
+body.admin-clair .sec-titre,
+body.admin-clair .active-section h3 {
+  color: var(--txt-secondary);
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: .8px;
+  text-transform: uppercase;
+}
+body.admin-clair .active-section h3 { color: var(--txt-primary); }
+
+/* ── Barre de recherche ─────────────────────────────────────────────────── */
+body.admin-clair .search-bar {
+  background: #FFFFFF;
+  border: none;
+  border-radius: var(--r-md);
+  box-shadow: var(--shadow-md);
+}
+body.admin-clair .search-bar input {
+  color: var(--txt-primary);
+  font-family: inherit;
+}
+body.admin-clair .search-bar input::placeholder { color: var(--txt-tertiary); }
+body.admin-clair .search-icon { opacity: 1; color: var(--txt-secondary); }
+
+/* ── Chiffre d'affaires : grosse carte blanche ───────────────────────────── */
+body.admin-clair #screen-owner-home .od-section[style*="linear-gradient"] {
+  background: #FFFFFF !important;
+  border: none !important;
+  padding: 20px !important;
+}
+/* Les barres du thème sombre sont en blanc translucide et posées en
+   `!important` : sur fond blanc elles disparaissent. On les repeint en gris
+   très clair, et le jour en cours — classe `today` — porte le dégradé. */
+body.admin-clair .ca-chart { height: 56px !important; gap: 6px !important; }
+body.admin-clair .ca-chart .bar {
+  background: #EFEFF6 !important;
+  border-radius: 8px !important;
+  box-shadow: none !important;
+}
+body.admin-clair .ca-chart .bar.today {
+  background: var(--accent-grad) !important;
+  box-shadow: var(--shadow-accent) !important;
+}
+body.admin-clair .ca-chart-labels {
+  color: var(--txt-tertiary); opacity: 1; font-size: 10px;
+  font-weight: 700; margin-top: 6px;
+}
+
+/* ── Deux cartes de période ──────────────────────────────────────────────── */
+body.admin-clair .stat-mini { padding: 16px; }
+body.admin-clair .stat-mini .lbl {
+  color: var(--txt-secondary); font-weight: 800; letter-spacing: .5px;
+}
+body.admin-clair .stat-mini .val { color: var(--txt-primary); }
+body.admin-clair .stat-mini .sous { color: var(--txt-tertiary); opacity: 1; }
+
+/* Le dégradé sur les chiffres reste : c'est la signature de la marque. */
+body.admin-clair .val.grad,
+body.admin-clair .grad {
+  background: var(--accent-grad);
+  -webkit-background-clip: text; background-clip: text; color: transparent;
+}
+
+/* ── Classements (villes, produits) ──────────────────────────────────────── */
+body.admin-clair .top-row,
+body.admin-clair .top-line { color: var(--txt-primary); }
+body.admin-clair .top-row .rang,
+body.admin-clair .top-rank {
+  background: #F2F0FB; color: var(--accent-3); font-weight: 800;
+}
+body.admin-clair .top-row .barre i,
+body.admin-clair .top-bar span { background: var(--accent-grad); }
+body.admin-clair .top-row .barre,
+body.admin-clair .top-bar { background: #F0F0F6; }
+
+/* ── Onglets de filtre ──────────────────────────────────────────────────── */
+body.admin-clair .filter-tab {
+  background: #FFFFFF !important;
+  border: none !important;
+  border-radius: var(--r-sm);
+  color: var(--txt-secondary);
+  box-shadow: var(--shadow-sm);
+  font-weight: 700;
+}
+body.admin-clair .filter-tab.active {
+  background: var(--accent-grad) !important;
+  color: #fff;
+  box-shadow: var(--shadow-accent);
+}
+body.admin-clair .filter-tab .num {
+  background: #F2F0FB; color: var(--accent-3);
+}
+body.admin-clair .filter-tab.active .num { background: rgba(255,255,255,.28); color: #fff; }
+
+/* ── Commandes à traiter ────────────────────────────────────────────────── */
+body.admin-clair .order-card,
+body.admin-clair .active-order {
+  background: #FFFFFF !important;
+  border: none !important;
+  border-radius: var(--r-lg);
+  box-shadow: var(--shadow-md);
+  color: var(--txt-primary);
+}
+body.admin-clair .count-badge {
+  background: linear-gradient(135deg, #FFB020, #FF8A00);
+  color: #fff; box-shadow: none;
+}
+
+/* ── Boutons ────────────────────────────────────────────────────────────── */
+body.admin-clair .btn-primary,
+body.admin-clair .btn.primary,
+body.admin-clair .od2-cta button {
+  background: var(--accent-grad);
+  color: #fff; border: none; border-radius: var(--r-md);
+  box-shadow: var(--shadow-accent); font-weight: 800;
+}
+body.admin-clair .btn-ghost,
+body.admin-clair .btn.ghost {
+  background: #FFFFFF; color: var(--txt-primary);
+  border: 1px solid var(--border); border-radius: var(--r-md);
+  box-shadow: var(--shadow-sm);
+}
+
+
+/* Le thème sombre pose son fond en `!important` sur html ET body : il faut
+   donc le neutraliser aussi fermement, sinon le clair ne s'applique qu'aux
+   écrans et laisse un liseré noir autour. */
+html:has(body.admin-clair),
+body.admin-clair { background: #F7F7FA !important; color: #0C0B2E !important; }
+
+/* Les halos roses et cyan du thème sombre deviennent des taches sur un fond
+   clair : on les éteint. */
+body.admin-clair::before,
+body.admin-clair::after { display: none !important; }
+
+/* ── Détails d'écran hérités du sombre ───────────────────────────────────── */
+body.admin-clair .empty { color: var(--txt-secondary); }
+body.admin-clair .meta,
+body.admin-clair .sous-titre { color: var(--txt-secondary); }
+body.admin-clair .arrow { color: var(--txt-tertiary); }
+body.admin-clair .emoji { filter: none; }
+body.admin-clair hr,
+body.admin-clair .separateur { border-color: var(--border); background: var(--border); }
+body.admin-clair input,
+body.admin-clair textarea,
+body.admin-clair select {
+  background: #FFFFFF; color: var(--txt-primary);
+  border: 1px solid var(--border); border-radius: var(--r-sm);
+}
+body.admin-clair .modal,
+body.admin-clair .sheet,
+body.admin-clair .od2-fiche {
+  background: #FFFFFF; color: var(--txt-primary);
+  border-radius: var(--r-xl); box-shadow: var(--shadow-lg);
+}
+
 </style>
 </head>
 <body>
@@ -4926,7 +5163,20 @@ function showToast(msg, isErr) {
   showToast._t = setTimeout(() => el.className = "toast" + (isErr?" err":""), 1800);
 }
 
+// L'espace admin s'affiche en clair, le reste de l'application en sombre.
+// On pose la classe sur <body> plutôt que sur l'écran : l'en-tête et les
+// éléments flottants vivent en dehors des écrans et doivent suivre aussi.
+function majThemeAdmin(name) {
+  const clair = String(name || "").startsWith("owner-");
+  document.body.classList.toggle("admin-clair", clair);
+  try {
+    tg.setHeaderColor(clair ? "#F7F7FA" : "#0a0a0f");
+    tg.setBackgroundColor(clair ? "#F7F7FA" : "#0a0a0f");
+  } catch {}
+}
+
 function setScreen(name, pushHistory) {
+  majThemeAdmin(name);
   if (pushHistory !== false) {
     const cur = document.querySelector(".screen.active");
     if (cur) state.history.push(cur.id);
