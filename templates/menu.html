@@ -6647,7 +6647,7 @@ function renderOrderDetail(o) {
   const qs = "?initData=" + encodeURIComponent(tg.initData || "");
   // Le selfie affiché est celui de CETTE commande : la route est indexée par
   // order_id, un client qui recommande apparaît donc avec sa photo du jour.
-  const avatar = o.selfie_b64
+  const avatar = o.has_selfie
     ? `<div class="od2-avatar photo" onclick="ouvrirSelfie('${oid}')" role="button"
             aria-label="Agrandir le selfie"><img src="/api/admin/photo/${oid}/selfie${qs}" alt=""></div>`
     : `<div class="od2-avatar">${initiale}</div>`;
@@ -6732,7 +6732,7 @@ function renderOrderDetail(o) {
         <button class="od2-act bleu" ${dataChat} onclick="contactClient(this)"
              aria-label="Contacter sur Telegram">
           <span class="ic">➤</span>Telegram</button>
-        ${o.selfie_b64 ? `<button class="od2-act" aria-label="Enregistrer la photo"
+        ${o.has_selfie ? `<button class="od2-act" aria-label="Enregistrer la photo"
              onclick="enregistrerSelfie('${oid}')">
           <span class="ic">⬇︎</span>Selfie</button>` : ""}
       </div>

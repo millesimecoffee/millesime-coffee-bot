@@ -205,6 +205,130 @@ def _save(orders: list) -> None:
 # API publique — commandes
 # ═══════════════════════════════════════════════════════════════════════════════
 
+# ── Photos rangées à côté des commandes ──────────────────────────────────────
+# Les selfies vivaient DANS orders.json : ils y pesaient 97 % du fichier
+# (624 Ko sur 642 Ko pour 19 commandes). Or le fichier entier est réécrit et
+# renvoyé au dépôt de sauvegarde à chaque changement de statut. À ce rythme, il
+# aurait dépassé 17 Mo en un an, avec autant de copies dans l'historique.
+#
+# Chaque photo est donc écrite une fois dans son propre fichier, et la commande
+# n'en garde qu'une référence. orders.json retombe à quelques kilo-octets et
+# n'augmente plus que de la taille d'une ligne de texte par commande.
+_PHOTOS_DIR = _DATA_DIR / "photos"
+_CHAMPS_PHOTO = ("selfie_b64", "proof_b64")
+
+
+def _chemin_photo(order_id: str, champ: str) -> Path:
+    sur = "".join(c for c in str(order_id) if c.isalnum() or c in "-_")[:40]
+    return _PHOTOS_DIR / f"{sur}.{champ}.txt"
+
+
+def _sortir_photos(order: dict) -> dict:
+    """Écrit les photos à côté et renvoie une COPIE de la commande sans elles.
+
+    Une copie, car l'appelant se sert encore de la sienne juste après — la
+    notification Pushover envoie le selfie qui vient d'être enregistré.
+    """
+    oid = order.get("order_id")
+    if not oid:
+        return order
+    allege = dict(order)
+    for champ in _CHAMPS_PHOTO:
+        valeur = order.get(champ) or ""
+        if not valeur:
+            continue
+        chemin = _chemin_photo(oid, champ)
+        try:
+            _PHOTOS_DIR.mkdir(parents=True, exist_ok=True)
+            tmp = chemin.with_suffix(".tmp")
+            tmp.write_text(valeur, encoding="utf-8")
+            os.replace(tmp, chemin)
+        except OSError as exc:
+            # On préfère une commande un peu lourde à une photo perdue.
+            logger.error("Écriture photo %s/%s : %s", oid, champ, exc)
+            continue
+        allege[champ] = ""
+        allege[champ.replace("_b64", "_fichier")] = chemin.name
+        try:
+            _gh.backup_binaire_async(f"photos/{chemin.name}", valeur.encode("utf-8"))
+        except Exception as exc:
+            logger.warning("Sauvegarde photo %s : %s", chemin.name, exc)
+    return allege
+
+
+def _rendre_photos(order: dict) -> dict:
+    """Remet les photos dans la commande. Sans effet sur les anciennes, qui les
+    portent encore directement."""
+    if not order:
+        return order
+    manquantes = [c for c in _CHAMPS_PHOTO
+                  if not order.get(c) and order.get(c.replace("_b64", "_fichier"))]
+    if not manquantes:
+        return order
+    complet = dict(order)
+    for champ in manquantes:
+        chemin = _PHOTOS_DIR / str(order[champ.replace("_b64", "_fichier")])
+        try:
+            complet[champ] = chemin.read_text(encoding="utf-8")
+        except OSError:
+            # Disparue du disque (Render repart à vide) : on la retélécharge.
+            try:
+                donnees = _gh.telecharger_binaire(f"photos/{chemin.name}")
+            except Exception:
+                donnees = b""
+            if donnees:
+                try:
+                    _PHOTOS_DIR.mkdir(parents=True, exist_ok=True)
+                    chemin.write_bytes(donnees)
+                except OSError:
+                    pass
+                complet[champ] = donnees.decode("utf-8", "ignore")
+            else:
+                logger.warning("Photo introuvable : %s", chemin.name)
+                complet[champ] = ""
+    return complet
+
+
+def migrer_photos() -> int:
+    """Sort les photos des commandes déjà enregistrées.
+
+    Appelée une fois au démarrage. Sans effet si tout est déjà rangé : elle ne
+    réécrit le fichier que si elle a effectivement sorti quelque chose. Les
+    commandes migrées gardent leur photo, simplement ailleurs.
+    """
+    if _use_supabase():
+        return 0
+    try:
+        with _lock:
+            orders = _load_from_file()
+            if not orders:
+                return 0
+            avant = sum(len(o.get(c) or "") for o in orders for c in _CHAMPS_PHOTO)
+            if not avant:
+                return 0
+            sorties = [_sortir_photos(o) for o in orders]
+            deplacees = sum(1 for a, b in zip(orders, sorties)
+                            if any(a.get(c) and not b.get(c) for c in _CHAMPS_PHOTO))
+            if not deplacees:
+                return 0
+            _save_to_file(sorties)
+            _order_index.clear()
+        logger.info("Photos sorties de orders.json : %d commande(s), %d Ko liberes",
+                    deplacees, avant // 1024)
+        return deplacees
+    except Exception as exc:
+        # Une migration qui échoue ne doit pas empêcher la boutique de démarrer :
+        # les commandes gardent alors leurs photos à l'ancienne, et tout marche.
+        logger.error("Migration des photos : %s", exc)
+        return 0
+
+
+def a_une_photo(order: dict, champ: str = "selfie_b64") -> bool:
+    """Vrai si la commande a cette photo, qu'elle soit rangée dedans ou à côté.
+    Les listes s'en servent pour afficher l'icône sans charger l'image."""
+    return bool(order.get(champ) or order.get(champ.replace("_b64", "_fichier")))
+
+
 def save_order(order: dict) -> None:
     """Ajoute une commande et met à jour l'index mémoire."""
     # Horodatage *avec* décalage UTC : sans lui, le navigateur du panel owner
@@ -225,13 +349,23 @@ def save_order(order: dict) -> None:
             _sb.insert("orders", row)
             _invalidate_cache()
         else:
+            # Les photos partent dans leurs propres fichiers : ce qui entre
+            # dans orders.json n'en garde qu'une référence.
+            allege = _sortir_photos(order)
             orders = _load_from_file(pour_ecriture=True)
-            orders.append(order)
+            orders.append(allege)
             _save_to_file(orders)
+            order = allege
 
         oid = order.get("order_id")
         if oid:
             _order_index[oid] = order
+            # L'index ne garde que les commandes récentes : au-delà, get_order
+            # relit le fichier, ce qui est le comportement d'origine. Sans
+            # plafond, la mémoire enfle d'une entrée par commande, pour toujours.
+            if len(_order_index) > 3000:
+                for vieille in list(_order_index)[:len(_order_index) - 3000]:
+                    _order_index.pop(vieille, None)
 
 
 def get_order(order_id: str) -> dict | None:
@@ -241,7 +375,7 @@ def get_order(order_id: str) -> dict | None:
     with _lock:
         cached = _order_index.get(order_id)
     if cached is not None:
-        return cached
+        return _rendre_photos(cached)
 
     if _use_supabase():
         rows = _sb.select("orders", id=f"eq.{order_id}", select="data", limit=1)
@@ -249,14 +383,15 @@ def get_order(order_id: str) -> dict | None:
             order = rows[0].get("data") or {}
             with _lock:
                 _order_index[order_id] = order
-            return order
+            return _rendre_photos(order)
         return None
 
     with _lock:
         for o in _load_from_file():
             if o.get("order_id") == order_id:
-                _order_index[order_id] = o
-                return o
+                complet = _rendre_photos(o)
+                _order_index[order_id] = complet
+                return complet
     return None
 
 

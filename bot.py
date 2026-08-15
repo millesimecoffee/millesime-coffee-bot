@@ -3156,6 +3156,14 @@ def main():
     except Exception as exc:
         logger.warning("Restauration GitHub : %s", exc)
 
+    # Les photos des anciennes commandes sortent de orders.json, une fois.
+    # Sans effet si c'est déjà fait, et un échec n'empêche pas le démarrage.
+    try:
+        import storage
+        storage.migrer_photos()
+    except Exception as exc:
+        logger.warning("Migration des photos : %s", exc)
+
     # C3: Charger les blocages persistés
     _blocked = _load_blocked()
     if _blocked:

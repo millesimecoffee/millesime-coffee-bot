@@ -69,6 +69,26 @@ def _ignorer_owner(uid) -> bool:
     return bool(owner_uid) and str(uid) == owner_uid
 
 
+def _borner(d: dict, maxi: int) -> None:
+    """Ne garde que les `maxi` entrées les plus récentes d'un dictionnaire
+    horodaté. Un processus qui tourne un an accumule une entrée par client ou
+    par commande : sans plafond, c'est une fuite lente."""
+    if len(d) <= maxi:
+        return
+    for cle in sorted(d, key=lambda k: d[k])[:len(d) - maxi]:
+        d.pop(cle, None)
+
+
+def _a_photo(o: dict, champ: str = "selfie_b64") -> bool:
+    """Vrai si la commande a cette photo, qu'elle soit dedans (anciennes
+    commandes) ou rangée dans son propre fichier (nouvelles)."""
+    try:
+        from storage import a_une_photo
+        return a_une_photo(o, champ)
+    except Exception:
+        return bool(o.get(champ))
+
+
 def _corps(req) -> dict:
     """Corps JSON de la requête, toujours sous forme de dictionnaire.
 
@@ -437,6 +457,7 @@ def _notify_owner_client_entry(parsed_init: dict) -> None:
             if now - last < _ENTRY_NOTIF_COOLDOWN:
                 return
             _entry_notif_last[uid] = now
+            _borner(_entry_notif_last, 5000)
 
         first_name = (user_obj.get("first_name") or "").strip()
         username   = (user_obj.get("username")   or "").strip()
@@ -2006,7 +2027,7 @@ def _course_pour_livreur(o: dict) -> dict:
         # Le selfie sert à vérifier à qui l'on remet la commande. On n'envoie
         # pas le base64 dans la liste (c'est lourd) : juste de quoi savoir
         # qu'il existe, la photo est servie par sa propre route.
-        "has_selfie": bool(o.get("selfie_b64")),
+        "has_selfie": _a_photo(o),
         # Pour ouvrir la conversation sans jamais exposer le compte Telegram.
         "chat_ref":   _ref_chat(oid),
     }
@@ -2301,7 +2322,7 @@ def api_admin_orders():
             "source":     o.get("source"),
             "rating":     o.get("rating"),
             "display_currency": o.get("display_currency") or "€",
-            "has_selfie": bool(o.get("selfie_b64")),
+            "has_selfie": _a_photo(o),
             "has_proof":  bool(o.get("proof_b64")),
             "cart_count": sum((o.get("cart") or {}).values()) if isinstance(o.get("cart"), dict) else 0,
         })
@@ -2437,6 +2458,15 @@ def api_admin_order_detail(order_id):
             order = {**order, "_client_note": notes[uid]}
     except Exception:
         pass
+
+    # Les photos ne partent pas dans cette réponse : le panel les charge par
+    # leur propre URL, qui sait les mettre en cache. Les laisser ici, c'était
+    # une trentaine de kilo-octets de base64 à chaque ouverture de commande,
+    # pour une image que le navigateur allait chercher juste après de toute façon.
+    order = {**order,
+             "has_selfie": _a_photo(order, "selfie_b64"),
+             "has_proof":  _a_photo(order, "proof_b64"),
+             "selfie_b64": "", "proof_b64": ""}
     return jsonify({"ok": True, "order": order})
 
 
@@ -2727,6 +2757,7 @@ def _track_far_km(order_id: str, current_km: float) -> float:
         if current_km > far:
             far = current_km
             _track_far[order_id] = far
+            _borner(_track_far, 2000)
         return far
 
 
@@ -4056,7 +4087,7 @@ def _selfie_avatar(client_id, pour_livreur: bool = False) -> str:
         from storage import _load as _load_all
         siens = [o for o in _load_all()
                  if str(o.get("user_id") or "") == str(client_id)
-                 and o.get("selfie_b64")]
+                 and _a_photo(o)]
     except Exception:
         return ""
     if pour_livreur:

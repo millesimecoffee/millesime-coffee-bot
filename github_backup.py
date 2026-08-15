@@ -9,6 +9,7 @@ Permet une persistence "free" sur Render free tier (filesystem éphémère) :
 Requiert l'env var GITHUB_TOKEN (PAT avec scope `repo` ou OAuth gh CLI).
 """
 import base64
+import hashlib
 import json
 import logging
 import os
@@ -63,6 +64,19 @@ def _file_url(path: str) -> str:
     return f"{_API}/repos/{_OWNER}/{_REPO}/contents/{path}"
 
 
+# Empreinte du contenu réellement envoyé, par fichier. Sert à ne pas
+# renvoyer ce qui n'a pas bougé : un travail périodique repoussait les six
+# fichiers toutes les dix minutes, y compris ceux de deux octets, soit environ
+# 800 commits par jour dont l'immense majorité ne changeait rien. Chaque commit
+# garde une copie entière du fichier : à ce rythme, l'historique du dépôt de
+# sauvegarde devenait ingérable en quelques mois.
+_empreintes: dict[str, str] = {}
+
+
+def _empreinte(donnees: bytes) -> str:
+    return hashlib.sha256(donnees).hexdigest()
+
+
 def download_file(filename: str) -> bool:
     """Télécharge un fichier depuis le repo. True si succès, False sinon."""
     if not _TOKEN:
@@ -84,6 +98,10 @@ def download_file(filename: str) -> bool:
         dest.write_bytes(raw)
         with _lock:
             _sha_cache[filename] = sha
+            # Ce qu'on vient de télécharger est, par définition, déjà sur le
+            # dépôt : sans cette empreinte, chaque redéploiement renverrait les
+            # six fichiers inchangés.
+            _empreintes[filename] = _empreinte(raw)
         logger.info("Github: %s restauré (%d bytes)", filename, len(raw))
         return True
     except Exception as exc:
@@ -91,10 +109,12 @@ def download_file(filename: str) -> bool:
         return False
 
 
-def upload_file(filename: str) -> bool:
+def upload_file(filename: str, forcer: bool = False) -> bool:
     """Upload (create or update) un fichier vers le repo.
     H11: sérialisé par fichier — pas de conflit SHA même avec 10 uploads concurrents.
     H12: SHA cache invalidé sur réponse vide au lieu d'être mis à "".
+
+    `forcer` passe outre le contrôle de contenu identique.
     """
     if not _TOKEN:
         return False
@@ -106,6 +126,17 @@ def upload_file(filename: str) -> bool:
     with upload_lock:
         try:
             content_bytes = src.read_bytes()
+
+            # Contenu identique au dernier envoi réussi : rien à faire. On sort
+            # avant de prendre le réseau, d'encoder en base64 et de créer un
+            # commit qui ne changerait rien.
+            emp = _empreinte(content_bytes)
+            if not forcer:
+                with _lock:
+                    deja = _empreintes.get(filename)
+                if deja == emp:
+                    return True
+
             content_b64   = base64.b64encode(content_bytes).decode("ascii")
 
             # Récupérer le sha actuel si pas en cache
@@ -152,12 +183,17 @@ def upload_file(filename: str) -> bool:
                     _sha_cache[filename] = new_sha
                 else:
                     _sha_cache.pop(filename, None)
+                # L'empreinte n'est retenue qu'après un envoi réussi : sur
+                # échec, le prochain passage réessaie au lieu de croire le
+                # fichier déjà sauvegardé.
+                _empreintes[filename] = emp
             return True
         except Exception as exc:
             logger.warning("Github upload %s : %s", filename, exc)
             # Invalider le cache en cas d'erreur pour forcer un refetch propre
             with _lock:
                 _sha_cache.pop(filename, None)
+                _empreintes.pop(filename, None)
             return False
 
 

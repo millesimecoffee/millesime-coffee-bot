@@ -232,13 +232,24 @@ def ajouter(client_id, de: str, texte: str = "", media_id: str = "",
             if citation:
                 msg["rep"] = citation
         fil["messages"].append(msg)
+        tombes = []
         if len(fil["messages"]) > MAX_MESSAGES:
+            # Les messages qui sortent du fil emportent leurs fichiers. Sans
+            # ça, photos et vocaux restaient sur le disque et dans la
+            # sauvegarde alors que plus rien ne pointait dessus : une
+            # conversation active y laissait des centaines de méga-octets à
+            # l'année, que personne ne pouvait plus ni voir ni effacer.
+            trop = fil["messages"][:-MAX_MESSAGES]
+            tombes = [m.get("media") for m in trop if m.get("media")]
             fil["messages"] = fil["messages"][-MAX_MESSAGES:]
         if profil:
             fil["profil"].update({k: v for k, v in profil.items() if v})
         # Un message qu'on envoie soi-même est lu par définition.
         fil["lu_vendeur" if de == VENDEUR else "lu_client"] = msg["id"]
         _ecrire(data)
+    # Hors du verrou : effacer un fichier n'a pas à retenir les autres envois.
+    for media_id in tombes:
+        effacer_media(media_id)
     return msg
 
 
