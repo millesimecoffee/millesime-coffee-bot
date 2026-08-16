@@ -5119,7 +5119,24 @@ const T = {
     tk_cancel_done: "Commande annulée",
     tk_cancel_late: "Trop tard : la commande a déjà été livrée",
     tk_cancel_other: "Cette commande n'est pas la vôtre",
-    tk_cancel_fail: "Annulation impossible"
+    tk_cancel_fail: "Annulation impossible",
+    city_products: "{n} produits disponibles",
+    country_cities: "{n} villes disponibles",
+    order_cta: "Commander ›",
+    search_city_ph: "Rechercher une ville…",
+    search_results: "{n} résultats",
+    search_none: "Aucune ville trouvée",
+    my_orders: "Mes commandes",
+    orders_count: "{n} commande(s)",
+    st_pending: "En attente de confirmation",
+    st_confirmed: "Préparation en cours",
+    st_delivering: "Livreur en route",
+    tk_pos_estimated: "Position estimée",
+    tk_pos_live: "Position en direct",
+    tk_empty_prep: "Votre commande est en préparation. La carte s'affichera dès le départ du livreur.",
+    tk_empty_route: "Livreur en route vers votre adresse",
+    st_delivered: "Livrée", st_cancelled: "Annulée", st_pending_short: "En attente", st_confirmed_short: "Préparation", st_delivering_short: "En route",
+    track_live: "Suivre en direct →", search_short: "Rechercher", find_city: "Trouver une ville", no_orders: "Aucune commande"
   },
   en: {
     pwd_title: "Password", pwd_subtitle: "Enter the catalog access password.",
@@ -5226,7 +5243,24 @@ const T = {
     tk_cancel_done: "Order cancelled",
     tk_cancel_late: "Too late: the order has already been delivered",
     tk_cancel_other: "This order is not yours",
-    tk_cancel_fail: "Cancellation failed"
+    tk_cancel_fail: "Cancellation failed",
+    city_products: "{n} products available",
+    country_cities: "{n} cities available",
+    order_cta: "Order ›",
+    search_city_ph: "Search a city…",
+    search_results: "{n} results",
+    search_none: "No city found",
+    my_orders: "My orders",
+    orders_count: "{n} order(s)",
+    st_pending: "Awaiting confirmation",
+    st_confirmed: "Being prepared",
+    st_delivering: "Driver on the way",
+    tk_pos_estimated: "Estimated position",
+    tk_pos_live: "Live position",
+    tk_empty_prep: "Your order is being prepared. The map will appear once the driver sets off.",
+    tk_empty_route: "Driver on the way to your address",
+    st_delivered: "Delivered", st_cancelled: "Cancelled", st_pending_short: "Pending", st_confirmed_short: "Preparing", st_delivering_short: "On the way",
+    track_live: "Track live →", search_short: "Search", find_city: "Find a city", no_orders: "No orders"
   },
   es: {
     pwd_title: "Contraseña", pwd_subtitle: "Introduce la contraseña para acceder al catálogo.",
@@ -5333,7 +5367,24 @@ const T = {
     tk_cancel_done: "Pedido cancelado",
     tk_cancel_late: "Demasiado tarde: el pedido ya fue entregado",
     tk_cancel_other: "Este pedido no es tuyo",
-    tk_cancel_fail: "No se pudo cancelar"
+    tk_cancel_fail: "No se pudo cancelar",
+    city_products: "{n} productos disponibles",
+    country_cities: "{n} ciudades disponibles",
+    order_cta: "Pedir ›",
+    search_city_ph: "Buscar una ciudad…",
+    search_results: "{n} resultados",
+    search_none: "Ninguna ciudad encontrada",
+    my_orders: "Mis pedidos",
+    orders_count: "{n} pedido(s)",
+    st_pending: "Esperando confirmación",
+    st_confirmed: "En preparación",
+    st_delivering: "Repartidor en camino",
+    tk_pos_estimated: "Posición estimada",
+    tk_pos_live: "Posición en vivo",
+    tk_empty_prep: "Tu pedido se está preparando. El mapa aparecerá cuando el repartidor salga.",
+    tk_empty_route: "Repartidor en camino a tu dirección",
+    st_delivered: "Entregado", st_cancelled: "Cancelado", st_pending_short: "Pendiente", st_confirmed_short: "Preparación", st_delivering_short: "En camino",
+    track_live: "Seguir en vivo →", search_short: "Buscar", find_city: "Encontrar una ciudad", no_orders: "Ningún pedido"
   },
   ru: {
     pwd_title: "Пароль",
@@ -5457,7 +5508,24 @@ const T = {
     tk_cancel_done: "Заказ отменён",
     tk_cancel_late: "Слишком поздно: заказ уже доставлен",
     tk_cancel_other: "Это не ваш заказ",
-    tk_cancel_fail: "Не удалось отменить"
+    tk_cancel_fail: "Не удалось отменить",
+    city_products: "{n} товаров в наличии",
+    country_cities: "{n} городов",
+    order_cta: "Заказать ›",
+    search_city_ph: "Поиск города…",
+    search_results: "результатов: {n}",
+    search_none: "Город не найден",
+    my_orders: "Мои заказы",
+    orders_count: "заказов: {n}",
+    st_pending: "Ожидает подтверждения",
+    st_confirmed: "Готовится",
+    st_delivering: "Курьер в пути",
+    tk_pos_estimated: "Расчётное положение",
+    tk_pos_live: "Положение в реальном времени",
+    tk_empty_prep: "Ваш заказ готовится. Карта появится, когда курьер выедет.",
+    tk_empty_route: "Курьер едет к вам",
+    st_delivered: "Доставлен", st_cancelled: "Отменён", st_pending_short: "Ожидание", st_confirmed_short: "Готовится", st_delivering_short: "В пути",
+    track_live: "Отслеживать →", search_short: "Поиск", find_city: "Найти город", no_orders: "Нет заказов"
   },
 };
 
@@ -5509,6 +5577,10 @@ function t(key, vars) {
 function applyI18n() {
   document.querySelectorAll("[data-i18n]").forEach(el => {
     el.textContent = t(el.dataset.i18n);
+  });
+  // Placeholders traduisibles (ex. barre de recherche de ville)
+  document.querySelectorAll("[data-i18n-ph]").forEach(el => {
+    el.setAttribute("placeholder", t(el.dataset.i18nPh));
   });
 }
 // Formate un montant avec la devise d'affichage active (modèle "relabel" :
@@ -5911,7 +5983,7 @@ function buildCountryScreen() {
       ${_flagThumb(emoji)}
       <div class="rc-info">
         <div class="rc-name">${escHtml(name)}</div>
-        <div class="rc-meta">${cities.length} ${cities.length > 1 ? "villes disponibles" : "ville disponible"}</div>
+        <div class="rc-meta">${t("country_cities", {n: cities.length})}</div>
       </div>
       <span class="rc-arrow">›</span>
     `;
@@ -5950,19 +6022,19 @@ function renderClientHomeShortcuts() {
     // Libellé + couleur de pastille par étape. Le vert est réservé au livreur
     // en route : c'est l'information qu'on cherche du regard.
     const etats = {
-      pending:    { txt: "⏳ En attente",       cls: "ambre", ic: "🧾" },
-      confirmed:  { txt: "☕ En préparation",   cls: "bleu",  ic: "☕" },
-      delivering: { txt: "🛵 Livreur en route", cls: "vert",  ic: "🛵" },
+      pending:    { txt: "⏳ " + t("st_pending_short"),   cls: "ambre", ic: "🧾" },
+      confirmed:  { txt: "☕ " + t("st_confirmed_short"), cls: "bleu",  ic: "☕" },
+      delivering: { txt: "🛵 " + t("st_delivering_short"),cls: "vert",  ic: "🛵" },
     };
     const status = active.status || "pending";
     const e      = etats[status] || etats.pending;
     const total  = (active.total || 0).toLocaleString("fr-FR");
     const cur    = active.display_currency || "€";
     const nbArt  = active.cart_count || 0;
-    const detail = [`${nbArt} article${nbArt > 1 ? "s" : ""}`, active.payment || ""]
+    const detail = [`${nbArt} ${t("items")}`, active.payment || ""]
                      .filter(Boolean).join(" • ");
     html += `
-      <div class="section-title" style="margin-top:4px;">🔥 Commande en cours</div>
+      <div class="section-title" style="margin-top:4px;">${t("home_active_order")}</div>
       <div class="ch-cmd" role="button" onclick="openTracking('${escHtml(active.order_id)}')">
         <div class="rond">${e.ic}</div>
         <div class="corps">
@@ -5976,7 +6048,7 @@ function renderClientHomeShortcuts() {
           </div>
           <div class="l3">
             <span class="detail">${escHtml(detail)}</span>
-            <span class="suivre">Suivre en direct →</span>
+            <span class="suivre">${t("track_live")}</span>
           </div>
         </div>
       </div>`;
@@ -5990,8 +6062,8 @@ function renderClientHomeShortcuts() {
       <div class="ch-rac" role="button" onclick="openClientHistory()">
         <span class="ic">🧾</span>
         <div class="txt">
-          <div class="t1">Mes commandes</div>
-          <div class="t2">${count} commande${count > 1 ? "s" : ""} passée${count > 1 ? "s" : ""}</div>
+          <div class="t1">${t("my_orders")}</div>
+          <div class="t2">${t("orders_count", {n: count})}</div>
         </div>
         <span class="fl">›</span>
       </div>`);
@@ -6000,8 +6072,8 @@ function renderClientHomeShortcuts() {
       <div class="ch-rac" role="button" onclick="focusRechercheVille()">
         <span class="ic">📍</span>
         <div class="txt">
-          <div class="t1">Rechercher</div>
-          <div class="t2">Trouver une ville</div>
+          <div class="t1">${t("search_short")}</div>
+          <div class="t2">${t("find_city")}</div>
         </div>
         <span class="fl">›</span>
       </div>`);
@@ -6071,7 +6143,7 @@ function cityTileHTML(country, city, subtitle) {
       </div>
       <div class="ct-footer">
         <div class="ct-count">${escHtml(subtitle)}</div>
-        <span class="ct-go">Commander ›</span>
+        <span class="ct-go">${t("order_cta")}</span>
       </div>
     </div>`;
 }
@@ -6081,7 +6153,7 @@ function buildCityScreen() {
   const cities = state.catalog[state.country] || {};
   list.innerHTML = Object.keys(cities).map(city => {
     const n = Object.keys(cities[city]).length;
-    return cityTileHTML(state.country, city, `${n} produit${n>1?'s':''} disponible${n>1?'s':''}`);
+    return cityTileHTML(state.country, city, t("city_products", {n}));
   }).join("");
 }
 
@@ -6106,13 +6178,13 @@ function runCitySearch() {
     Object.keys(state.catalog[country]).forEach(city => {
       if (_normTxt(city).includes(q) || _normTxt(cc).includes(q)) {
         const n = Object.keys(state.catalog[country][city]).length;
-        matches.push(cityTileHTML(country, city, `${cc} · ${n} produit${n>1?'s':''}`));
+        matches.push(cityTileHTML(country, city, `${cc} · ${t("city_products", {n})}`));
       }
     });
   });
   res.innerHTML = matches.length
-    ? `<div class="section-title" style="margin:4px 0 12px;">🔍 ${matches.length} résultat${matches.length>1?'s':''}</div>` + matches.slice(0,25).join("")
-    : `<div class="empty" style="padding:24px;"><div class="emoji">🔍</div><div class="text">Aucune ville trouvée</div></div>`;
+    ? `<div class="section-title" style="margin:4px 0 12px;">🔍 ${t("search_results", {n: matches.length})}</div>` + matches.slice(0,25).join("")
+    : `<div class="empty" style="padding:24px;"><div class="emoji">🔍</div><div class="text">${t("search_none")}</div></div>`;
 }
 
 function clearCitySearch() {
@@ -9615,9 +9687,7 @@ function updateTrackingMap(data) {
     mapDiv.style.display = "none";
     if (badge) badge.style.display = "none";
     if (status === "pending" || status === "confirmed") {
-      empty.innerHTML = `<div class="emo">☕</div>
-        <div>Votre commande est en préparation.<br>
-        La carte s'affichera dès le départ du livreur.</div>`;
+      empty.innerHTML = `<div class="emo">☕</div><div>${escHtml(t("tk_empty_prep"))}</div>`;
     }
     cancelAnimationFrame(state._trackRaf);
     if (state._trackMap) {
@@ -9643,7 +9713,7 @@ function updateTrackingMap(data) {
   if (!state._trackMap) {
     if (typeof L === "undefined") {
       empty.style.display = "flex";
-      empty.innerHTML = `<div style="font-size:40px;">📍</div><div style="font-size:13px;">Livreur en route vers votre adresse</div>`;
+      empty.innerHTML = `<div style="font-size:40px;">📍</div><div style="font-size:13px;">${escHtml(t("tk_empty_route"))}</div>`;
       mapDiv.style.display = "none";
       return;
     }
@@ -9679,7 +9749,7 @@ function updateTrackingMap(data) {
     badge.className = "tk-position" + (data.live ? " direct" : "");
     const lbl = document.getElementById("trackPosLabel");
     const val = document.getElementById("trackPosDist");
-    if (lbl) lbl.textContent = data.live ? "Position en direct" : "Position estimée";
+    if (lbl) lbl.textContent = data.live ? t("tk_pos_live") : t("tk_pos_estimated");
     if (val) {
       val.textContent = data.distance_km == null ? "—"
         : data.distance_km < 1
@@ -9765,7 +9835,7 @@ updateHeader = function(name) {
     document.getElementById("header").style.display = "none";
     majPastilleMessages();
   } else if (name === "client-history") {
-    document.getElementById("headerTitle").textContent    = "📜 Mes commandes";
+    document.getElementById("headerTitle").textContent    = "📜 " + t("my_orders");
     document.getElementById("headerSubtitle").textContent = `${(state.clientData?.count || 0)} au total`;
   } else if (name === "chat") {
     // La conversation a son propre en-tête, en plein écran.
@@ -9821,9 +9891,9 @@ function renderClientHome() {
   const active = (cd.active || [])[0];
   if (active) {
     const statusLabels = {
-      pending: "⏳ En attente de confirmation",
-      confirmed: "☕ Préparation en cours",
-      delivering: "🛵 Livreur en route",
+      pending:    "⏳ " + t("st_pending"),
+      confirmed:  "☕ " + t("st_confirmed"),
+      delivering: "🛵 " + t("st_delivering"),
     };
     const status = active.status || "pending";
     const total = (active.total||0).toLocaleString('fr-FR');
@@ -9865,12 +9935,12 @@ function openClientHistory() {
   const cd = state.clientData || { orders: [] };
   const list = document.getElementById("clientOrdersList");
   if ((cd.orders || []).length === 0) {
-    list.innerHTML = `<div class="empty"><div class="emoji">📭</div><div class="text">Aucune commande</div></div>`;
+    list.innerHTML = `<div class="empty"><div class="emoji">📭</div><div class="text">${t("no_orders")}</div></div>`;
   } else {
     const statusLabels = {
-      pending:"⏳ En attente", confirmed:"☕ Préparation",
-      delivering:"🛵 En route", delivered:"📦 Livrée",
-      cancelled:"❌ Annulée", cancelled_by_client:"❌ Annulée",
+      pending:"⏳ "+t("st_pending_short"), confirmed:"☕ "+t("st_confirmed_short"),
+      delivering:"🛵 "+t("st_delivering_short"), delivered:"📦 "+t("st_delivered"),
+      cancelled:"❌ "+t("st_cancelled"), cancelled_by_client:"❌ "+t("st_cancelled"),
     };
     list.innerHTML = cd.orders.map(o => {
       const date = (o.created_at || "").replace("T", " ").slice(0, 16);
