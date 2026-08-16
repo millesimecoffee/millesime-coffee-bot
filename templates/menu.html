@@ -1719,50 +1719,58 @@
     .tk-cta2 { margin-top: 8px; padding: 13px; }
   }
 
-  /* ── Marqueurs Leaflet (fond de carte clair) ─────────────────────────── */
+  /* ── Marqueurs Leaflet façon Uber Eats / Deliveroo (fond clair) ──────── */
+  --tk-violet:  #6d28d9;   /* violet profond — identité Millésime, lisible sur carte claire */
+  --tk-violet2: #8b5cf6;   /* violet électrique (accents) */
   .leaflet-driver-icon { background: transparent !important; border: none !important;
-                         text-align: center; position: relative; }
-  .leaflet-driver-icon .icon {
-    font-size: 28px; display: block; position: relative; z-index: 2;
-    filter: drop-shadow(0 3px 6px rgba(15,15,30,0.35));
-    animation: bobMarker 1.2s ease-in-out infinite alternate;
-  }
+                         position: relative; }
+  /* Halo pulsé sous la pastille */
   .leaflet-driver-icon::before {
     content: ''; position: absolute; top: 50%; left: 50%;
-    width: 40px; height: 40px; transform: translate(-50%, -50%);
-    background: radial-gradient(circle, rgba(124,58,237,0.45) 0%, rgba(124,58,237,0) 70%);
+    width: 46px; height: 46px; transform: translate(-50%, -50%);
+    background: radial-gradient(circle, rgba(109,40,217,0.42) 0%, rgba(109,40,217,0) 70%);
     border-radius: 50%; animation: driverPulse 2s ease-in-out infinite; z-index: 1;
   }
   @keyframes driverPulse {
-    0%   { transform: translate(-50%, -50%) scale(0.8); opacity: 0.9; }
-    100% { transform: translate(-50%, -50%) scale(2.2); opacity: 0; }
+    0%   { transform: translate(-50%, -50%) scale(0.7); opacity: 0.85; }
+    100% { transform: translate(-50%, -50%) scale(2.4); opacity: 0; }
   }
+  /* Pastille GPS : disque violet, liseré blanc, ombre portée */
+  .leaflet-driver-icon .disc {
+    position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+    width: 40px; height: 40px; border-radius: 50%;
+    background: linear-gradient(160deg, #7c3aed, #5b21b6);
+    border: 3px solid #ffffff;
+    box-shadow: 0 6px 16px rgba(76,29,149,0.5), 0 1px 3px rgba(0,0,0,0.3);
+    display: flex; align-items: center; justify-content: center; z-index: 3;
+  }
+  .leaflet-driver-icon .disc svg { width: 24px; height: 24px; display: block; }
+  /* Pointeur directionnel : petit chevron blanc qui orbite selon le cap */
   .leaflet-driver-icon .arrow {
-    position: absolute; top: 50%; left: 50%; margin: -32px 0 0 -7px;
-    font-size: 15px; color: var(--tk-violet, #7c3aed);
-    text-shadow: 0 0 5px rgba(124,58,237,0.55);
-    transform-origin: 50% 26px; z-index: 3; pointer-events: none;
+    position: absolute; top: 50%; left: 50%; margin: -33px 0 0 -6px;
+    width: 0; height: 0;
+    border-left: 6px solid transparent; border-right: 6px solid transparent;
+    border-bottom: 10px solid var(--tk-violet);
+    transform-origin: 50% 33px; z-index: 2; pointer-events: none;
+    filter: drop-shadow(0 1px 1px rgba(0,0,0,0.3));
   }
-  @keyframes bobMarker {
-    from { transform: translateY(0); }
-    to   { transform: translateY(-4px); }
+  /* Épingle destination élégante : goutte violette + maison blanche */
+  .leaflet-dest-icon { background: transparent !important; border: none !important; }
+  .leaflet-dest-icon .pin {
+    position: absolute; left: 50%; top: 0; transform: translateX(-50%);
+    width: 30px; height: 30px; border-radius: 50% 50% 50% 0;
+    background: linear-gradient(160deg, #7c3aed, #5b21b6);
+    border: 2.5px solid #fff; box-shadow: 0 5px 12px rgba(76,29,149,0.45);
+    transform: translateX(-50%) rotate(-45deg);
   }
-  .leaflet-dest-icon {
-    background: transparent !important; border: none !important;
-    font-size: 30px; text-align: center;
-    filter: drop-shadow(0 3px 7px rgba(15,15,30,0.35));
+  .leaflet-dest-icon .pin svg {
+    position: absolute; top: 50%; left: 50%;
+    width: 15px; height: 15px; transform: translate(-50%,-50%) rotate(45deg);
   }
-  /* Itinéraire : ligne foncée, comme sur la référence. */
-  .leaflet-interactive.route {
-    stroke-dasharray: 9, 11;
-    animation: dashDance 1.1s linear infinite;
-  }
-  @keyframes dashDance { to { stroke-dashoffset: -20; } }
-  .leaflet-container { background: #eeeef3 !important; font-family: inherit; }
+  .leaflet-container { background: #eef0f4 !important; font-family: inherit; }
 
   @media (prefers-reduced-motion: reduce) {
-    .tk-etape.encours .rond, .leaflet-driver-icon .icon,
-    .leaflet-driver-icon::before, .leaflet-interactive.route { animation: none; }
+    .tk-etape.encours .rond, .leaflet-driver-icon::before { animation: none; }
     .tk-cta { transition: none; }
   }
 
@@ -6056,7 +6064,7 @@ function cityTileHTML(country, city, subtitle) {
         <div class="ct-grid"></div>
         <div class="ct-palms"></div>
         <div class="ct-landmark">${_cityLandmark(city)}</div>
-        <img class="ct-photo" src="/cityimg/${_citySlug(city)}.jpg?v=4" alt="" loading="lazy" onerror="this.remove()">
+        <img class="ct-photo" src="/cityimg/${_citySlug(city)}.jpg?v=5" alt="" loading="lazy" onerror="this.remove()">
         <div class="ct-overlay"></div>
         <div class="ct-shine"></div>
         <div class="ct-city"><span class="ct-city-name">${escHtml(city)}</span></div>
@@ -9151,7 +9159,7 @@ updateHeader = function(name) {
 state._trackMap = null;
 state._trackDestMarker = null;
 state._trackDriverMarker = null;
-state._trackPolyline = null;
+state._trackPolyline = null; state._trackPolylineCasing = null;
 state._trackPollTimer = null;
 state._trackEtaTimer  = null;
 state._trackLastData  = null;
@@ -9202,7 +9210,7 @@ function closeTracking() {
     state._trackMap = null;
     state._trackDestMarker = null;
     state._trackDriverMarker = null;
-    state._trackPolyline = null;
+    state._trackPolyline = null; state._trackPolylineCasing = null;
     state._trackDriverAt = null;
     state._trackDriverHeading = null;
     state._trackFitted = false;
@@ -9556,12 +9564,18 @@ function _setDriverHeading(deg) {
 // Trace ce qu'il reste de chemin. Avec un itinéraire routier, on ne redessine
 // pas tout : on repart du point du tracé le plus proche du livreur et on garde
 // la suite. Le trait suit donc les rues et se raccourcit à mesure qu'il avance.
+function _poseRoute(latlngs) {
+  // Applique le tracé aux deux polylines (liseré blanc + violet) d'un coup.
+  if (state._trackPolylineCasing) state._trackPolylineCasing.setLatLngs(latlngs);
+  if (state._trackPolyline)       state._trackPolyline.setLatLngs(latlngs);
+}
+
 function _updateRoute(lat, lon) {
   const dest = state._trackLastData?.dest;
   if (!dest || !state._trackPolyline) return;
   const route = state._trackRoute;
   if (!route || route.length < 2) {
-    state._trackPolyline.setLatLngs([[lat, lon], [dest.lat, dest.lon]]);
+    _poseRoute([[lat, lon], [dest.lat, dest.lon]]);
     return;
   }
   // Recherche vers l'avant seulement : le livreur ne recule pas, et repartir
@@ -9576,7 +9590,7 @@ function _updateRoute(lat, lon) {
     if (d < distMin) { distMin = d; meilleur = i; }
   }
   state._trackRouteIdx = meilleur;
-  state._trackPolyline.setLatLngs([[lat, lon], ...route.slice(meilleur + 1)]);
+  _poseRoute([[lat, lon], ...route.slice(meilleur + 1)]);
 }
 
 function _haversineKm(lat1, lon1, lat2, lon2) {
@@ -9611,7 +9625,7 @@ function updateTrackingMap(data) {
       state._trackMap = null;
       state._trackDestMarker = null;
       state._trackDriverMarker = null;
-      state._trackPolyline = null;
+      state._trackPolyline = null; state._trackPolylineCasing = null;
       state._trackDriverAt = null;
       state._trackDriverHeading = null;
       state._trackFitted = false;
@@ -9649,9 +9663,9 @@ function updateTrackingMap(data) {
     // Marqueur destination
     const destIcon = L.divIcon({
       className: "leaflet-dest-icon",
-      html: "📍",
-      iconSize: [40,40],
-      iconAnchor: [20,36],
+      html: `<div class="pin"><svg viewBox="0 0 24 24" fill="#fff" aria-hidden="true"><path d="M12 3.2 L20.5 11 H18 V20 H14 V14.5 H10 V20 H6 V11 H3.5 Z"/></svg></div>`,
+      iconSize: [34,42],
+      iconAnchor: [17,34],
     });
     state._trackDestMarker = L.marker([dest.lat, dest.lon], { icon: destIcon }).addTo(state._trackMap);
     state._trackFitted = false;
@@ -9679,7 +9693,7 @@ function updateTrackingMap(data) {
     if (!state._trackDriverMarker) {
       const driverIcon = L.divIcon({
         className: "leaflet-driver-icon",
-        html: `<span class="arrow">➤</span><span class="icon">${escHtml(data.driver?.vehicle_emoji || "🛵")}</span>`,
+        html: `<span class="arrow"></span><div class="disc"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="5.6" cy="16.6" r="2.9"/><circle cx="18.4" cy="16.6" r="2.9"/><path d="M8.5 16.6 H15.2 L17.2 11.2 H12 L10.2 7.5 H7.2"/><path d="M6.6 7.5 H9.4"/></svg></div>`,
         iconSize: [60,60],
         iconAnchor: [30,30],
       });
@@ -9698,10 +9712,16 @@ function updateTrackingMap(data) {
     }
 
     if (!state._trackPolyline) {
-      // Ligne foncée : c'est ce qui se lit le mieux sur un fond de carte clair.
-      state._trackPolyline = L.polyline(
-        state._trackRoute || [[driver.lat, driver.lon], [dest.lat, dest.lon]],
-        { color: "#1f2430", weight: 4, opacity: 0.9, className: "route",
+      const latlngs = state._trackRoute || [[driver.lat, driver.lon], [dest.lat, dest.lon]];
+      // Itinéraire premium à double trait : un liseré blanc dessous pour le
+      // détacher des rues, puis le trait violet Millésime par-dessus. Bouts et
+      // jointures arrondis.
+      state._trackPolylineCasing = L.polyline(latlngs,
+        { color: "#ffffff", weight: 10, opacity: 0.95,
+          lineCap: "round", lineJoin: "round" }
+      ).addTo(state._trackMap);
+      state._trackPolyline = L.polyline(latlngs,
+        { color: "#6d28d9", weight: 6, opacity: 0.98, className: "route",
           lineCap: "round", lineJoin: "round" }
       ).addTo(state._trackMap);
     }
@@ -10638,7 +10658,7 @@ updateCartBar();
   // d'un chargement qui commence bien puis attend le réseau.
   function courbe(t) {
     if (t < 1400) return (t / 1400) * 70;
-    if (t < 3600) return 70 + ((t - 1400) / 2200) * (PLAFOND - 70);
+    if (t < 5200) return 70 + ((t - 1400) / 3800) * (PLAFOND - 70);
     return PLAFOND;
   }
 
@@ -10711,7 +10731,7 @@ updateCartBar();
   //   3640 (attente) + 380 (montée vers 100) + 320 (bienvenue) + 660 (fondu).
   // La courbe atteint 92 % à 3600 ms, juste avant : la barre ne reste donc
   // jamais immobile en attendant la fin.
-  const MIN_MS = 3640;
+  const MIN_MS = 5240;   // écran ~6,5 s au total (logo qui charge bien visible)
   function quandPret() {
     setTimeout(pret, Math.max(0, MIN_MS - (performance.now() - depart)));
   }

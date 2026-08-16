@@ -3617,6 +3617,35 @@ def _oublier_route(order_id: str) -> None:
         _route_cache.pop(order_id, None)
 
 
+def _point_le_long_route(points, frac):
+    """Point situé à `frac` (0..1) de la distance totale, LE LONG de la polyline.
+    Garantit que le livreur simulé reste toujours sur une vraie rue.
+    Renvoie (lat, lon, cap_deg, distance_restante_km, index_segment)."""
+    frac = max(0.0, min(1.0, frac))
+    if not points:
+        return None
+    if len(points) == 1:
+        return points[0][0], points[0][1], 0.0, 0.0, 0
+    cum = [0.0]
+    for i in range(1, len(points)):
+        cum.append(cum[-1] + _haversine_km(points[i-1][0], points[i-1][1],
+                                           points[i][0], points[i][1]))
+    total = cum[-1]
+    if total <= 0:
+        return points[0][0], points[0][1], 0.0, 0.0, 0
+    cible = frac * total
+    for i in range(1, len(points)):
+        if cum[i] >= cible:
+            seg = cum[i] - cum[i-1]
+            t = (cible - cum[i-1]) / seg if seg > 0 else 0.0
+            lat = points[i-1][0] + (points[i][0] - points[i-1][0]) * t
+            lon = points[i-1][1] + (points[i][1] - points[i-1][1]) * t
+            cap = _bearing_deg(points[i-1][0], points[i-1][1], points[i][0], points[i][1])
+            return lat, lon, cap, (total - cible), i
+    last = points[-1]
+    return last[0], last[1], 0.0, 0.0, len(points) - 1
+
+
 @app.route("/api/order/track", methods=["POST"])
 def api_order_track():
     """Tracking d'une commande pour le client.
@@ -3702,6 +3731,7 @@ def api_order_track():
     driver_heading = None
     is_live = False
     distance_km = None
+    route = None
 
     live = get_driver_position() if status == "delivering" else None
     if live and dest_lat and dest_lon:
@@ -3723,35 +3753,44 @@ def api_order_track():
         progress = max(0.0, min(1.0, 1.0 - (distance_km / far))) if far else 0.0
 
     elif dest_lat and dest_lon and status in ("delivering", "delivered"):
-        # Trajectoire simulée : point de départ déterministe dérivé de l'order_id
-        import hashlib
+        # Trajectoire simulée qui SUIT LES RUES : itinéraire réel (Mapbox) depuis
+        # un point de départ fixe déterministe, puis le livreur avance LE LONG de
+        # ce tracé selon la progression → il est toujours posé sur une vraie rue.
+        import hashlib, math
         h = int(hashlib.sha1(order_id.encode()).hexdigest(), 16)
-        radius_km = 2.5
-        # 1 deg lat ≈ 111 km
-        start_lat = dest_lat + (radius_km / 111.0) * (1 if (h >> 4) % 2 else -1) * 0.5
-        start_lon = dest_lon + (radius_km / 111.0) * (1 if (h >> 5) % 2 else -1) * 0.5
-        # Interpolation
-        driver_lat = start_lat + (dest_lat - start_lat) * progress
-        driver_lon = start_lon + (dest_lon - start_lon) * progress
-        driver_heading = _bearing_deg(driver_lat, driver_lon, dest_lat, dest_lon) \
-            if progress < 1.0 else None
-        distance_km = _haversine_km(driver_lat, driver_lon, dest_lat, dest_lon)
+        radius_km = 2.6
+        ang = math.radians(h % 360)                      # cap de départ déterministe
+        coslat = max(0.2, math.cos(math.radians(dest_lat)))
+        origin = (dest_lat + (radius_km / 111.0) * math.cos(ang),
+                  dest_lon + (radius_km / (111.0 * coslat)) * math.sin(ang))
+        pts, metres, secondes = _route_pour(order_id, origin, (dest_lat, dest_lon))
+        if pts and len(pts) >= 2:
+            pos = _point_le_long_route(pts, progress)
+            driver_lat, driver_lon, driver_heading, distance_km, _idx = pos
+            if progress >= 1.0:
+                driver_heading = None
+            route = pts                                   # tracé complet ; le client raccourcit
+        else:
+            # Repli ligne droite si Mapbox indisponible
+            driver_lat = origin[0] + (dest_lat - origin[0]) * progress
+            driver_lon = origin[1] + (dest_lon - origin[1]) * progress
+            driver_heading = _bearing_deg(driver_lat, driver_lon, dest_lat, dest_lon) if progress < 1.0 else None
+            distance_km = _haversine_km(driver_lat, driver_lon, dest_lat, dest_lon)
 
-    # ── Itinéraire réel, rue par rue ────────────────────────────────────────
-    # Tant qu'on n'a pas le tracé, le client verra la ligne droite ; dès qu'il
-    # arrive, la distance et l'ETA passent en distance ROUTIÈRE, toujours plus
-    # longue que le vol d'oiseau et donc plus honnête.
-    route = None
-    if driver_lat is not None and dest_lat and dest_lon and status == "delivering":
-        route, metres, secondes = _route_pour(
+    # ── Itinéraire routier réel ─────────────────────────────────────────────
+    #  - livreur EN DIRECT (GPS) : on (re)calcule le tracé depuis sa position ;
+    #  - livreur simulé : `route` est déjà le tracé complet (il avance dessus).
+    if is_live and driver_lat is not None and dest_lat and dest_lon and status == "delivering":
+        rlive, metres, secondes = _route_pour(
             order_id, (driver_lat, driver_lon), (dest_lat, dest_lon))
-        if route and metres:
+        if rlive and metres:
+            route = rlive
             distance_km = metres / 1000.0
             if secondes:
                 eta_seconds = int(secondes)
             far = _track_far_km(order_id, distance_km)
             progress = max(0.0, min(1.0, 1.0 - (distance_km / far))) if far else 0.0
-    elif status == "delivered":
+    if status == "delivered":
         _oublier_route(order_id)
 
     # Étapes visuelles
