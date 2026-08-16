@@ -3343,6 +3343,177 @@ body.admin-clair .lv-onglet.actif .n {
   background: rgba(255,255,255,.3) !important; color: #FFFFFF !important;
 }
 
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   DÉTAIL DE COMMANDE — VERSION CLAIRE
+   L'écran avait sa propre palette, entièrement construite pour du noir : halos
+   violets, vert fluo, texte blanc. Repeint ici en entier plutôt que rustiné,
+   sinon on obtient des cartes blanches avec du texte blanc dessus.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+body.admin-clair #screen-owner-detail {
+  --od2-bg:      #F7F7FA;
+  --od2-carte:   #FFFFFF;
+  --od2-carte-2: #F4F4FA;
+  --od2-bordure: rgba(12,11,46,.07);
+  --od2-txt:     #0C0B2E;
+  --od2-txt-2:   #5A5A73;
+  --od2-txt-3:   #8A8AA0;
+  --od2-violet:  #982BFF;
+  --od2-bleu:    #2563EB;
+  /* Le vert fluo d'origine (#7FFF00) est illisible sur blanc. */
+  --od2-vert:    #16A34A;
+  --od2-orange:  #D97706;
+  --od2-rouge:   #DC2626;
+  background: var(--od2-bg);
+}
+
+/* ── Barre de navigation ────────────────────────────────────────────────── */
+body.admin-clair .od2-nav {
+  background: rgba(255,255,255,.88) !important;
+  border-bottom: 1px solid var(--od2-bordure);
+  backdrop-filter: saturate(180%) blur(20px);
+  -webkit-backdrop-filter: saturate(180%) blur(20px);
+  box-shadow: 0 2px 16px rgba(30,20,80,.04);
+}
+body.admin-clair .od2-nav-btn {
+  background: #FFFFFF !important;
+  border: 1px solid var(--od2-bordure) !important;
+  color: var(--od2-violet);
+  box-shadow: var(--shadow-sm) !important;
+}
+body.admin-clair .od2-nav-btn:active { background: #F2F0FB !important; }
+
+/* ── Sous-en-tête ───────────────────────────────────────────────────────── */
+body.admin-clair .od2-sous-entete {
+  background: #FFFFFF !important;
+  border: 1px solid var(--od2-bordure);
+  box-shadow: var(--shadow-md) !important;
+}
+body.admin-clair .od2-sous-entete .fleche { color: var(--od2-violet); }
+
+/* ── Cartes : l'ombre douce de la charte remplace les halos violets ─────── */
+body.admin-clair .od2-carte {
+  box-shadow: 0 8px 30px rgba(30,20,80,.06) !important;
+  border: 1px solid var(--od2-bordure);
+}
+
+/* ── Badges d'état : fond pâle, texte franc, sans halo ──────────────────── */
+body.admin-clair .od2-badge {
+  box-shadow: none !important;
+  border-width: 1px;
+}
+/* Le petit rond prend la couleur du texte en fond (`background: currentColor`).
+   Sur clair cette couleur devient foncée, donc la lettre doit passer en blanc —
+   mais via `text-fill-color`, car toucher `color` repeindrait aussi le fond. */
+body.admin-clair .od2-badge .rond,
+body.admin-clair .od2-badge .rond::first-letter {
+  color: inherit;                      /* donc `currentColor` = teinte du badge */
+  -webkit-text-fill-color: #FFFFFF;    /* et la lettre reste blanche dessus */
+}
+body.admin-clair .od2-badge.terminee  { background: #E8F7EE !important; color: var(--od2-vert) !important; }
+body.admin-clair .od2-badge.attente   { background: #FDF3E3 !important; color: var(--od2-orange) !important; }
+body.admin-clair .od2-badge.confirmee { background: #E8F0FE !important; color: #1D4ED8 !important; }
+body.admin-clair .od2-badge.livraison { background: #F4EBFF !important; color: #7C22CE !important; }
+body.admin-clair .od2-badge.annulee   { background: #FDECEC !important; color: var(--od2-rouge) !important; }
+
+/* ── Progression ────────────────────────────────────────────────────────── */
+body.admin-clair .od2-pastille {
+  background: #EFEFF6 !important;
+  border: 1px solid var(--od2-bordure) !important;
+  box-shadow: none !important;
+}
+body.admin-clair .od2-etape::before { background: #E4E4EE !important; box-shadow: none !important; }
+body.admin-clair .od2-etape.faite .od2-pastille {
+  background: var(--od2-vert) !important; color: #FFFFFF !important;
+  box-shadow: 0 4px 14px rgba(22,163,74,.28) !important;
+}
+body.admin-clair .od2-etape.faite::before { background: var(--od2-vert) !important; box-shadow: none !important; }
+body.admin-clair .od2-etape.active .od2-pastille {
+  background: var(--od2-orange) !important; color: #FFFFFF !important;
+  box-shadow: 0 4px 14px rgba(217,119,6,.28) !important;
+}
+body.admin-clair .od2-etape.annul .od2-pastille {
+  background: var(--od2-rouge) !important; color: #FFFFFF !important;
+  box-shadow: 0 4px 14px rgba(220,38,38,.28) !important;
+}
+
+/* ── Boutons ────────────────────────────────────────────────────────────── */
+body.admin-clair .od2-btn.valider {
+  background: linear-gradient(100deg, #16A34A, #2563EB) !important;
+  box-shadow: 0 6px 20px rgba(37,99,235,.26) !important;
+}
+body.admin-clair .od2-btn.danger {
+  background: linear-gradient(100deg, #EF4444, #B91C1C) !important;
+  box-shadow: 0 6px 20px rgba(239,68,68,.26) !important;
+}
+/* Le halo qui « respire » était fait pour le noir : sur blanc il bave. */
+body.admin-clair .od2-cta {
+  background: var(--accent-grad) !important;
+  box-shadow: var(--shadow-accent) !important;
+  animation: od2Entree .4s both !important;
+}
+
+/* ── Client ─────────────────────────────────────────────────────────────── */
+body.admin-clair .od2-avatar {
+  background: var(--accent-grad) !important;
+  border: none !important;
+  box-shadow: 0 4px 14px rgba(165,45,255,.22) !important;
+}
+body.admin-clair .od2-avatar.photo { background: #EFEFF6 !important; }
+body.admin-clair .od2-verif {
+  background: var(--od2-vert) !important; color: #FFFFFF !important;
+  box-shadow: none !important;
+}
+body.admin-clair .od2-act {
+  background: #F4F4FA !important;
+  border: 1px solid var(--od2-bordure) !important;
+  color: var(--od2-violet) !important;
+}
+body.admin-clair .od2-act:active { background: #EDE7FB !important; }
+body.admin-clair .od2-act.bleu { color: #1D4ED8 !important; }
+body.admin-clair .od2-act.bleu:active { background: #E4EDFC !important; }
+
+/* ── Articles ───────────────────────────────────────────────────────────── */
+body.admin-clair .od2-art,
+body.admin-clair .od2-lieu {
+  background: var(--od2-carte-2) !important;
+  border: 1px solid var(--od2-bordure) !important;
+}
+body.admin-clair .od2-art .ic {
+  background: #E4EDFC !important;
+  border: 1px solid rgba(37,99,235,.18) !important;
+  box-shadow: none !important;
+}
+body.admin-clair .od2-qte {
+  background: #EDE7FB !important;
+  border: 1px solid rgba(152,43,255,.18) !important;
+  color: #7C22CE !important;
+}
+
+/* ── Adresse ────────────────────────────────────────────────────────────── */
+body.admin-clair .od2-maps {
+  background: #EDE7FB !important;
+  border: 1px solid rgba(152,43,255,.22) !important;
+  color: #7C22CE !important;
+  box-shadow: none !important;
+}
+body.admin-clair .od2-maps:active { background: #E2D8F8 !important; }
+
+/* ── Total : le dégradé de la charte, sans lueur ────────────────────────── */
+body.admin-clair .od2-total .v {
+  background: var(--accent-grad);
+  -webkit-background-clip: text; background-clip: text;
+  -webkit-text-fill-color: transparent; color: transparent;
+  text-shadow: none !important;
+}
+
+/* La visionneuse du selfie reste sombre : on y regarde une photo. */
+body.admin-clair .od2-loupe .fermer {
+  background: rgba(255,255,255,.18) !important;
+  border: none !important; color: #fff !important;
+}
+
 </style>
 </head>
 <body>
