@@ -998,19 +998,17 @@ def api_submit_cart():
         f"🏙️ {city} — {label_count} article(s) — *{total:,.0f} €*\n\n"
         f"Choisissez votre mode de paiement :"
     )
-    # Boutons paiement (callback_data spéciaux pour notre nouveau entry_point)
+    # Boutons paiement (callback_data spéciaux pour notre nouveau entry_point).
+    # On ne propose que les moyens réellement acceptés pour cette ville : un
+    # moyen en stand-by (ex. « link ») ne doit pas apparaître ici non plus.
+    _labels = {"cash": "💵 Cash", "link": "💳 Lien", "crypto": "₿ Crypto"}
+    _acceptes = catalog_mod.get_payment_methods(country, city)
+    _rangee = [{"text": _labels[m], "callback_data": f"mapay:{m}"}
+               for m in ("cash", "link", "crypto") if m in _acceptes]
     keyboard = {
         "inline_keyboard": [
-            [
-                {"text": "💵 Cash",  "callback_data": "mapay:cash"},
-                {"text": "💳 Lien",  "callback_data": "mapay:link"},
-            ],
-            [
-                {"text": "₿ Crypto", "callback_data": "mapay:crypto"},
-            ],
-            [
-                {"text": "❌ Annuler", "callback_data": "mapay:cancel"},
-            ],
+            _rangee,
+            [{"text": "❌ Annuler", "callback_data": "mapay:cancel"}],
         ]
     }
     try:

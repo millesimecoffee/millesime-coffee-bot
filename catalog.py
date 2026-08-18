@@ -1,6 +1,8 @@
 # catalog.py — Modifiez ce fichier pour personnaliser vos produits, villes et pays
 # Format : CATALOG[pays][ville][produit] = prix
 
+import os
+
 CATALOG = {
     "🇫🇷 France": {
         "Paris": {
@@ -488,6 +490,31 @@ COUNTRY_CURRENCIES: dict[str, list[str]] = {
 # ═══════════════════════════════════════════════════════════════════════════
 METHODES_PAIEMENT = ["cash", "link", "crypto"]
 
+# ── Paiements en stand-by ─────────────────────────────────────────────────────
+# Un moyen listé ici est suspendu : retiré de TOUTES les villes, aussi bien
+# côté client (sa carte disparaît de la Mini App) que côté serveur (une commande
+# passée avec ce moyen est refusée). C'est le point unique pour couper puis
+# rétablir un paiement sans toucher au reste du code.
+#
+# Rétablir un moyen = le retirer de cet ensemble. Sans redéploiement, on peut
+# aussi piloter la liste depuis Render via la variable d'environnement
+# PAIEMENTS_STANDBY (moyens séparés par des virgules ; une valeur vide réactive
+# tout et prime alors sur la valeur ci-dessous).
+#
+# Suspendu actuellement : « link » = Carte bancaire · Apple Pay · Google Pay
+# (le lien de paiement). Le liquide (« cash ») et la crypto restent actifs.
+MOYENS_STANDBY = {"link"}
+
+
+def _moyens_standby() -> set:
+    """Moyens de paiement suspendus. La variable d'environnement PAIEMENTS_STANDBY,
+    si elle est définie (même vide), l'emporte sur MOYENS_STANDBY."""
+    brut = os.getenv("PAIEMENTS_STANDBY")
+    if brut is None:
+        return set(MOYENS_STANDBY)
+    return {m.strip() for m in brut.split(",") if m.strip()}
+
+
 PAIEMENT_PAR_VILLE: dict[tuple[str, str], dict] = {
     # Espagne : ces trois villes ne prennent que du liquide, en euros.
     ("🇪🇸 Espagne", "Barcelone"): {"methodes": ["cash"], "devises": ["€"]},
@@ -497,10 +524,12 @@ PAIEMENT_PAR_VILLE: dict[tuple[str, str], dict] = {
 
 
 def get_payment_methods(country: str, city: str = "") -> list[str]:
-    """Moyens de paiement acceptés pour cette ville. Tous par défaut."""
+    """Moyens de paiement acceptés pour cette ville. Tous par défaut, moins ceux
+    en stand-by (voir MOYENS_STANDBY / PAIEMENTS_STANDBY)."""
     regle = PAIEMENT_PAR_VILLE.get((country, city)) or {}
+    standby = _moyens_standby()
     methodes = [m for m in (regle.get("methodes") or METHODES_PAIEMENT)
-                if m in METHODES_PAIEMENT]
+                if m in METHODES_PAIEMENT and m not in standby]
     # Une ville sans aucun moyen de paiement serait invendable : on retombe
     # sur le liquide, qui ne dépend d'aucune configuration extérieure.
     return methodes or ["cash"]

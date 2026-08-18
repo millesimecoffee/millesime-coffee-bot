@@ -53,15 +53,18 @@ for pays, ville in CASH_SEUL:
     assert m == ["cash"], m
     assert d == ["€"], d
 
-titre(2, "Les autres villes gardent tous les moyens")
+titre(2, "Les autres villes gardent tous les moyens actifs")
+# « link » peut etre suspendu (stand-by) : l'attendu se derive du meme filtre
+# que le catalogue, donc le test reste juste qu'il soit actif ou non.
+attendu = [m for m in catalog.METHODES_PAIEMENT if m not in catalog._moyens_standby()]
 for pays, villes in catalog.CATALOG.items():
     for ville in villes:
         if (pays, ville) in CASH_SEUL:
             continue
         m = catalog.get_payment_methods(pays, ville)
-        assert m == catalog.METHODES_PAIEMENT, f"{ville} : {m}"
+        assert m == attendu, f"{ville} : {m}"
 print(f"   {sum(len(v) for v in catalog.CATALOG.values()) - 3} autres villes : "
-      f"{catalog.METHODES_PAIEMENT}")
+      f"{attendu}")
 
 titre(3, "Une commande en carte ou en crypto est REFUSEE sur ces villes")
 

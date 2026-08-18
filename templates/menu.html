@@ -6223,7 +6223,10 @@ function setCountryCurrency(country) {
 // N'affiche que les moyens de paiement acceptés dans cette ville. Le serveur
 // refuse de toute façon les autres : ceci évite juste de les proposer.
 function appliquerMoyensPaiement() {
-  const acceptes = reglesPaiement().methodes || ["cash", "link", "crypto"];
+  // Le serveur envoie toujours la liste (« link » y est retiré s'il est en
+  // stand-by). Ce repli ne sert que si elle manque : il ne propose donc pas
+  // « link » non plus, pour ne jamais afficher une carte que le serveur refuse.
+  const acceptes = reglesPaiement().methodes || ["cash", "crypto"];
   document.querySelectorAll("#screen-payment .pay-card").forEach(carte => {
     const m = (carte.getAttribute("onclick") || "").match(/selectPaymentMethod\('([a-z]+)'\)/);
     carte.style.display = (m && !acceptes.includes(m[1])) ? "none" : "";
