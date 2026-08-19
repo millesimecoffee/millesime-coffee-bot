@@ -4314,6 +4314,58 @@ def api_admin_send_message():
     return jsonify({"ok": True})
 
 
+# ═════════════════════════════════════════════════════════════════════════════
+# Édition du catalogue depuis l'espace admin
+# ═════════════════════════════════════════════════════════════════════════════
+# L'owner modifie pays, villes, produits, prix, minimums, moyens de paiement et
+# devises directement depuis la Mini App. La validation fait foi côté serveur :
+# un catalogue mal formé est refusé avec un message clair, jamais appliqué.
+
+@app.route("/api/admin/catalog", methods=["POST"])
+def api_admin_catalog():
+    """Renvoie le catalogue complet et éditable. Owner uniquement."""
+    refus = _guard_admin(request)
+    if refus:
+        return refus
+    try:
+        import catalog as catalog_mod
+        importlib.reload(catalog_mod)
+        return jsonify({"ok": True, "catalogue": catalog_mod.snapshot()})
+    except Exception as exc:
+        logger.error("api_admin_catalog: %s", exc)
+        return jsonify({"ok": False, "error": "catalog_failed"}), 500
+
+
+@app.route("/api/admin/catalog/save", methods=["POST"])
+def api_admin_catalog_save():
+    """Enregistre le catalogue édité. POST {initData, catalogue:{pays:[…]}}.
+
+    Le serveur valide et normalise avant d'appliquer : en cas de problème, il
+    renvoie 400 avec un message lisible et NE touche à rien. En cas de succès,
+    renvoie le snapshot à jour (déjà persisté et sauvegardé sur GitHub)."""
+    refus = _guard_admin(request)
+    if refus:
+        return refus
+    catalogue = _corps(request).get("catalogue")
+    if not isinstance(catalogue, dict):
+        return jsonify({"ok": False, "error": "bad_body"}), 400
+    try:
+        import catalog as catalog_mod
+        importlib.reload(catalog_mod)
+    except Exception as exc:
+        logger.error("api_admin_catalog_save reload: %s", exc)
+        return jsonify({"ok": False, "error": "catalog_failed"}), 500
+    try:
+        snap = catalog_mod.sauver_catalogue(catalogue)
+    except catalog_mod.CatalogueInvalide as exc:
+        return jsonify({"ok": False, "error": "invalide", "message": str(exc)}), 400
+    except Exception as exc:
+        logger.error("api_admin_catalog_save: %s", exc)
+        return jsonify({"ok": False, "error": "save_failed"}), 500
+    logger.info("catalogue enregistré (%d pays)", len(snap.get("pays", [])))
+    return jsonify({"ok": True, "catalogue": snap})
+
+
 _bot_username_cache = {"nom": "", "at": 0.0}
 
 

@@ -4661,6 +4661,14 @@ body.admin-clair .od2-loupe .fermer {
         <span class="arrow">›</span>
       </div>
     </div>
+    <div class="card" onclick="ouvrirCatalogue()" style="margin-top:8px;">
+      <span class="emoji">🗂️</span>
+      <div class="info">
+        <div class="name">Catalogue</div>
+        <div class="meta">Pays, villes, produits &amp; prix</div>
+      </div>
+      <span class="arrow">›</span>
+    </div>
     <div class="card" onclick="ouvrirActivite()" style="margin-top:8px;">
       <span class="emoji">📊</span>
       <div class="info">
@@ -4715,6 +4723,132 @@ body.admin-clair .od2-loupe .fermer {
     </div>
     <button class="next-btn" style="margin: 0 0 14px 0;" onclick="openBroadcastModalFromDirectory()">📣 Envoyer un message à ce segment</button>
     <div id="clientDirectoryList"></div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════════════
+     ÉDITEUR DE CATALOGUE (espace admin) — pays › villes › produits
+     ═══════════════════════════════════════════════════════════════════════ -->
+<style>
+  .cat-head { display:flex; justify-content:space-between; align-items:flex-start; gap:10px; margin-bottom:4px; }
+  .cat-sub { font-size:12.5px; color:var(--txt-secondary,#77778A); margin-top:2px; }
+  .cat-save-status { font-size:12px; font-weight:700; min-height:16px; white-space:nowrap; color:var(--txt-secondary,#77778A); }
+  .cat-hint { font-size:12.5px; color:var(--txt-secondary,#77778A); line-height:1.4; margin:4px 0 14px; }
+  .cat-mini-hint { font-size:11.5px; color:var(--txt-tertiary,#9B9BAC); line-height:1.4; margin-top:6px; }
+  .cat-add-btn { width:100%; padding:13px; border:1.5px dashed rgba(255,23,168,0.45); background:rgba(255,23,168,0.06); color:#E1119A; border-radius:16px; font-weight:800; font-size:14px; margin:6px 0 16px; cursor:pointer; -webkit-appearance:none; }
+  .cat-add-btn:active { transform:scale(0.98); }
+  .cat-row { display:flex; align-items:center; gap:8px; background:var(--bg-card,#fff); border:1px solid var(--border,rgba(12,11,46,0.08)); border-radius:16px; padding:12px; margin-bottom:9px; box-shadow:var(--shadow-sm,0 2px 8px rgba(30,20,80,.04)); }
+  .cat-main { flex:1; min-width:0; cursor:pointer; }
+  .cat-nom { font-size:15.5px; font-weight:800; color:var(--txt-primary,#0C0B2E); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .cat-sous { font-size:12px; color:var(--txt-secondary,#77778A); margin-top:2px; }
+  .cat-ic { background:rgba(12,11,46,0.05); border:none; border-radius:10px; width:36px; height:36px; font-size:15px; cursor:pointer; flex-shrink:0; }
+  .cat-ic.danger { background:rgba(255,45,90,0.10); }
+  .cat-chev { font-size:22px; color:var(--txt-tertiary,#bbb); flex-shrink:0; cursor:pointer; }
+  .cat-vide { text-align:center; color:var(--txt-tertiary,#9B9BAC); padding:26px 10px; font-size:13.5px; }
+  .cat-prod { display:flex; align-items:center; gap:8px; background:var(--bg-card,#fff); border:1px solid var(--border,rgba(12,11,46,0.08)); border-radius:13px; padding:9px 10px; margin-bottom:8px; box-shadow:var(--shadow-sm,0 2px 8px rgba(30,20,80,.04)); }
+  .cat-prod-nom { flex:1; min-width:0; font-size:14.5px; font-weight:700; color:var(--txt-primary,#0C0B2E); cursor:pointer; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .cat-prix { width:86px; padding:9px 10px; border-radius:11px; background:#F4F4F8; border:1px solid var(--border,rgba(12,11,46,0.1)); color:var(--txt-primary,#0C0B2E); font-size:14px; font-weight:800; text-align:right; -webkit-appearance:none; }
+  .cat-unite { font-size:13px; color:var(--txt-secondary,#77778A); font-weight:700; }
+  .cat-bloc { background:var(--bg-card,#fff); border:1px solid var(--border,rgba(12,11,46,0.07)); border-radius:18px; padding:15px; margin-top:6px; box-shadow:var(--shadow-sm,0 2px 8px rgba(30,20,80,.04)); }
+  .cat-bloc-titre { font-size:12.5px; font-weight:800; text-transform:uppercase; letter-spacing:.5px; color:var(--txt-secondary,#77778A); margin-bottom:10px; }
+  .cat-set-row { display:flex; justify-content:space-between; align-items:center; gap:10px; padding:11px 0; border-top:1px solid var(--border,rgba(12,11,46,0.06)); }
+  .cat-set-row:first-of-type { border-top:none; padding-top:2px; }
+  .cat-set-lbl { font-size:13.5px; font-weight:700; color:var(--txt-primary,#0C0B2E); }
+  .cat-select { background:#F4F4F8; border:1px solid var(--border,rgba(12,11,46,0.1)); color:var(--txt-primary,#0C0B2E); border-radius:11px; padding:9px 10px; font-size:13.5px; font-weight:600; -webkit-appearance:none; }
+  .cat-methodes, .cat-chips { display:flex; flex-wrap:wrap; gap:8px; }
+  .cat-toggle, .cat-chip { display:inline-flex; align-items:center; justify-content:center; padding:8px 13px; border-radius:999px; font-size:13px; font-weight:800; cursor:pointer; border:1.5px solid var(--border,rgba(12,11,46,0.12)); background:#fff; color:var(--txt-secondary,#77778A); user-select:none; }
+  .cat-toggle.on, .cat-chip.on { border-color:#FF17A8; background:rgba(255,23,168,0.10); color:#D10E8C; }
+  .cat-chip { min-width:42px; }
+  .cat-modal-bd { position:fixed; inset:0; background:rgba(0,0,0,0.6); z-index:99999; display:flex; align-items:center; justify-content:center; padding:20px; }
+  .cat-modal { background:#1a1a24; border-radius:16px; padding:20px; max-width:400px; width:100%; color:#fff; box-shadow:0 20px 60px rgba(0,0,0,0.5); }
+  .cat-modal-msg { font-size:15px; line-height:1.45; margin-bottom:16px; }
+  .cat-modal-actions { display:flex; gap:8px; }
+  .cat-btn-sec { flex:1; padding:12px; border-radius:10px; background:rgba(255,255,255,0.1); color:#fff; border:none; font-weight:600; font-size:14px; cursor:pointer; }
+  .cat-btn-danger { flex:1.4; padding:12px; border-radius:10px; background:#ff3c5a; color:#fff; border:none; font-weight:700; font-size:14px; cursor:pointer; }
+</style>
+
+<!-- ÉCRAN CATALOGUE 1 : PAYS -->
+<div class="screen" id="screen-cat-pays">
+  <div class="container">
+    <div class="cat-head">
+      <div class="section-title" style="margin:0;">🗂️ Catalogue</div>
+      <div class="cat-save-status"></div>
+    </div>
+    <div class="cat-hint">Pays › villes › produits. Chaque modification est enregistrée automatiquement.</div>
+    <button class="cat-add-btn" onclick="catAjouterPays()">➕ Ajouter un pays</button>
+    <div id="catPaysList"></div>
+  </div>
+</div>
+
+<!-- ÉCRAN CATALOGUE 2 : VILLES d'un pays -->
+<div class="screen" id="screen-cat-villes">
+  <div class="container">
+    <div class="cat-head">
+      <div>
+        <div class="section-title" id="catVillesTitre" style="margin:0;">Pays</div>
+        <div class="cat-sub">Villes de ce pays</div>
+      </div>
+      <div class="cat-save-status"></div>
+    </div>
+    <div class="cat-bloc">
+      <div class="cat-bloc-titre">💱 Devises affichées (tout le pays)</div>
+      <div class="cat-chips" id="catPaysDevises"></div>
+      <div class="cat-mini-hint">La 1ʳᵉ devise est celle par défaut. Le montant ne change pas, seul le symbole affiché.</div>
+    </div>
+    <button class="cat-add-btn" style="margin-top:14px;" onclick="catAjouterVille()">➕ Ajouter une ville</button>
+    <div id="catVillesList"></div>
+  </div>
+</div>
+
+<!-- ÉCRAN CATALOGUE 3 : PRODUITS + réglages d'une ville -->
+<div class="screen" id="screen-cat-produits">
+  <div class="container">
+    <div class="cat-head">
+      <div>
+        <div class="section-title" id="catProdTitre" style="margin:0;">Ville</div>
+        <div class="cat-sub" id="catProdSousTitre">Pays</div>
+      </div>
+      <div class="cat-save-status"></div>
+    </div>
+
+    <div class="cat-bloc-titre" style="margin-top:8px;">📦 Produits</div>
+    <div id="catProdList"></div>
+    <button class="cat-add-btn" onclick="catAjouterProduit()">➕ Ajouter un produit</button>
+
+    <div class="cat-bloc" style="margin-top:12px;">
+      <div class="cat-bloc-titre">⚙️ Réglages de la ville</div>
+
+      <div class="cat-set-row">
+        <div class="cat-set-lbl">Minimum de commande</div>
+        <select id="catMinType" class="cat-select" onchange="catMinChange()">
+          <option value="none">Aucun</option>
+          <option value="amount">Montant</option>
+          <option value="qty">Nb d'articles</option>
+        </select>
+      </div>
+      <div class="cat-set-row" id="catMinValWrap">
+        <div class="cat-set-lbl">Valeur du minimum</div>
+        <div style="display:flex; align-items:center; gap:6px;">
+          <input id="catMinVal" class="cat-prix" type="number" inputmode="decimal" min="1" onchange="catMinChange()">
+          <span id="catMinUnite" class="cat-unite">€</span>
+        </div>
+      </div>
+
+      <div class="cat-set-row" style="flex-direction:column; align-items:stretch; gap:8px;">
+        <div class="cat-set-lbl">Moyens de paiement acceptés</div>
+        <div class="cat-methodes">
+          <span class="cat-toggle" id="catM_cash"   onclick="catToggleMethode('cash')">💵 Cash</span>
+          <span class="cat-toggle" id="catM_link"   onclick="catToggleMethode('link')">💳 Carte / Lien</span>
+          <span class="cat-toggle" id="catM_crypto" onclick="catToggleMethode('crypto')">₿ Crypto</span>
+        </div>
+        <div class="cat-mini-hint" id="catStandbyNote"></div>
+      </div>
+
+      <div class="cat-set-row" style="flex-direction:column; align-items:stretch; gap:8px;">
+        <div class="cat-set-lbl">Devises de cette ville <span style="opacity:.55; font-weight:500;">(vide = comme le pays)</span></div>
+        <div class="cat-chips" id="catVilleDevises"></div>
+      </div>
+    </div>
   </div>
 </div>
 
@@ -5651,6 +5785,9 @@ function updateHeader(name) {
     selfie:            { t: t("selfie_title"), s: "" },
     confirm:           { t: t("confirm_title"), s: "" },
     success:           { t: t("success_title"), s: "" },
+    "cat-pays":        { t: "Catalogue", s: "Pays & villes" },
+    "cat-villes":      { t: "Catalogue", s: "Villes" },
+    "cat-produits":    { t: "Catalogue", s: "Produits & réglages" },
   };
   const info = titles[name] || { t: "Millésime Coffee", s: "" };
   document.getElementById("headerTitle").textContent    = info.t;
@@ -6455,6 +6592,337 @@ function submitCart() {
     return;
   }
   setScreen("payment");
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// ÉDITEUR DE CATALOGUE (espace admin)
+// L'owner modifie pays / villes / produits / prix / minimums / paiements /
+// devises. Toute modification est envoyée entière au serveur, qui valide, refuse
+// si c'est cassé, et renvoie la version normalisée. Enregistrement débouncé.
+// ═══════════════════════════════════════════════════════════════════════════
+const catState = { snap: null, iPays: -1, iVille: -1, tSave: null, saving: false };
+
+function catStatut(txt, err) {
+  document.querySelectorAll(".cat-save-status").forEach(el => {
+    el.textContent = txt || "";
+    el.style.color = err ? "#ff3c5a" : "var(--txt-secondary,#77778A)";
+  });
+}
+
+async function ouvrirCatalogue() {
+  hapticSelect();
+  setScreen("cat-pays");
+  document.getElementById("catPaysList").innerHTML =
+    `<div class="cat-vide"><span class="loader"></span></div>`;
+  catStatut("");
+  try {
+    const r = await apiFetch("/api/admin/catalog", {
+      method: "POST", body: JSON.stringify({ initData: tg.initData || "" }),
+    });
+    const d = await r.json();
+    if (!d.ok) { showToast("Chargement du catalogue impossible", true); return; }
+    catState.snap = d.catalogue;
+    renderCatPays();
+  } catch { showToast("Erreur réseau", true); }
+}
+
+// ── Enregistrement (débouncé) ────────────────────────────────────────────────
+function catMarquerModif(immediat) {
+  if (catState.tSave) clearTimeout(catState.tSave);
+  catStatut("Modifié…");
+  if (immediat) catEnregistrer();
+  else catState.tSave = setTimeout(catEnregistrer, 700);
+}
+
+async function catEnregistrer() {
+  if (catState.tSave) { clearTimeout(catState.tSave); catState.tSave = null; }
+  if (!catState.snap || catState.saving) return false;
+  catState.saving = true;
+  catStatut("Enregistrement…");
+  try {
+    const r = await apiFetch("/api/admin/catalog/save", {
+      method: "POST", timeout: 20000,
+      body: JSON.stringify({ initData: tg.initData || "", catalogue: catState.snap }),
+    });
+    const d = await r.json();
+    if (!d.ok) {
+      const msg = d.error === "invalide" ? (d.message || "Catalogue invalide")
+                                         : "Enregistrement échoué";
+      showToast(msg, true);
+      catStatut(msg, true);
+      return false;
+    }
+    catState.snap = d.catalogue;         // version normalisée (ordre, arrondis)
+    catStatut("Enregistré ✓");
+    return true;
+  } catch {
+    showToast("Erreur réseau — non enregistré", true);
+    catStatut("Hors ligne", true);
+    return false;
+  } finally {
+    catState.saving = false;
+  }
+}
+
+// ── Petite modale de confirmation (suppressions) ─────────────────────────────
+function catConfirmer(message, onOui, okLabel) {
+  const bd = document.createElement("div");
+  bd.className = "cat-modal-bd";
+  bd.innerHTML =
+    `<div class="cat-modal">
+       <div class="cat-modal-msg">${escHtml(message)}</div>
+       <div class="cat-modal-actions">
+         <button class="cat-btn-sec" id="_cc_no">Annuler</button>
+         <button class="cat-btn-danger" id="_cc_yes">${escHtml(okLabel || "Supprimer")}</button>
+       </div>
+     </div>`;
+  document.body.appendChild(bd);
+  const close = () => bd.remove();
+  bd.querySelector("#_cc_no").onclick = close;
+  bd.addEventListener("click", e => { if (e.target === bd) close(); });
+  bd.querySelector("#_cc_yes").onclick = () => { close(); onOui(); };
+}
+
+function catNbProduits(p) { return p.villes.reduce((n, v) => n + v.produits.length, 0); }
+function catMinTexte(min) {
+  if (!min) return "";
+  return min.type === "qty" ? `min ${min.value} art.` : `min ${min.value} €`;
+}
+function catChipsDevises(list, portee) {
+  const syms = catState.snap.symboles_possibles || ["€", "$", "£", "฿", "dh"];
+  const sel = list || [];
+  return syms.map(s =>
+    `<span class="cat-chip ${sel.includes(s) ? "on" : ""}" onclick="catToggleDevise('${portee}','${s}')">${escHtml(s)}</span>`
+  ).join("");
+}
+
+// ── Niveau 1 : PAYS ──────────────────────────────────────────────────────────
+function renderCatPays() {
+  const snap = catState.snap; if (!snap) return;
+  const html = snap.pays.map((p, i) =>
+    `<div class="cat-row">
+       <div class="cat-main" onclick="ouvrirCatVilles(${i})">
+         <div class="cat-nom">${escHtml(p.nom)}</div>
+         <div class="cat-sous">${p.villes.length} ville(s) · ${catNbProduits(p)} produit(s)</div>
+       </div>
+       <button class="cat-ic" onclick="catRenommerPays(${i})" title="Renommer">✏️</button>
+       <button class="cat-ic danger" onclick="catSupprimerPays(${i})" title="Supprimer">🗑️</button>
+       <span class="cat-chev" onclick="ouvrirCatVilles(${i})">›</span>
+     </div>`).join("");
+  document.getElementById("catPaysList").innerHTML = html || `<div class="cat-vide">Aucun pays. Ajoutez-en un.</div>`;
+}
+
+async function catAjouterPays() {
+  const nom = await showTextModal("Nouveau pays (mettez le drapeau devant)", "", "🇨🇭 Suisse", false);
+  if (nom == null) return;
+  const v = nom.trim(); if (!v) return;
+  catState.snap.pays.push({ nom: v, devises: ["€", "$", "£"], villes: [] });
+  renderCatPays();
+  catMarquerModif(true);
+}
+
+async function catRenommerPays(i) {
+  const p = catState.snap.pays[i];
+  const nom = await showTextModal("Nom du pays (avec le drapeau)", p.nom, "🇫🇷 France", false);
+  if (nom == null) return;
+  const v = nom.trim(); if (!v) return;
+  p.nom = v;
+  renderCatPays();
+  catMarquerModif(true);
+}
+
+function catSupprimerPays(i) {
+  const p = catState.snap.pays[i];
+  catConfirmer(`Supprimer « ${p.nom} » et ses ${p.villes.length} ville(s) ?`, () => {
+    catState.snap.pays.splice(i, 1);
+    renderCatPays();
+    catMarquerModif(true);
+  });
+}
+
+// ── Niveau 2 : VILLES ────────────────────────────────────────────────────────
+function ouvrirCatVilles(i) {
+  hapticSelect();
+  catState.iPays = i;
+  setScreen("cat-villes");
+  renderCatVilles();
+}
+
+function renderCatVilles() {
+  const p = catState.snap.pays[catState.iPays]; if (!p) return;
+  document.getElementById("catVillesTitre").textContent = p.nom;
+  document.getElementById("catPaysDevises").innerHTML = catChipsDevises(p.devises, "pays");
+  const html = p.villes.map((v, j) =>
+    `<div class="cat-row">
+       <div class="cat-main" onclick="ouvrirCatProduits(${j})">
+         <div class="cat-nom">${escHtml(v.nom)}</div>
+         <div class="cat-sous">${v.produits.length} produit(s)${v.min ? " · " + catMinTexte(v.min) : ""}</div>
+       </div>
+       <button class="cat-ic" onclick="catRenommerVille(${j})" title="Renommer">✏️</button>
+       <button class="cat-ic danger" onclick="catSupprimerVille(${j})" title="Supprimer">🗑️</button>
+       <span class="cat-chev" onclick="ouvrirCatProduits(${j})">›</span>
+     </div>`).join("");
+  document.getElementById("catVillesList").innerHTML = html || `<div class="cat-vide">Aucune ville. Ajoutez-en une.</div>`;
+}
+
+async function catAjouterVille() {
+  const nom = await showTextModal("Nom de la nouvelle ville", "", "Nice", false);
+  if (nom == null) return;
+  const v = nom.trim(); if (!v) return;
+  catState.snap.pays[catState.iPays].villes.push(
+    { nom: v, produits: [], min: null, methodes: null, devises: null });
+  renderCatVilles();
+  catMarquerModif(true);
+}
+
+async function catRenommerVille(j) {
+  const p = catState.snap.pays[catState.iPays];
+  const nom = await showTextModal("Nom de la ville", p.villes[j].nom, "Nice", false);
+  if (nom == null) return;
+  const v = nom.trim(); if (!v) return;
+  p.villes[j].nom = v;
+  renderCatVilles();
+  catMarquerModif(true);
+}
+
+function catSupprimerVille(j) {
+  const p = catState.snap.pays[catState.iPays];
+  catConfirmer(`Supprimer « ${p.villes[j].nom} » et ses produits ?`, () => {
+    p.villes.splice(j, 1);
+    renderCatVilles();
+    catMarquerModif(true);
+  });
+}
+
+// ── Niveau 3 : PRODUITS + réglages ───────────────────────────────────────────
+function ouvrirCatProduits(j) {
+  hapticSelect();
+  catState.iVille = j;
+  setScreen("cat-produits");
+  renderCatProduits();
+}
+
+function catVilleCourante() {
+  const p = catState.snap.pays[catState.iPays];
+  return p && p.villes[catState.iVille];
+}
+
+function renderCatProduits() {
+  const p = catState.snap.pays[catState.iPays];
+  const v = catVilleCourante(); if (!v) return;
+  document.getElementById("catProdTitre").textContent = v.nom;
+  document.getElementById("catProdSousTitre").textContent = p.nom;
+  const html = v.produits.map((pr, k) =>
+    `<div class="cat-prod">
+       <div class="cat-prod-nom" onclick="catRenommerProduit(${k})">${escHtml(pr.nom)}</div>
+       <input class="cat-prix" type="number" inputmode="decimal" min="0" step="1"
+              value="${pr.prix}" onchange="catPrix(${k}, this.value)">
+       <button class="cat-ic danger" onclick="catSupprimerProduit(${k})" title="Supprimer">🗑️</button>
+     </div>`).join("");
+  document.getElementById("catProdList").innerHTML = html ||
+    `<div class="cat-vide">Aucun produit — ajoutez-en un.</div>`;
+  renderCatReglages(v);
+}
+
+function renderCatReglages(v) {
+  const typ = v.min ? v.min.type : "none";
+  document.getElementById("catMinType").value = typ;
+  document.getElementById("catMinVal").value = v.min ? v.min.value : "";
+  document.getElementById("catMinValWrap").style.display = (typ === "none") ? "none" : "";
+  document.getElementById("catMinUnite").textContent = (typ === "qty") ? "article(s)" : "€";
+  const meth = v.methodes || (catState.snap.methodes_possibles || ["cash", "link", "crypto"]);
+  ["cash", "link", "crypto"].forEach(m => {
+    const el = document.getElementById("catM_" + m);
+    if (el) el.classList.toggle("on", meth.includes(m));
+  });
+  const sb = catState.snap.moyens_standby || [];
+  document.getElementById("catStandbyNote").textContent =
+    sb.length ? `ℹ️ Actuellement en stand-by (indisponible partout) : ${sb.join(", ")}` : "";
+  document.getElementById("catVilleDevises").innerHTML = catChipsDevises(v.devises, "ville");
+}
+
+function catPrix(k, valeur) {
+  const v = catVilleCourante(); if (!v) return;
+  let n = parseFloat(String(valeur).replace(",", "."));
+  if (!isFinite(n) || n < 0) n = 0;
+  v.produits[k].prix = Math.round(n * 100) / 100;
+  catMarquerModif();
+}
+
+async function catRenommerProduit(k) {
+  const v = catVilleCourante(); if (!v) return;
+  const nom = await showTextModal("Nom du produit", v.produits[k].nom, "❄️ COCA 1G", false);
+  if (nom == null) return;
+  const t = nom.trim(); if (!t) return;
+  v.produits[k].nom = t;
+  renderCatProduits();
+  catMarquerModif(true);
+}
+
+async function catAjouterProduit() {
+  const v = catVilleCourante(); if (!v) return;
+  const nom = await showTextModal("Nom du nouveau produit", "", "❄️ COCA 1G", false);
+  if (nom == null) return;
+  const t = nom.trim(); if (!t) return;
+  const prixTxt = await showTextModal(`Prix de « ${t} »`, "", "100", false);
+  if (prixTxt == null) return;
+  let prix = parseFloat(String(prixTxt).replace(",", "."));
+  if (!isFinite(prix) || prix < 0) prix = 0;
+  v.produits.push({ nom: t, prix: Math.round(prix * 100) / 100 });
+  renderCatProduits();
+  catMarquerModif(true);
+}
+
+function catSupprimerProduit(k) {
+  const v = catVilleCourante(); if (!v) return;
+  catConfirmer(`Supprimer « ${v.produits[k].nom} » ?`, () => {
+    v.produits.splice(k, 1);
+    renderCatProduits();
+    catMarquerModif(true);
+  });
+}
+
+function catMinChange() {
+  const v = catVilleCourante(); if (!v) return;
+  const typ = document.getElementById("catMinType").value;
+  if (typ === "none") {
+    v.min = null;
+  } else {
+    let val = parseFloat(String(document.getElementById("catMinVal").value).replace(",", "."));
+    if (!isFinite(val) || val <= 0) val = 1;
+    v.min = { type: typ, value: (typ === "qty") ? Math.round(val) : Math.round(val * 100) / 100 };
+  }
+  renderCatReglages(v);
+  catMarquerModif();
+}
+
+function catToggleMethode(m) {
+  const v = catVilleCourante(); if (!v) return;
+  let cur = v.methodes ? v.methodes.slice() : ["cash", "link", "crypto"];
+  cur = cur.includes(m) ? cur.filter(x => x !== m) : cur.concat(m);
+  if (cur.length === 0) { showToast("Au moins un moyen de paiement", true); return; }
+  const ordre = ["cash", "link", "crypto"].filter(x => cur.includes(x));
+  v.methodes = (ordre.length === 3) ? null : ordre;   // tous = pas de règle
+  renderCatReglages(v);
+  catMarquerModif();
+}
+
+function catToggleDevise(portee, s) {
+  if (portee === "pays") {
+    const p = catState.snap.pays[catState.iPays];
+    let cur = (p.devises || []).slice();
+    cur = cur.includes(s) ? cur.filter(x => x !== s) : cur.concat(s);
+    if (cur.length === 0) { showToast("Au moins une devise pour le pays", true); return; }
+    p.devises = cur;
+    document.getElementById("catPaysDevises").innerHTML = catChipsDevises(p.devises, "pays");
+  } else {
+    const v = catVilleCourante(); if (!v) return;
+    let cur = (v.devises || []).slice();
+    cur = cur.includes(s) ? cur.filter(x => x !== s) : cur.concat(s);
+    v.devises = cur.length ? cur : null;              // vide = suit le pays
+    document.getElementById("catVilleDevises").innerHTML = catChipsDevises(v.devises, "ville");
+  }
+  catMarquerModif();
 }
 
 // ═══════════════════════════════════════════════════════════════════════════

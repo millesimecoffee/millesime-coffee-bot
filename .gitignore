@@ -19,6 +19,7 @@ blacklist.json
 blocked.json
 parcours.json
 veilleurs.json
+catalogue.json
 
 # Logs (toutes variantes)
 *.log

@@ -1,7 +1,15 @@
 # catalog.py — Modifiez ce fichier pour personnaliser vos produits, villes et pays
 # Format : CATALOG[pays][ville][produit] = prix
+#
+# Ce fichier définit le catalogue PAR DÉFAUT. Dès que l'owner édite quelque chose
+# depuis l'espace admin de la Mini App, l'état complet est enregistré dans
+# `catalogue.json` (voir plus bas) et ré-appliqué par-dessus au chargement.
 
+import json
+import logging
 import os
+import threading
+from pathlib import Path
 
 CATALOG = {
     "🇫🇷 France": {
@@ -542,3 +550,286 @@ def get_currencies(country: str, city: str = "") -> list[str]:
     if regle.get("devises"):
         return list(regle["devises"])
     return COUNTRY_CURRENCIES.get(country, ALL_CURRENCIES)
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# ÉDITION DU CATALOGUE DEPUIS L'ESPACE ADMIN
+#
+# Le catalogue défini plus haut est le SOCLE par défaut. Dès que l'owner édite
+# quoi que ce soit depuis la Mini App, l'état complet est validé, enregistré
+# dans `catalogue.json` (dans DATA_DIR) et sauvegardé sur GitHub — le disque de
+# Render étant éphémère. À chaque import de ce module (et webapp le recharge à
+# chaque requête touchant le catalogue), cet overlay est ré-appliqué par-dessus
+# le socle : une modification est donc active immédiatement, sans redéploiement.
+# ═══════════════════════════════════════════════════════════════════════════
+_logger = logging.getLogger(__name__)
+_DATA_DIR = Path(os.getenv("DATA_DIR", str(Path(__file__).parent)))
+_FICHIER_CATALOGUE = _DATA_DIR / "catalogue.json"
+_verrou_catalogue = threading.RLock()
+
+# Plafonds de sûreté. Un catalogue reste petit ; ils bloquent surtout un envoi
+# aberrant qui ferait gonfler le fichier ou l'écran.
+_MAX_PAYS = 80
+_MAX_VILLES = 80
+_MAX_PRODUITS = 60
+_MAX_NOM = 60
+_PRIX_MAX = 100000
+# Devises d'affichage autorisées (symbole seul ; le montant, lui, ne change pas).
+_SYMBOLES_OK = ["€", "$", "£", "฿", "dh"]
+
+
+class CatalogueInvalide(ValueError):
+    """Le catalogue soumis n'est pas exploitable ; le message dit pourquoi."""
+
+
+def snapshot() -> dict:
+    """État complet et éditable du catalogue, tel qu'envoyé à l'éditeur admin.
+
+    Chaque pays porte ses devises d'affichage, chaque ville ses produits (nom +
+    prix), son minimum de commande, ses moyens de paiement et ses devises. Un
+    `None` sur `methodes`/`devises` d'une ville veut dire « suit le réglage par
+    défaut » (tous les moyens / les devises du pays)."""
+    pays_list = []
+    for pays, villes in CATALOG.items():
+        villes_list = []
+        for ville, produits in villes.items():
+            regle = PAIEMENT_PAR_VILLE.get((pays, ville)) or {}
+            villes_list.append({
+                "nom": ville,
+                "produits": [{"nom": nom, "prix": float(prix)}
+                             for nom, prix in produits.items()],
+                "min": (dict(MIN_ORDER[ville]) if ville in MIN_ORDER else None),
+                "methodes": (list(regle["methodes"])
+                             if regle.get("methodes") is not None else None),
+                "devises": (list(regle["devises"]) if regle.get("devises") else None),
+            })
+        pays_list.append({
+            "nom": pays,
+            "devises": list(COUNTRY_CURRENCIES.get(pays, ALL_CURRENCIES)),
+            "villes": villes_list,
+        })
+    return {
+        "version": 1,
+        "pays": pays_list,
+        # De quoi peupler les listes déroulantes de l'éditeur, sans les coder
+        # en dur côté client.
+        "symboles_possibles": list(_SYMBOLES_OK),
+        "methodes_possibles": list(METHODES_PAIEMENT),
+        "moyens_standby": sorted(_moyens_standby()),
+    }
+
+
+# ── Validation / normalisation ───────────────────────────────────────────────
+
+def _txt(v, quoi: str) -> str:
+    if not isinstance(v, str):
+        raise CatalogueInvalide(f"{quoi} : texte attendu")
+    v = v.strip()
+    if not v:
+        raise CatalogueInvalide(f"{quoi} : ne peut pas être vide")
+    if len(v) > _MAX_NOM:
+        raise CatalogueInvalide(f"{quoi} : trop long (max {_MAX_NOM} caractères)")
+    return v
+
+
+def _valider_prix(v, quoi: str) -> float:
+    try:
+        prix = float(v)
+    except (TypeError, ValueError):
+        raise CatalogueInvalide(f"{quoi} : prix invalide")
+    if prix != prix or prix < 0 or prix > _PRIX_MAX:      # NaN ou hors bornes
+        raise CatalogueInvalide(f"{quoi} : prix hors limites (0 à {_PRIX_MAX})")
+    prix = round(prix, 2)
+    return int(prix) if prix == int(prix) else prix
+
+
+def _valider_min(v, ville: str):
+    if not v:
+        return None
+    if not isinstance(v, dict):
+        raise CatalogueInvalide(f"{ville} : minimum mal formé")
+    typ = v.get("type")
+    if typ not in ("amount", "qty"):
+        raise CatalogueInvalide(f"{ville} : type de minimum inconnu")
+    try:
+        val = float(v.get("value"))
+    except (TypeError, ValueError):
+        raise CatalogueInvalide(f"{ville} : valeur de minimum invalide")
+    if val <= 0 or val > 1000000:
+        raise CatalogueInvalide(f"{ville} : minimum hors limites")
+    if typ == "qty":
+        return {"type": "qty", "value": int(val)}
+    val = round(val, 2)
+    return {"type": "amount", "value": int(val) if val == int(val) else val}
+
+
+def _valider_methodes(v, ville: str):
+    if v is None:
+        return None
+    if not isinstance(v, list):
+        raise CatalogueInvalide(f"{ville} : moyens de paiement mal formés")
+    m = [x for x in METHODES_PAIEMENT if x in v]   # ordre canonique, ignore l'inconnu
+    if not m:
+        raise CatalogueInvalide(f"{ville} : au moins un moyen de paiement")
+    if m == list(METHODES_PAIEMENT):
+        return None                                # tous acceptés = pas de règle
+    return m
+
+
+def _valider_devises(v):
+    """Liste de devises valides en préservant l'ordre (la 1ʳᵉ = par défaut)."""
+    if not v:
+        return None
+    if not isinstance(v, list):
+        raise CatalogueInvalide("devises mal formées")
+    d = []
+    for s in v:
+        if s in _SYMBOLES_OK and s not in d:
+            d.append(s)
+    if not d:
+        raise CatalogueInvalide("devise inconnue")
+    return d
+
+
+def valider(data) -> dict:
+    """Vérifie et NORMALISE un snapshot reçu de l'éditeur. Lève
+    CatalogueInvalide avec un message clair au premier problème rencontré."""
+    if not isinstance(data, dict):
+        raise CatalogueInvalide("format inattendu")
+    pays_in = data.get("pays")
+    if not isinstance(pays_in, list) or not pays_in:
+        raise CatalogueInvalide("Il faut au moins un pays.")
+    if len(pays_in) > _MAX_PAYS:
+        raise CatalogueInvalide(f"Trop de pays (max {_MAX_PAYS}).")
+
+    noms_pays = set()
+    villes_globales = set()      # unicité GLOBALE des villes (clé de MIN_ORDER)
+    pays_out = []
+    for p in pays_in:
+        if not isinstance(p, dict):
+            raise CatalogueInvalide("pays mal formé")
+        nom_pays = _txt(p.get("nom"), "Nom du pays")
+        if nom_pays.lower() in noms_pays:
+            raise CatalogueInvalide(f"Pays en double : {nom_pays}")
+        noms_pays.add(nom_pays.lower())
+        devises_pays = _valider_devises(p.get("devises")) or list(ALL_CURRENCIES)
+
+        villes_in = p.get("villes")
+        if not isinstance(villes_in, list):
+            raise CatalogueInvalide(f"{nom_pays} : liste de villes attendue")
+        if len(villes_in) > _MAX_VILLES:
+            raise CatalogueInvalide(f"{nom_pays} : trop de villes (max {_MAX_VILLES}).")
+
+        villes_out = []
+        for v in villes_in:
+            if not isinstance(v, dict):
+                raise CatalogueInvalide(f"{nom_pays} : ville mal formée")
+            nom_ville = _txt(v.get("nom"), "Nom de la ville")
+            if nom_ville.lower() in villes_globales:
+                raise CatalogueInvalide(
+                    f"Ville en double : {nom_ville} — les noms de ville doivent "
+                    f"être uniques (même entre pays).")
+            villes_globales.add(nom_ville.lower())
+
+            produits_in = v.get("produits") or []
+            if not isinstance(produits_in, list):
+                raise CatalogueInvalide(f"{nom_ville} : liste de produits attendue")
+            if len(produits_in) > _MAX_PRODUITS:
+                raise CatalogueInvalide(f"{nom_ville} : trop de produits (max {_MAX_PRODUITS}).")
+            noms_prod = set()
+            produits_out = []
+            for pr in produits_in:
+                if not isinstance(pr, dict):
+                    raise CatalogueInvalide(f"{nom_ville} : produit mal formé")
+                nom_prod = _txt(pr.get("nom"), "Nom du produit")
+                if nom_prod.lower() in noms_prod:
+                    raise CatalogueInvalide(f"{nom_ville} : produit en double : {nom_prod}")
+                noms_prod.add(nom_prod.lower())
+                produits_out.append({"nom": nom_prod,
+                                     "prix": _valider_prix(pr.get("prix"), nom_prod)})
+
+            villes_out.append({
+                "nom": nom_ville,
+                "produits": produits_out,
+                "min": _valider_min(v.get("min"), nom_ville),
+                "methodes": _valider_methodes(v.get("methodes"), nom_ville),
+                "devises": _valider_devises(v.get("devises")),
+            })
+        pays_out.append({"nom": nom_pays, "devises": devises_pays, "villes": villes_out})
+    return {"version": 1, "pays": pays_out}
+
+
+# ── Application / persistance ────────────────────────────────────────────────
+
+def _appliquer_donnees(data: dict) -> None:
+    """Remplace les tables du module par les données (déjà validées)."""
+    global CATALOG, MIN_ORDER, CURRENCIES, COUNTRY_CURRENCIES, PAIEMENT_PAR_VILLE
+    cat, mini_o, cur, cc, pv = {}, {}, {}, {}, {}
+    for p in data["pays"]:
+        pays = p["nom"]
+        cat[pays] = {}
+        cur[pays] = "€"                               # encaisse (hérité, tout en €)
+        cc[pays] = list(p.get("devises") or ALL_CURRENCIES)
+        for v in p["villes"]:
+            ville = v["nom"]
+            cat[pays][ville] = {pr["nom"]: float(pr["prix"]) for pr in v["produits"]}
+            if v.get("min"):
+                mini_o[ville] = dict(v["min"])
+            regle = {}
+            if v.get("methodes") is not None:
+                regle["methodes"] = list(v["methodes"])
+            if v.get("devises"):
+                regle["devises"] = list(v["devises"])
+            if regle:
+                pv[(pays, ville)] = regle
+    CATALOG, MIN_ORDER, CURRENCIES = cat, mini_o, cur
+    COUNTRY_CURRENCIES, PAIEMENT_PAR_VILLE = cc, pv
+
+
+def _ecrire_overlay(data: dict) -> None:
+    """Écrit catalogue.json de façon atomique (écriture temp puis remplacement)."""
+    tmp = _FICHIER_CATALOGUE.with_name(_FICHIER_CATALOGUE.name + ".tmp")
+    try:
+        _DATA_DIR.mkdir(parents=True, exist_ok=True)
+        with tmp.open("w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False, indent=1)
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(tmp, _FICHIER_CATALOGUE)
+    except OSError as exc:
+        _logger.error("Écriture catalogue.json : %s", exc)
+        raise
+
+
+def sauver_catalogue(data) -> dict:
+    """Valide, applique EN MÉMOIRE puis persiste un catalogue édité. Renvoie le
+    snapshot à jour. Lève CatalogueInvalide si les données sont inexploitables."""
+    propre = valider(data)
+    with _verrou_catalogue:
+        _appliquer_donnees(propre)
+        _ecrire_overlay(propre)
+    try:
+        import github_backup
+        github_backup.backup_file_async("catalogue.json")
+    except Exception as exc:                            # backup best-effort
+        _logger.warning("catalogue.json : backup GitHub différé (%s)", exc)
+    return snapshot()
+
+
+def _charger_overlay() -> None:
+    """Au chargement du module : ré-applique catalogue.json s'il existe. Un
+    fichier illisible ou invalide est ignoré — on garde le socle par défaut
+    plutôt que de casser la boutique."""
+    try:
+        if not _FICHIER_CATALOGUE.exists():
+            return
+        with _FICHIER_CATALOGUE.open(encoding="utf-8") as f:
+            data = json.load(f)
+        _appliquer_donnees(valider(data))
+    except CatalogueInvalide as exc:
+        _logger.error("catalogue.json ignoré (invalide) : %s", exc)
+    except (OSError, json.JSONDecodeError) as exc:
+        _logger.error("catalogue.json illisible : %s", exc)
+
+
+_charger_overlay()
