@@ -4114,6 +4114,10 @@ body.admin-clair .od2-loupe .fermer {
     display: block; width: 100%; max-width: 260px; border-radius: 13px;
     margin: -2px 0 2px; cursor: pointer; background: rgba(0,0,0,0.25);
   }
+  .ch-video {
+    display: block; width: 100%; max-width: 260px; max-height: 340px;
+    border-radius: 13px; margin: -2px 0 2px; background: #000;
+  }
   .ch-bulle.envoi { opacity: 0.55; }
 
   /* Message vocal : un bouton, une onde, une durée. */
@@ -5022,7 +5026,7 @@ body.admin-clair .od2-loupe .fermer {
   </div>
 
   <div class="ch-barre" id="chatBarre">
-    <button class="rond" id="chatPhotoBtn" aria-label="Envoyer une photo"
+    <button class="rond" id="chatPhotoBtn" aria-label="Envoyer une photo ou une vidéo"
             onclick="document.getElementById('chatFichier').click()">+</button>
     <div class="ch-champ">
       <textarea class="ch-saisie" id="chatSaisie" rows="1" placeholder="Votre message..."
@@ -5033,8 +5037,8 @@ body.admin-clair .od2-loupe .fermer {
             onclick="chatEnvoyerTexte()" disabled>➤</button>
   </div>
 
-  <input type="file" id="chatFichier" accept="image/*" style="display:none;"
-         onchange="chatChoisirPhoto(this)">
+  <input type="file" id="chatFichier" accept="image/*,video/*" style="display:none;"
+         onchange="chatChoisirFichier(this)">
 </div>
 
 <!-- ÉCRAN LIVREUR : les courses de sa zone, sans identité de client -->
@@ -8883,6 +8887,7 @@ function chatCiter(id) {
     (m.de === chatEtat.role) ? "Vous" : chatNomAutre();
   document.getElementById("chatCiteTxt").textContent =
     m.type === "photo" ? "📷 Photo"
+    : m.type === "video" ? "🎥 Vidéo"
     : m.type === "audio" ? "🎤 Message vocal"
     : (texte || "").slice(0, 90);
   document.getElementById("chatCite").style.display = "flex";
@@ -9212,6 +9217,11 @@ function chatContenu(m) {
                  onclick="chatAgrandir('${m.media}')">`
          + (texte ? escHtml(texte) + marque : "");
   }
+  if (m.type === "video" && m.media) {
+    return `<video class="ch-video" src="${chatUrlMedia(m.media)}" controls playsinline
+                   preload="metadata"></video>`
+         + (texte ? escHtml(texte) + marque : "");
+  }
   if (m.type === "audio" && m.media) {
     const barres = Array.from({ length: 22 }, (_, i) =>
       `<i style="height:${6 + ((i * 7 + m.id.charCodeAt(0)) % 17)}px"></i>`).join("");
@@ -9333,6 +9343,7 @@ function chatErreur(code, motif) {
   return {
     media_too_big: "Fichier trop lourd",
     bad_photo:     "Photo illisible",
+    bad_video:     "Vidéo illisible ou format non pris en charge",
     bad_audio:     "Enregistrement illisible",
     too_fast:      "Doucement — trop de messages d'un coup",
     empty:         "Message vide",
@@ -9353,20 +9364,38 @@ async function chatEnvoyerTexte() {
   }
 }
 
-async function chatChoisirPhoto(input) {
-  const f = input.files && input.files[0];
-  input.value = "";
-  if (!f) return;
-  if (f.size > 12 * 1024 * 1024) { showToast("Photo trop lourde", true); return; }
-  showToast("Envoi de la photo…");
-  const b64 = await new Promise(res => {
+function _fichierEnB64(f) {
+  return new Promise(res => {
     const fr = new FileReader();
     fr.onload = () => res(String(fr.result || ""));
     fr.onerror = () => res("");
     fr.readAsDataURL(f);
   });
+}
+
+// Le « + » accepte photo ET vidéo : on aiguille selon le type du fichier choisi.
+async function chatChoisirFichier(input) {
+  const f = input.files && input.files[0];
+  input.value = "";
+  if (!f) return;
+  if (f.type && f.type.startsWith("video/")) return chatEnvoyerVideo(f);
+  return chatEnvoyerPhoto(f);
+}
+
+async function chatEnvoyerPhoto(f) {
+  if (f.size > 12 * 1024 * 1024) { showToast("Photo trop lourde", true); return; }
+  showToast("Envoi de la photo…");
+  const b64 = await _fichierEnB64(f);
   if (!b64) { showToast("Photo illisible", true); return; }
   await chatEnvoyer({ photo_b64: b64 }, { type: "photo", media: "", texte: "📷 Photo" });
+}
+
+async function chatEnvoyerVideo(f) {
+  if (f.size > 20 * 1024 * 1024) { showToast("Vidéo trop lourde (20 Mo max)", true); return; }
+  showToast("Envoi de la vidéo…");
+  const b64 = await _fichierEnB64(f);
+  if (!b64) { showToast("Vidéo illisible", true); return; }
+  await chatEnvoyer({ video_b64: b64 }, { type: "video", media: "", texte: "🎥 Vidéo" });
 }
 
 // ── Message vocal ───────────────────────────────────────────────────────────
@@ -9553,6 +9582,7 @@ async function ouvrirListeChats() {
       const prefixe = f.dernier.de === "vendeur" ? "Vous : " : "";
       const apercu = f.dernier.supprime ? "🚫 Message supprimé"
                    : f.dernier.type === "photo" ? "📷 Photo"
+                   : f.dernier.type === "video" ? "🎥 Vidéo"
                    : f.dernier.type === "audio" ? "🎤 Message vocal"
                    : (f.dernier.texte || "");
       const avatar = f.avatar_path

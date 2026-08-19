@@ -36,6 +36,10 @@ _lock = threading.RLock()
 MAX_TEXTE = 2000
 # Une photo compressée pèse ~60 Ko, un audio d'une minute ~60 Ko aussi.
 MAX_MEDIA = 3 * 1024 * 1024
+# Une vidéo n'est pas recompressée côté serveur (pas de ffmpeg) : on l'accepte
+# telle quelle, avec un plafond plus large mais qui reste raisonnable pour un
+# clip envoyé dans une conversation.
+MAX_VIDEO = 20 * 1024 * 1024
 MAX_DUREE_AUDIO = 180          # secondes
 # Au-delà, on ne garde que les plus récents : une conversation ne doit pas
 # grossir indéfiniment dans un fichier relu à chaque ouverture.
@@ -113,16 +117,32 @@ def _chemin_media(media_id: str) -> Path:
     return _MEDIA_DIR / media_id
 
 
-def _nom_media(kind: str) -> str:
-    ext = "jpg" if kind == "photo" else "ogg"
+def _nom_media(kind: str, ext: str = "") -> str:
+    if not ext:
+        ext = "jpg" if kind == "photo" else "mp4" if kind == "video" else "ogg"
     return f"{uuid.uuid4().hex}.{ext}"
 
 
-def ecrire_media(donnees: bytes, kind: str) -> str:
-    """Enregistre un média et renvoie son identifiant. "" si refusé."""
-    if not donnees or len(donnees) > MAX_MEDIA:
+def detecter_video(donnees: bytes) -> str:
+    """Extension si `donnees` est bien une vidéo reconnue, "" sinon.
+
+    On vérifie les octets d'en-tête plutôt que de se fier au type déclaré par le
+    client : un fichier renommé ne doit pas passer pour une vidéo."""
+    if not donnees or len(donnees) < 12:
         return ""
-    media_id = _nom_media(kind)
+    if donnees[4:8] == b"ftyp":                     # conteneur ISO (MP4 / MOV)
+        return "mov" if donnees[8:10] == b"qt" else "mp4"
+    if donnees[:4] == b"\x1a\x45\xdf\xa3":          # Matroska / WebM
+        return "webm"
+    return ""
+
+
+def ecrire_media(donnees: bytes, kind: str, ext: str = "") -> str:
+    """Enregistre un média et renvoie son identifiant. "" si refusé."""
+    limite = MAX_VIDEO if kind == "video" else MAX_MEDIA
+    if not donnees or len(donnees) > limite:
+        return ""
+    media_id = _nom_media(kind, ext)
     try:
         _MEDIA_DIR.mkdir(parents=True, exist_ok=True)
         tmp = _chemin_media(media_id + ".tmp")
@@ -170,7 +190,15 @@ def effacer_media(media_id: str) -> None:
 
 
 def type_mime(media_id: str) -> str:
-    return "image/jpeg" if media_id.endswith(".jpg") else "audio/ogg"
+    if media_id.endswith(".jpg"):
+        return "image/jpeg"
+    if media_id.endswith(".mp4"):
+        return "video/mp4"
+    if media_id.endswith(".webm"):
+        return "video/webm"
+    if media_id.endswith(".mov"):
+        return "video/quicktime"
+    return "audio/ogg"
 
 
 # ── API ──────────────────────────────────────────────────────────────────────
@@ -188,6 +216,7 @@ def apercu_reponse(fil: dict, msg_id: str) -> dict:
                 return {}                   # rien à citer d'un message effacé
             kind = m.get("type", "texte")
             apercu = ("📷 Photo" if kind == "photo"
+                      else "🎥 Vidéo" if kind == "video"
                       else "🎤 Message vocal" if kind == "audio"
                       else (m.get("texte") or "")[:90])
             return {"id": msg_id, "de": m.get("de"), "type": kind, "apercu": apercu}
@@ -478,6 +507,8 @@ def resume(msg: dict) -> str:
     kind = msg.get("type", "texte")
     if kind == "photo":
         return "📷 Photo"
+    if kind == "video":
+        return "🎥 Vidéo"
     if kind == "audio":
         d = msg.get("duree") or 0
         return f"🎤 Message vocal ({int(d)} s)" if d else "🎤 Message vocal"

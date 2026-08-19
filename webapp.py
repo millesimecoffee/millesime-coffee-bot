@@ -27,7 +27,10 @@ logging.getLogger("httpx").setLevel(logging.WARNING)
 logging.getLogger("httpcore").setLevel(logging.WARNING)
 
 app = Flask(__name__)
-app.config["MAX_CONTENT_LENGTH"] = 10 * 1024 * 1024  # 10 MB max (selfie)
+# Plafond du corps de requête. Il doit laisser passer une vidéo de conversation
+# (jusqu'à 20 Mo bruts → ~27 Mo une fois encodée en base64 dans le JSON). Les
+# autres endpoints gardent leurs propres contrôles de taille, plus stricts.
+app.config["MAX_CONTENT_LENGTH"] = 28 * 1024 * 1024
 
 # Cap dimensions image pour éviter les bombes décompression (50000x50000 → 7 GB RAM)
 _MAX_IMAGE_PIXELS = 5_000_000  # 5 MP — largement suffisant pour un selfie
@@ -4836,9 +4839,21 @@ def api_chat_send():
     kind, media_id = "texte", ""
     photo_b64 = data.get("photo_b64")
     audio_b64 = data.get("audio_b64")
+    video_b64 = data.get("video_b64")
     duree = 0.0
 
-    if isinstance(photo_b64, str) and photo_b64:
+    if isinstance(video_b64, str) and video_b64:
+        # Pas de recompression côté serveur (pas de ffmpeg) : on vérifie que
+        # c'est bien une vidéo reconnue, puis on l'enregistre telle quelle.
+        brut = chat.decoder_b64(video_b64)
+        ext = chat.detecter_video(brut) if brut else ""
+        if not ext:
+            return jsonify({"ok": False, "error": "bad_video"}), 400
+        media_id = chat.ecrire_media(brut, "video", ext=ext)
+        if not media_id:
+            return jsonify({"ok": False, "error": "media_too_big"}), 413
+        kind = "video"
+    elif isinstance(photo_b64, str) and photo_b64:
         brut = chat.decoder_b64(photo_b64)
         if not brut:
             return jsonify({"ok": False, "error": "bad_photo"}), 400
@@ -4986,9 +5001,35 @@ def api_chat_media(media_id):
     donnees = chat.lire_media(media_id)
     if not donnees:
         return ("Not found", 404)
+    return _servir_octets(donnees, chat.type_mime(media_id), request.headers.get("Range", ""))
+
+
+def _servir_octets(donnees: bytes, mime: str, entete_range: str = ""):
+    """Sert des octets en honorant l'en-tête HTTP Range.
+
+    Sans ça, une vidéo ne se laisse ni positionner ni relire : le navigateur
+    demande une plage d'octets, et un serveur qui renvoie tout à chaque fois
+    lui fait retélécharger le clip entier pour la moindre avance."""
     from flask import Response
-    return Response(donnees, mimetype=chat.type_mime(media_id),
-                    headers={"Cache-Control": "private, max-age=86400"})
+    taille = len(donnees)
+    entete = {"Cache-Control": "private, max-age=86400", "Accept-Ranges": "bytes"}
+
+    if entete_range.startswith("bytes="):
+        try:
+            debut_s, fin_s = entete_range[6:].split("-", 1)
+            debut = int(debut_s) if debut_s else 0
+            fin = int(fin_s) if fin_s else taille - 1
+        except (ValueError, IndexError):
+            debut, fin = 0, taille - 1
+        debut = max(0, debut)
+        fin = min(fin, taille - 1)
+        if debut > fin:
+            debut, fin = 0, taille - 1
+        bout = donnees[debut:fin + 1]
+        entete["Content-Range"] = f"bytes {debut}-{fin}/{taille}"
+        return Response(bout, status=206, mimetype=mime, headers=entete)
+
+    return Response(donnees, mimetype=mime, headers=entete)
 
 
 def _compresser_jpeg(brut: bytes, max_dim: int = 1280, quality: int = 72) -> bytes:
