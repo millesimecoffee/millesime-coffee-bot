@@ -4840,9 +4840,23 @@ def api_chat_send():
     photo_b64 = data.get("photo_b64")
     audio_b64 = data.get("audio_b64")
     video_b64 = data.get("video_b64")
+    location = data.get("location")
     duree = 0.0
+    lat_msg = lon_msg = None
 
-    if isinstance(video_b64, str) and video_b64:
+    if isinstance(location, dict):
+        # Partage de position (façon WhatsApp) : ni texte ni fichier, juste des
+        # coordonnées. Le partage volontaire de SA position par le client fait
+        # partie du service (livraison) — pas de filtre anti-coordonnées ici.
+        try:
+            lat_msg = float(location.get("lat"))
+            lon_msg = float(location.get("lon"))
+        except (TypeError, ValueError):
+            return jsonify({"ok": False, "error": "bad_location"}), 400
+        if not (-90 <= lat_msg <= 90 and -180 <= lon_msg <= 180):
+            return jsonify({"ok": False, "error": "bad_location"}), 400
+        kind = "location"
+    elif isinstance(video_b64, str) and video_b64:
         # Pas de recompression côté serveur (pas de ffmpeg) : on vérifie que
         # c'est bien une vidéo reconnue, puis on l'enregistre telle quelle.
         brut = chat.decoder_b64(video_b64)
@@ -4883,7 +4897,7 @@ def api_chat_send():
         kind = "audio"
         duree = _entier(data.get("duree"), 0, 0, chat.MAX_DUREE_AUDIO)
 
-    if not texte and not media_id:
+    if kind != "location" and not texte and not media_id:
         return jsonify({"ok": False, "error": "empty"}), 400
 
     if _rate_limited(f"chat:{role}:{client_id}", 30, 60.0):
@@ -4898,6 +4912,7 @@ def api_chat_send():
         msg = chat.ajouter(client_id, role, texte=texte, media_id=media_id,
                            kind=kind, duree=duree, lang=langue, trad=trads,
                            repond_a=_texte(data.get("repond_a"), 32),
+                           lat=lat_msg, lon=lon_msg,
                            profil=_profil_client(client_id) if role == chat.CLIENT else None)
     except ValueError as exc:
         return jsonify({"ok": False, "error": str(exc)}), 400
@@ -5030,6 +5045,62 @@ def _servir_octets(donnees: bytes, mime: str, entete_range: str = ""):
         return Response(bout, status=206, mimetype=mime, headers=entete)
 
     return Response(donnees, mimetype=mime, headers=entete)
+
+
+# ── Vignette de carte pour une position partagée ─────────────────────────────
+# On la génère côté serveur (image statique Mapbox) pour ne jamais exposer le
+# jeton Mapbox au client. Mise en cache par coordonnées arrondies.
+_cache_apercu_carte: dict = {}
+_lock_apercu_carte = threading.Lock()
+
+
+def _apercu_carte_statique(lat: float, lon: float) -> bytes:
+    token = os.getenv("MAPBOX_TOKEN", "").strip()
+    if not token:
+        return b""
+    cle = (round(lat, 4), round(lon, 4))
+    with _lock_apercu_carte:
+        if cle in _cache_apercu_carte:
+            return _cache_apercu_carte[cle]
+    url = (f"https://api.mapbox.com/styles/v1/mapbox/streets-v12/static/"
+           f"pin-l+7c3aed({lon:.5f},{lat:.5f})/{lon:.5f},{lat:.5f},15,0/420x230@2x"
+           f"?access_token={token}")
+    try:
+        import httpx
+        r = httpx.get(url, timeout=10.0)
+        if r.status_code != 200:
+            logger.warning("apercu carte Mapbox : HTTP %s", r.status_code)
+            return b""
+        img = r.content
+    except Exception as exc:
+        logger.warning("apercu carte Mapbox : %s", exc)
+        return b""
+    with _lock_apercu_carte:
+        if len(_cache_apercu_carte) > 300:
+            _cache_apercu_carte.clear()
+        _cache_apercu_carte[cle] = img
+    return img
+
+
+@app.route("/api/chat/location_preview", methods=["GET"])
+def api_chat_location_preview():
+    """Vignette de carte pour une position partagée dans le chat. Réservée aux
+    utilisateurs authentifiés (le jeton Mapbox reste côté serveur)."""
+    if _uid_authentifie(request) is None:
+        return ("Forbidden", 403)
+    try:
+        lat = float(request.args.get("lat"))
+        lon = float(request.args.get("lon"))
+    except (TypeError, ValueError):
+        return ("Bad request", 400)
+    if not (-90 <= lat <= 90 and -180 <= lon <= 180):
+        return ("Bad request", 400)
+    img = _apercu_carte_statique(lat, lon)
+    if not img:
+        return ("Not found", 404)
+    from flask import Response
+    return Response(img, mimetype="image/png",
+                    headers={"Cache-Control": "private, max-age=86400"})
 
 
 def _compresser_jpeg(brut: bytes, max_dim: int = 1280, quality: int = 72) -> bytes:

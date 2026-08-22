@@ -4120,6 +4120,44 @@ body.admin-clair .od2-loupe .fermer {
   }
   .ch-bulle.envoi { opacity: 0.55; }
 
+  /* Position partagée : vignette de carte + libellé, comme sur WhatsApp. */
+  .ch-loc {
+    width: 240px; max-width: 100%; border-radius: 13px; overflow: hidden;
+    cursor: pointer; margin: -2px 0 2px; background: rgba(0,0,0,0.18);
+  }
+  .ch-loc-carte {
+    display: block; width: 100%; height: 128px; object-fit: cover;
+    background: #22303a;
+  }
+  .ch-loc-bas { display: flex; align-items: center; gap: 10px; padding: 9px 11px; }
+  .ch-loc-pin { font-size: 22px; line-height: 1; flex: 0 0 auto; }
+  .ch-loc-titre { font-weight: 700; font-size: 14px; }
+  .ch-loc-sous { font-size: 12px; color: var(--ch-txt-2); margin-top: 1px; }
+
+  /* Menu d'attachement (pièces jointes) */
+  .ch-pieces {
+    position: absolute; inset: 0; z-index: 40; display: none;
+    align-items: flex-end; background: rgba(0,0,0,0.45);
+    animation: chOuvre 0.15s ease-out;
+  }
+  .ch-pieces.ouvert { display: flex; }
+  .ch-pieces-grille {
+    width: 100%; background: #1F2C33; color: var(--ch-txt);
+    border-radius: 20px 20px 0 0; display: flex; gap: 26px;
+    padding: 22px 26px calc(24px + env(safe-area-inset-bottom, 0px));
+    box-shadow: 0 -8px 30px rgba(0,0,0,0.4);
+  }
+  .ch-piece {
+    background: none; border: none; color: var(--ch-txt); cursor: pointer;
+    display: flex; flex-direction: column; align-items: center; gap: 8px;
+    font-size: 12px; font-weight: 600;
+  }
+  .ch-piece:active { transform: scale(0.94); }
+  .ch-piece .ic {
+    width: 58px; height: 58px; border-radius: 50%; display: flex;
+    align-items: center; justify-content: center; font-size: 26px;
+  }
+
   /* Message vocal : un bouton, une onde, une durée. */
   .ch-audio { display: flex; align-items: center; gap: 10px; min-width: 168px; }
   .ch-audio .play {
@@ -5025,9 +5063,21 @@ body.admin-clair .od2-loupe .fermer {
     <button class="fermer" onclick="chatAnnulerCitation()" aria-label="Annuler">✕</button>
   </div>
 
+  <!-- Menu d'attachement (façon WhatsApp) : appareil photo, galerie, position -->
+  <div class="ch-pieces" id="chatPieces" onclick="if(event.target===this)chatFermerPieces()">
+    <div class="ch-pieces-grille">
+      <button class="ch-piece" onclick="chatPiecePhoto()">
+        <span class="ic" style="background:#0a84ff;">📷</span>Appareil photo</button>
+      <button class="ch-piece" onclick="chatPieceGalerie()">
+        <span class="ic" style="background:#34c759;">🖼️</span>Galerie</button>
+      <button class="ch-piece" onclick="chatPartagerPosition()">
+        <span class="ic" style="background:#ff375f;">📍</span>Position</button>
+    </div>
+  </div>
+
   <div class="ch-barre" id="chatBarre">
-    <button class="rond" id="chatPhotoBtn" aria-label="Envoyer une photo ou une vidéo"
-            onclick="document.getElementById('chatFichier').click()">+</button>
+    <button class="rond" id="chatPhotoBtn" aria-label="Joindre une photo, une vidéo ou sa position"
+            onclick="chatOuvrirPieces()">+</button>
     <div class="ch-champ">
       <textarea class="ch-saisie" id="chatSaisie" rows="1" placeholder="Votre message..."
                 autocomplete="off" oninput="chatAjusterHauteur(this)"></textarea>
@@ -5037,6 +5087,11 @@ body.admin-clair .od2-loupe .fermer {
             onclick="chatEnvoyerTexte()" disabled>➤</button>
   </div>
 
+  <!-- Deux entrées distinctes : « Appareil photo » force la caméra (capture),
+       « Galerie » ouvre la pellicule. C'est ce qui débloque la prise de photo
+       en direct, que l'entrée unique image/vidéo n'offrait pas toujours. -->
+  <input type="file" id="chatCamera" accept="image/*" capture="environment"
+         style="display:none;" onchange="chatChoisirFichier(this)">
   <input type="file" id="chatFichier" accept="image/*,video/*" style="display:none;"
          onchange="chatChoisirFichier(this)">
 </div>
@@ -8888,6 +8943,7 @@ function chatCiter(id) {
   document.getElementById("chatCiteTxt").textContent =
     m.type === "photo" ? "📷 Photo"
     : m.type === "video" ? "🎥 Vidéo"
+    : m.type === "location" ? "📍 Position"
     : m.type === "audio" ? "🎤 Message vocal"
     : (texte || "").slice(0, 90);
   document.getElementById("chatCite").style.display = "flex";
@@ -9222,6 +9278,15 @@ function chatContenu(m) {
                    preload="metadata"></video>`
          + (texte ? escHtml(texte) + marque : "");
   }
+  if (m.type === "location" && (m.lat || m.lat === 0)) {
+    return `<div class="ch-loc" onclick="chatOuvrirPosition(${m.lat},${m.lon})">
+      <img class="ch-loc-carte" src="${chatUrlApercuPosition(m.lat, m.lon)}" alt="Carte"
+           loading="lazy" onerror="this.style.display='none'">
+      <div class="ch-loc-bas"><span class="ch-loc-pin">📍</span>
+        <div><div class="ch-loc-titre">Position partagée</div>
+             <div class="ch-loc-sous">Ouvrir dans Maps</div></div></div>
+    </div>`;
+  }
   if (m.type === "audio" && m.media) {
     const barres = Array.from({ length: 22 }, (_, i) =>
       `<i style="height:${6 + ((i * 7 + m.id.charCodeAt(0)) % 17)}px"></i>`).join("");
@@ -9239,6 +9304,17 @@ function chatUrlMedia(media) {
   if (chatEtat.clientId) u += `&client_id=${encodeURIComponent(chatEtat.clientId)}`;
   if (chatEtat.ref) u += `&chat_ref=${encodeURIComponent(chatEtat.ref)}`;
   return u;
+}
+
+function chatUrlApercuPosition(lat, lon) {
+  return `/api/chat/location_preview?lat=${encodeURIComponent(lat)}`
+       + `&lon=${encodeURIComponent(lon)}`
+       + `&initData=${encodeURIComponent(tg.initData || "")}`;
+}
+
+function chatOuvrirPosition(lat, lon) {
+  const url = `https://www.google.com/maps?q=${lat},${lon}`;
+  try { tg.openLink(url); } catch { window.open(url, "_blank"); }
 }
 
 function chatAllerEnBas() {
@@ -9362,6 +9438,72 @@ async function chatEnvoyerTexte() {
     zone.value = texte;
     chatAjusterHauteur(zone);
   }
+}
+
+// ── Menu d'attachement (photo / galerie / position) ─────────────────────────
+function chatOuvrirPieces() {
+  hapticSelect();
+  document.getElementById("chatPieces").classList.add("ouvert");
+}
+function chatFermerPieces() {
+  document.getElementById("chatPieces").classList.remove("ouvert");
+}
+function chatPiecePhoto() {
+  chatFermerPieces();
+  // Entrée dédiée avec capture : ouvre l'appareil photo, pas la pellicule.
+  document.getElementById("chatCamera").click();
+}
+function chatPieceGalerie() {
+  chatFermerPieces();
+  document.getElementById("chatFichier").click();
+}
+
+// ── Partage de position ──────────────────────────────────────────────────────
+function chatObtenirPosition() {
+  return new Promise((resolve) => {
+    let repondu = false;
+    const fini = (v) => { if (!repondu) { repondu = true; resolve(v); } };
+    // 1) Géolocalisation standard du navigateur (marche dans la plupart des
+    //    WebView Telegram et en HTTPS).
+    if (navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(
+        p => fini({ lat: p.coords.latitude, lon: p.coords.longitude }),
+        () => _positionTelegram(fini),
+        { enableHighAccuracy: true, timeout: 12000, maximumAge: 30000 });
+    } else {
+      _positionTelegram(fini);
+    }
+  });
+}
+
+function _positionTelegram(fini) {
+  // 2) Repli : gestionnaire de localisation de Telegram (Bot API récent).
+  const lm = (typeof tg !== "undefined") && tg.LocationManager;
+  if (lm && typeof lm.getLocation === "function") {
+    try {
+      const lire = () => lm.getLocation((loc) => {
+        if (loc && (loc.latitude || loc.latitude === 0)) {
+          fini({ lat: loc.latitude, lon: loc.longitude });
+        } else { fini(null); }
+      });
+      if (lm.isInited) lire(); else lm.init(lire);
+      return;
+    } catch { /* rien : on abandonne proprement */ }
+  }
+  fini(null);
+}
+
+async function chatPartagerPosition() {
+  chatFermerPieces();
+  showToast("Localisation en cours…");
+  const pos = await chatObtenirPosition();
+  if (!pos || !isFinite(pos.lat) || !isFinite(pos.lon)) {
+    showToast("Position indisponible — autorisez la localisation.", true);
+    return;
+  }
+  await chatEnvoyer(
+    { location: { lat: pos.lat, lon: pos.lon } },
+    { type: "location", lat: pos.lat, lon: pos.lon });
 }
 
 function _fichierEnB64(f) {
@@ -9583,6 +9725,7 @@ async function ouvrirListeChats() {
       const apercu = f.dernier.supprime ? "🚫 Message supprimé"
                    : f.dernier.type === "photo" ? "📷 Photo"
                    : f.dernier.type === "video" ? "🎥 Vidéo"
+                   : f.dernier.type === "location" ? "📍 Position"
                    : f.dernier.type === "audio" ? "🎤 Message vocal"
                    : (f.dernier.texte || "");
       const avatar = f.avatar_path

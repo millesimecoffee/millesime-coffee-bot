@@ -217,6 +217,7 @@ def apercu_reponse(fil: dict, msg_id: str) -> dict:
             kind = m.get("type", "texte")
             apercu = ("📷 Photo" if kind == "photo"
                       else "🎥 Vidéo" if kind == "video"
+                      else "📍 Position" if kind == "location"
                       else "🎤 Message vocal" if kind == "audio"
                       else (m.get("texte") or "")[:90])
             return {"id": msg_id, "de": m.get("de"), "type": kind, "apercu": apercu}
@@ -225,12 +226,16 @@ def apercu_reponse(fil: dict, msg_id: str) -> dict:
 
 def ajouter(client_id, de: str, texte: str = "", media_id: str = "",
             kind: str = "texte", duree: float = 0.0, profil: dict | None = None,
-            lang: str = "", trad: dict | None = None, repond_a: str = "") -> dict:
+            lang: str = "", trad: dict | None = None, repond_a: str = "",
+            lat=None, lon=None) -> dict:
     """Ajoute un message au fil de `client_id` et le renvoie."""
     if de not in (VENDEUR, CLIENT):
         raise ValueError("expéditeur inconnu")
     texte = (texte or "")[:MAX_TEXTE]
-    if not texte and not media_id:
+    if kind == "location":
+        if lat is None or lon is None:
+            raise ValueError("position vide")
+    elif not texte and not media_id:
         raise ValueError("message vide")
 
     msg = {
@@ -245,6 +250,9 @@ def ajouter(client_id, de: str, texte: str = "", media_id: str = "",
     }
     if media_id:
         msg["media"] = media_id
+    if kind == "location":
+        msg["lat"] = round(float(lat), 6)
+        msg["lon"] = round(float(lon), 6)
     if kind == "audio" and duree:
         msg["duree"] = round(min(float(duree), MAX_DUREE_AUDIO), 1)
     if lang:
@@ -509,6 +517,8 @@ def resume(msg: dict) -> str:
         return "📷 Photo"
     if kind == "video":
         return "🎥 Vidéo"
+    if kind == "location":
+        return "📍 Position"
     if kind == "audio":
         d = msg.get("duree") or 0
         return f"🎤 Message vocal ({int(d)} s)" if d else "🎤 Message vocal"
