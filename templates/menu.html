@@ -3672,6 +3672,9 @@ body.admin-clair .od2-loupe .fermer {
     box-shadow: 0 0 22px rgba(147,51,234,0.20);
   }
   .od2-sous-entete .fleche { font-size: 20px; color: #C084FC; }
+  /* Le ••• (copier le bon de commande) rejoint la barre gardée, poussé à
+     droite : plus besoin d'un bandeau séparé au-dessus. */
+  .od2-sous-btn { margin-left: auto; width: 40px; height: 40px; font-size: 17px; flex: 0 0 auto; }
 
   /* ── Carte générique ─────────────────────────────────────────────── */
   .od2-carte {
@@ -8302,19 +8305,12 @@ function renderOrderDetail(o) {
       </div>` : "";
 
   el.innerHTML = `
-  <div class="od2-nav">
-    <button class="od2-retour" onclick="document.getElementById('backBtn').click()">
-      <span class="fleche">‹</span> Retour</button>
-    <div class="od2-nav-centre">
-      <div class="od2-nav-titre">Millésime Coffee</div>
-      <div class="od2-nav-sous">mini-application</div>
-    </div>
-    <button class="od2-nav-btn" onclick="copierBonDeCommande('${oid}')" aria-label="Copier le bon de commande">•••</button>
-  </div>
-
   <div class="od2">
     <div class="od2-sous-entete" onclick="document.getElementById('backBtn').click()">
       <span class="fleche">←</span> Détail commande
+      <button class="od2-nav-btn od2-sous-btn"
+              onclick="event.stopPropagation(); copierBonDeCommande('${oid}')"
+              aria-label="Copier le bon de commande">•••</button>
     </div>
     <div class="od2-carte vedette">
       <div class="od2-tete">
@@ -10492,6 +10488,10 @@ updateHeader = function(name) {
     // Pas de retour possible : le livreur n'a pas d'écran en amont.
     document.getElementById("header").style.display = "none";
     try { tg.BackButton.hide(); } catch {}
+  } else if (name === "owner-detail") {
+    // Le détail de commande porte son propre en-tête (le sous-en-tête violet
+    // « Détail commande »). Le bandeau de l'app ferait doublon : on le masque.
+    document.getElementById("header").style.display = "none";
   } else if (name === "owner-home") {
     _origUpdateHeader2(name);
     majPastilleMessages();
