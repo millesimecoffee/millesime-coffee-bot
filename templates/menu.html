@@ -3201,13 +3201,14 @@ body.admin-clair .ch-barre {
   border-top: 1px solid var(--ch-bordure);
 }
 body.admin-clair .ch-saisie {
-  background: #F2F2F7 !important; color: var(--ch-txt);
-  border: none !important;
+  background: #F4F4F8 !important; color: var(--ch-txt);
+  border: 1px solid rgba(12,11,46,.08) !important;
 }
 body.admin-clair .ch-saisie::placeholder { color: var(--ch-txt-2); }
 body.admin-clair .ch-avatar { background: var(--accent-grad) !important; color: #fff; }
 body.admin-clair .ch-date,
-body.admin-clair .ch-capsule {
+body.admin-clair .ch-capsule,
+body.admin-clair .ch-jour {
   background: rgba(12,11,46,.05) !important; color: var(--ch-txt-2);
 }
 
@@ -3329,6 +3330,13 @@ body.admin-clair .banner { background: #F4F0FF !important; border: none !importa
    sinon l'icône disparaît dedans. */
 body.admin-clair #screen-chat .rond.envoyer,
 body.admin-clair #screen-chat .rond.envoyer * { color: #FFFFFF !important; }
+/* Barre d'écriture calquée sur la capture : « + » violet plein à gauche, micro
+   et appareil photo en trait violet, appareil photo sans pastille. */
+body.admin-clair #screen-chat #chatPhotoBtn { background: #982BFF !important; color: #FFFFFF !important; }
+body.admin-clair #screen-chat .ch-micro-champ { color: #982BFF !important; }
+body.admin-clair #screen-chat .rond.camera {
+  background: transparent !important; color: #982BFF !important;
+}
 
 /* Pastille de l'écran de suivi : gris trop pâle sur blanc. */
 body.admin-clair #screen-tracking .rond { color: var(--txt-secondary) !important; }
@@ -3995,7 +4003,7 @@ body.admin-clair .od2-loupe .fermer {
   /* Présence dans l'application, pas le statut Telegram (inaccessible aux bots). */
   .ch-enligne { display: inline-flex; align-items: center; gap: 5px; color: #4ade80; }
   .ch-enligne i {
-    width: 7px; height: 7px; border-radius: 50%; background: #4ade80;
+    width: 7px; height: 7px; flex: 0 0 auto; border-radius: 50%; background: #4ade80;
     box-shadow: 0 0 0 0 rgba(74,222,128,0.6); animation: chVit 2s ease-out infinite;
   }
   @keyframes chVit {
@@ -4226,6 +4234,10 @@ body.admin-clair .od2-loupe .fermer {
     display: flex; align-items: center; justify-content: center;
   }
   .ch-micro-champ:active { transform: scale(0.9); }
+  .ch-micro-champ svg { width: 21px; height: 21px; }
+  /* Appareil photo (à droite, à la place de l'envoi quand le champ est vide). */
+  .ch-barre .rond.camera { background: none; }
+  .ch-barre .rond.camera svg { width: 24px; height: 24px; }
 
   .ch-enreg {
     flex: 1; display: flex; align-items: center; gap: 10px;
@@ -5079,15 +5091,30 @@ body.admin-clair .od2-loupe .fermer {
   </div>
 
   <div class="ch-barre" id="chatBarre">
-    <button class="rond" id="chatPhotoBtn" aria-label="Joindre une photo, une vidéo ou sa position"
+    <button class="rond attache" id="chatPhotoBtn" aria-label="Joindre une photo, une vidéo ou sa position"
             onclick="chatOuvrirPieces()">+</button>
     <div class="ch-champ">
       <textarea class="ch-saisie" id="chatSaisie" rows="1" placeholder="Votre message..."
                 autocomplete="off" oninput="chatAjusterHauteur(this)"></textarea>
-      <button class="ch-micro-champ" id="chatMicroChamp" aria-label="Message vocal">🎙</button>
+      <button class="ch-micro-champ" id="chatMicroChamp" aria-label="Message vocal">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+             stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <rect x="9" y="2.5" width="6" height="11.5" rx="3"/>
+          <path d="M5.5 11a6.5 6.5 0 0 0 13 0"/>
+          <line x1="12" y1="17.5" x2="12" y2="21"/><line x1="8.5" y1="21" x2="15.5" y2="21"/>
+        </svg>
+      </button>
     </div>
+    <button class="rond camera" id="chatCamBtn" aria-label="Prendre une photo"
+            onclick="document.getElementById('chatCamera').click()">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+           stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M3 8.5A2.5 2.5 0 0 1 5.5 6h1.7l1-1.6a1.2 1.2 0 0 1 1-.55h3.6a1.2 1.2 0 0 1 1 .55l1 1.6h1.7A2.5 2.5 0 0 1 21 8.5v8A2.5 2.5 0 0 1 18.5 19h-13A2.5 2.5 0 0 1 3 16.5z"/>
+        <circle cx="12" cy="12.5" r="3.4"/>
+      </svg>
+    </button>
     <button class="rond envoyer" id="chatEnvoyer" aria-label="Envoyer"
-            onclick="chatEnvoyerTexte()" disabled>➤</button>
+            onclick="chatEnvoyerTexte()" style="display:none;" disabled>➤</button>
   </div>
 
   <!-- Deux entrées distinctes : « Appareil photo » force la caméra (capture),
@@ -9216,7 +9243,7 @@ function chatPoserAvatar(chemin, lettre) {
 // pendant une livraison : est-ce qu'elle lit ?
 function chatPresence(secondes, defaut) {
   if (secondes == null) return escHtml(defaut || "");
-  if (secondes < 45) return `<span class="ch-enligne"><i></i>En ligne</span>`;
+  if (secondes < 45) return `<span class="ch-enligne"><i></i>en ligne</span>`;
   const m = Math.floor(secondes / 60);
   const quand = m < 1 ? "à l'instant"
               : m < 60 ? `il y a ${m} min`
@@ -9323,7 +9350,7 @@ function _jourLisible(d) {
   const auj = new Date(), hier = new Date(Date.now() - 86400000);
   if (d.toDateString() === auj.toDateString())  return "Aujourd'hui";
   if (d.toDateString() === hier.toDateString()) return "Hier";
-  return `${d.getDate()} ${_MOIS_FR[d.getMonth()]}`;
+  return `${d.getDate()} ${_MOIS_FR[d.getMonth()]} ${d.getFullYear()}`;
 }
 
 function _dureeCourte(s) {
@@ -9339,9 +9366,14 @@ function chatAjusterHauteur(el) {
   // veut, et laisser les deux ferait hésiter.
   const rempli = !!el.value.trim();
   const microChamp = document.getElementById("chatMicroChamp");
-  if (microChamp) microChamp.style.display = rempli ? "none" : "flex";
+  const camera = document.getElementById("chatCamBtn");
   const envoi = document.getElementById("chatEnvoyer");
-  if (envoi) envoi.disabled = !rempli;
+  // Champ vide : micro dans le champ + appareil photo à droite (comme la
+  // capture). Dès qu'on écrit : les deux s'effacent et le bouton d'envoi
+  // apparaît à leur place.
+  if (microChamp) microChamp.style.display = rempli ? "none" : "flex";
+  if (camera) camera.style.display = rempli ? "none" : "flex";
+  if (envoi) { envoi.style.display = rempli ? "flex" : "none"; envoi.disabled = !rempli; }
 }
 
 // ── Envoi ───────────────────────────────────────────────────────────────────
