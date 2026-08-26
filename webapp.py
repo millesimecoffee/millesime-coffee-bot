@@ -785,6 +785,11 @@ def api_auth():
                 # SumUp actif → le client obtient un lien de paiement hébergé
                 # pré-rempli au montant exact (l'app appelle /api/pay/sumup_link).
                 "sumup":        bool(os.getenv("SUMUP_API_KEY", "").strip()),
+                # Moyens de paiement par DÉFAUT (villes sans règle propre). Ils
+                # reflètent le stand-by éventuel : c'est le repli du panneau
+                # client, qui ne reçoit une liste explicite que pour les villes
+                # particulières (cash-only, etc.).
+                "default_methodes": catalog_mod.get_payment_methods("", ""),
                 "payment_link": os.getenv("PAYMENT_LINK", ""),
                 "crypto_eth":   os.getenv("CRYPTO_ETH", ""),
                 "crypto_usdt":  os.getenv("CRYPTO_USDT", ""),
