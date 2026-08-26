@@ -4534,11 +4534,11 @@ body.admin-clair .od2-loupe .fermer {
   <div class="container">
     <div class="section-title">💳 Carte bancaire / Apple Pay</div>
     <div class="link-amount-box">
-      <div class="lab" data-i18n="pay_link_amount_label">Montant à saisir sur la page</div>
+      <div class="lab" id="linkAmountLabel" data-i18n="pay_link_amount_label">Montant à saisir sur la page</div>
       <div class="val" id="linkAmount">—</div>
-      <button class="copy-amount-btn" onclick="copyLinkAmount()" data-i18n="pay_link_copy_amount">📋 Copier le montant</button>
+      <button class="copy-amount-btn" id="linkCopyBtn" onclick="copyLinkAmount()" data-i18n="pay_link_copy_amount">📋 Copier le montant</button>
     </div>
-    <div class="banner info" style="font-size:13px;" data-i18n="pay_link_instructions">
+    <div class="banner info" id="linkInstructions" style="font-size:13px;" data-i18n="pay_link_instructions">
       Ouvrez la page de paiement, saisissez ce montant, puis payez par carte ou Apple Pay.
     </div>
     <a id="linkAnchor" class="next-btn" style="display:block; text-decoration:none; text-align:center;" target="_blank" rel="noopener" data-i18n="pay_link_open_btn">🔗 Ouvrir la page de paiement</a>
@@ -5253,6 +5253,9 @@ const T = {
     pay_link_title: "Carte · Apple Pay · Google Pay",  pay_link_desc: "Paiement en ligne sécurisé",
     pay_link_amount_label: "Montant à saisir sur la page", pay_link_copy_amount: "📋 Copier le montant",
     pay_link_instructions: "Ouvrez la page de paiement, saisissez ce montant, puis payez par carte, Apple Pay ou Google Pay.",
+    pay_link_amount_ready: "Montant de la commande",
+    pay_link_ready: "La page de paiement est prête, le montant est déjà rempli. Payez par carte, Apple Pay ou Google Pay.",
+    pay_link_preparing: "Préparation du paiement…",
     pay_link_amount_copied: "Montant copié",
     pay_crypto_title: "₿ Crypto",            pay_crypto_desc: "ETH ou USDT (ERC-20)",
     pay_cash_currency: "Choisissez votre devise",
@@ -5381,6 +5384,9 @@ const T = {
     pay_link_title: "Card · Apple Pay · Google Pay", pay_link_desc: "Secure online payment",
     pay_link_amount_label: "Amount to enter on the page", pay_link_copy_amount: "📋 Copy amount",
     pay_link_instructions: "Open the payment page, enter this amount, then pay by card, Apple Pay or Google Pay.",
+    pay_link_amount_ready: "Order amount",
+    pay_link_ready: "The payment page is ready with the amount already filled in. Pay by card, Apple Pay or Google Pay.",
+    pay_link_preparing: "Preparing payment…",
     pay_link_amount_copied: "Amount copied",
     pay_crypto_title: "₿ Crypto", pay_crypto_desc: "ETH or USDT (ERC-20)",
     pay_cash_currency: "Choose currency",
@@ -5505,6 +5511,9 @@ const T = {
     pay_link_title: "Tarjeta · Apple Pay · Google Pay", pay_link_desc: "Pago en línea seguro",
     pay_link_amount_label: "Importe a introducir en la página", pay_link_copy_amount: "📋 Copiar importe",
     pay_link_instructions: "Abre la página de pago, introduce este importe y paga con tarjeta, Apple Pay o Google Pay.",
+    pay_link_amount_ready: "Importe del pedido",
+    pay_link_ready: "La página de pago está lista con el importe ya introducido. Paga con tarjeta, Apple Pay o Google Pay.",
+    pay_link_preparing: "Preparando el pago…",
     pay_link_amount_copied: "Importe copiado",
     pay_crypto_title: "₿ Cripto", pay_crypto_desc: "ETH o USDT (ERC-20)",
     pay_cash_currency: "Elige tu moneda",
@@ -5641,6 +5650,9 @@ const T = {
     pay_link_amount_label: "Сумма для ввода на странице",
     pay_link_copy_amount: "📋 Скопировать сумму",
     pay_link_instructions: "Откройте страницу оплаты, введите эту сумму и оплатите картой, Apple Pay или Google Pay.",
+    pay_link_amount_ready: "Сумма заказа",
+    pay_link_ready: "Страница оплаты готова, сумма уже заполнена. Оплатите картой, Apple Pay или Google Pay.",
+    pay_link_preparing: "Подготовка оплаты…",
     pay_link_amount_copied: "Сумма скопирована",
     pay_crypto_title: "₿ Криптовалюта",
     pay_crypto_desc: "ETH или USDT (ERC-20)",
@@ -7203,18 +7215,60 @@ function selectPaymentMethod(method) {
     buildCashCurrencies();
     setScreen("pay-cash");
   } else if (method === "link") {
+    // SumUp : lien de paiement hébergé, montant déjà rempli (le mieux).
+    if (cfg.sumup) { creerLienSumup(); return; }
+    // Repli : lien réutilisable statique, le client saisit le montant lui-même.
     if (!cfg.payment_link) { showToast(t("pay_link_not_configured"), true); return; }
-    // Lien réutilisable : le client saisit lui-même le montant sur la page.
-    // On lui affiche le montant exact à recopier + un bouton copier.
     const total = computeCartTotal();
     state._linkAmountNum = Math.round(total * 100) / 100;
     document.getElementById("linkAmount").textContent = fmtCur(total);
-    document.getElementById("linkAnchor").href = cfg.payment_link;
+    _poserLienPaiement(cfg.payment_link);
+    _majEcranLink(false);
     setScreen("pay-link");
   } else if (method === "crypto") {
     if (!cfg.crypto_eth && !cfg.crypto_usdt) { showToast(t("pay_crypto_not_configured"), true); return; }
     setScreen("pay-crypto");
   }
+}
+
+// Ouvre le lien de paiement de façon fiable dans Telegram (openLink), avec repli
+// navigateur. Le href reste posé pour les contextes hors Telegram.
+function _poserLienPaiement(url) {
+  const a = document.getElementById("linkAnchor");
+  if (!a) return;
+  a.href = url;
+  a.onclick = (e) => { e.preventDefault(); try { tg.openLink(url); } catch { window.open(url, "_blank"); } };
+}
+
+// Bascule l'écran « lien » : mode SumUp (montant déjà rempli, pas de recopie) vs
+// mode lien statique (montant à saisir + bouton copier).
+function _majEcranLink(pret) {
+  const copie = document.getElementById("linkCopyBtn");
+  const lab   = document.getElementById("linkAmountLabel");
+  const instr = document.getElementById("linkInstructions");
+  if (copie) copie.style.display = pret ? "none" : "";
+  if (lab)   lab.textContent   = t(pret ? "pay_link_amount_ready" : "pay_link_amount_label");
+  if (instr) instr.textContent = t(pret ? "pay_link_ready" : "pay_link_instructions");
+}
+
+// Demande au serveur un lien SumUp pré-rempli au montant exact de la commande.
+async function creerLienSumup() {
+  const total = computeCartTotal();
+  state._linkAmountNum = Math.round(total * 100) / 100;
+  showToast(t("pay_link_preparing"));
+  try {
+    const r = await apiFetch("/api/pay/sumup_link", {
+      method: "POST", timeout: 20000,
+      body: JSON.stringify({ initData: tg.initData || "", country: state.country,
+                             city: state.city, cart: state.cart }),
+    });
+    const d = await r.json();
+    if (!d.ok || !d.url) { showToast(t("pay_link_not_configured"), true); return; }
+    document.getElementById("linkAmount").textContent = fmtCur(d.amount != null ? d.amount : total);
+    _poserLienPaiement(d.url);
+    _majEcranLink(true);
+    setScreen("pay-link");
+  } catch { showToast(t("err_network"), true); }
 }
 
 // Symbole affiché → code de la devise encaissée.

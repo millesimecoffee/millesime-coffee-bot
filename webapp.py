@@ -782,6 +782,9 @@ def api_auth():
                 "user_id":  os.getenv("OWNER_USER_ID", "").strip(),
             },
             "payment_config": {
+                # SumUp actif → le client obtient un lien de paiement hébergé
+                # pré-rempli au montant exact (l'app appelle /api/pay/sumup_link).
+                "sumup":        bool(os.getenv("SUMUP_API_KEY", "").strip()),
                 "payment_link": os.getenv("PAYMENT_LINK", ""),
                 "crypto_eth":   os.getenv("CRYPTO_ETH", ""),
                 "crypto_usdt":  os.getenv("CRYPTO_USDT", ""),
@@ -1033,6 +1036,124 @@ def api_submit_cart():
         return jsonify({"ok": False, "error": "telegram_send_failed"}), 502
 
     return jsonify({"ok": True, "message": "Panier envoyé, choisissez votre paiement dans le chat."})
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Paiement carte : lien SumUp hébergé, pré-rempli au montant de la commande
+# ═══════════════════════════════════════════════════════════════════════════
+# Quand le client choisit « Carte », l'app demande ici un lien de paiement SumUp
+# créé pour le montant EXACT de la commande — recalculé côté serveur, jamais
+# celui envoyé par le client. SumUp renvoie une page hébergée : le client paie
+# par carte / Apple Pay / Google Pay sans rien saisir.
+
+_sumup_mcode_cache = {"code": ""}
+
+
+def _sumup_merchant_code(cle: str) -> str:
+    """Code marchand SumUp : depuis SUMUP_MERCHANT_CODE si présent, sinon récupéré
+    une fois via l'API /me puis gardé en mémoire."""
+    code = os.getenv("SUMUP_MERCHANT_CODE", "").strip()
+    if code:
+        return code
+    if _sumup_mcode_cache["code"]:
+        return _sumup_mcode_cache["code"]
+    try:
+        import httpx
+        r = httpx.get("https://api.sumup.com/v0.1/me",
+                      headers={"Authorization": f"Bearer {cle}"}, timeout=10.0)
+        if r.status_code == 200:
+            code = ((r.json().get("merchant_profile") or {}).get("merchant_code") or "").strip()
+            _sumup_mcode_cache["code"] = code
+            return code
+        logger.warning("SumUp /me: HTTP %s", r.status_code)
+    except Exception as exc:
+        logger.warning("SumUp /me: %s", exc)
+    return ""
+
+
+def _sumup_creer_checkout(montant: float, reference: str, description: str) -> str:
+    """Crée un checkout SumUp hébergé et renvoie son URL de paiement, "" si échec."""
+    cle = os.getenv("SUMUP_API_KEY", "").strip()
+    if not cle:
+        return ""
+    code = _sumup_merchant_code(cle)
+    if not code:
+        return ""
+    corps = {
+        "amount":            round(float(montant), 2),
+        "currency":          os.getenv("SUMUP_CURRENCY", "EUR"),
+        "merchant_code":     code,
+        "checkout_reference": reference[:60],
+        "description":       (description or "Commande")[:200],
+        "hosted_checkout":   {"enabled": True},
+    }
+    lien_retour = os.getenv("SUMUP_REDIRECT_URL", "").strip()
+    if lien_retour:
+        corps["redirect_url"] = lien_retour
+    try:
+        import httpx
+        r = httpx.post("https://api.sumup.com/v0.1/checkouts",
+                       headers={"Authorization": f"Bearer {cle}",
+                                "Content-Type": "application/json"},
+                       json=corps, timeout=15.0)
+        if r.status_code not in (200, 201):
+            logger.warning("SumUp checkout: HTTP %s %s", r.status_code, r.text[:200])
+            return ""
+        return (r.json().get("hosted_checkout_url") or "").strip()
+    except Exception as exc:
+        logger.error("SumUp checkout: %s", exc)
+        return ""
+
+
+@app.route("/api/pay/sumup_link", methods=["POST"])
+def api_pay_sumup_link():
+    """Renvoie un lien de paiement SumUp pré-rempli au montant de la commande.
+    POST {initData, country, city, cart}. Le montant est recalculé ici : on ne
+    fait jamais confiance à un montant envoyé par le client."""
+    uid = _uid_authentifie(request)
+    if uid is None:
+        return jsonify({"ok": False, "error": "auth_failed"}), 401
+    if not os.getenv("SUMUP_API_KEY", "").strip():
+        return jsonify({"ok": False, "error": "indisponible"}), 503
+    if _rate_limited(f"sumup:{uid}", 12, 60.0):
+        return jsonify({"ok": False, "error": "too_fast"}), 429
+
+    data = _corps(request)
+    country = data.get("country", "")
+    city    = data.get("city", "")
+    cart    = data.get("cart", {}) or {}
+    try:
+        import catalog as catalog_mod
+        importlib.reload(catalog_mod)
+    except Exception as exc:
+        logger.error("sumup_link catalog: %s", exc)
+        return jsonify({"ok": False, "error": "catalog_failed"}), 500
+
+    if country not in catalog_mod.CATALOG or city not in catalog_mod.CATALOG.get(country, {}):
+        return jsonify({"ok": False, "error": "bad_location"}), 400
+    if "link" not in catalog_mod.get_payment_methods(country, city):
+        return jsonify({"ok": False, "error": "paiement_non_accepte"}), 400
+
+    produits = catalog_mod.CATALOG[country][city]
+    total, nb = 0.0, 0
+    for prod, qty in cart.items():
+        try:
+            q = int(qty)
+        except (ValueError, TypeError):
+            continue
+        if q <= 0 or q > 99 or prod not in produits:
+            continue
+        total += produits[prod] * q
+        nb += q
+    total = round(total, 2)
+    if total <= 0:
+        return jsonify({"ok": False, "error": "empty_cart"}), 400
+
+    ref = f"MIL-{uid}-{int(time.time() * 1000)}"
+    url = _sumup_creer_checkout(total, ref, f"Millesime Coffee - {city} ({nb} article(s))")
+    if not url:
+        return jsonify({"ok": False, "error": "sumup_failed"}), 502
+    return jsonify({"ok": True, "url": url, "amount": total})
 
 
 # ═══════════════════════════════════════════════════════════════════════════

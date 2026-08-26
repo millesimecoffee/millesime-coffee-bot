@@ -509,9 +509,10 @@ METHODES_PAIEMENT = ["cash", "link", "crypto"]
 # PAIEMENTS_STANDBY (moyens séparés par des virgules ; une valeur vide réactive
 # tout et prime alors sur la valeur ci-dessous).
 #
-# Suspendu actuellement : « link » = Carte bancaire · Apple Pay · Google Pay
-# (le lien de paiement). Le liquide (« cash ») et la crypto restent actifs.
-MOYENS_STANDBY = {"link"}
+# Rien en stand-by : la carte (« link ») est active — elle passe désormais par
+# l'API SumUp, qui crée un lien de paiement hébergé pré-rempli au montant exact
+# de la commande (voir _sumup_creer_checkout dans webapp.py).
+MOYENS_STANDBY = set()
 
 
 def _moyens_standby() -> set:
