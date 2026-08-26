@@ -1071,14 +1071,14 @@ def _sumup_merchant_code(cle: str) -> str:
     return ""
 
 
-def _sumup_creer_checkout(montant: float, reference: str, description: str) -> str:
-    """Crée un checkout SumUp hébergé et renvoie son URL de paiement, "" si échec."""
+def _sumup_creer_checkout(montant: float, reference: str, description: str):
+    """Crée un checkout SumUp hébergé. Renvoie (url, id) ou ("", "") si échec."""
     cle = os.getenv("SUMUP_API_KEY", "").strip()
     if not cle:
-        return ""
+        return "", ""
     code = _sumup_merchant_code(cle)
     if not code:
-        return ""
+        return "", ""
     corps = {
         "amount":            round(float(montant), 2),
         "currency":          os.getenv("SUMUP_CURRENCY", "EUR"),
@@ -1098,11 +1098,12 @@ def _sumup_creer_checkout(montant: float, reference: str, description: str) -> s
                        json=corps, timeout=15.0)
         if r.status_code not in (200, 201):
             logger.warning("SumUp checkout: HTTP %s %s", r.status_code, r.text[:200])
-            return ""
-        return (r.json().get("hosted_checkout_url") or "").strip()
+            return "", ""
+        d = r.json()
+        return (d.get("hosted_checkout_url") or "").strip(), (d.get("id") or "").strip()
     except Exception as exc:
         logger.error("SumUp checkout: %s", exc)
-        return ""
+        return "", ""
 
 
 @app.route("/api/pay/sumup_link", methods=["POST"])
@@ -1150,10 +1151,66 @@ def api_pay_sumup_link():
         return jsonify({"ok": False, "error": "empty_cart"}), 400
 
     ref = f"MIL-{uid}-{int(time.time() * 1000)}"
-    url = _sumup_creer_checkout(total, ref, f"Millesime Coffee - {city} ({nb} article(s))")
+    url, checkout_id = _sumup_creer_checkout(total, ref, f"Millesime Coffee - {city} ({nb} article(s))")
     if not url:
         return jsonify({"ok": False, "error": "sumup_failed"}), 502
-    return jsonify({"ok": True, "url": url, "amount": total})
+    return jsonify({"ok": True, "url": url, "amount": total, "checkout_id": checkout_id})
+
+
+def _sumup_verifier_paiement(checkout_id: str, montant_attendu=None):
+    """Vérifie auprès de SumUp qu'un checkout est bien payé.
+
+    Renvoie (True, "PAID") si payé (et, si `montant_attendu` est fourni, pour le
+    bon montant). Sinon (False, raison) : 'indisponible', 'absent', 'introuvable',
+    'PENDING'/'FAILED'/'EXPIRED', 'montant' ou 'erreur'."""
+    cle = os.getenv("SUMUP_API_KEY", "").strip()
+    if not cle:
+        return False, "indisponible"
+    checkout_id = str(checkout_id or "").strip()
+    if not checkout_id or len(checkout_id) > 80:
+        return False, "absent"
+    try:
+        import httpx
+        r = httpx.get(f"https://api.sumup.com/v0.1/checkouts/{checkout_id}",
+                      headers={"Authorization": f"Bearer {cle}"}, timeout=12.0)
+        if r.status_code == 404:
+            return False, "introuvable"
+        if r.status_code != 200:
+            logger.warning("SumUp verif: HTTP %s", r.status_code)
+            return False, "erreur"
+        d = r.json()
+        statut = (d.get("status") or "").upper()
+        paye = statut == "PAID" or any(
+            (t.get("status") or "").upper() == "SUCCESSFUL" for t in (d.get("transactions") or []))
+        if not paye:
+            return False, statut or "PENDING"
+        if montant_attendu is not None:
+            try:
+                montant_paye = float(d.get("amount"))
+            except (TypeError, ValueError):
+                montant_paye = -1.0
+            if abs(montant_paye - round(float(montant_attendu), 2)) > 0.01:
+                logger.warning("SumUp verif: montant payé %s != attendu %s", montant_paye, montant_attendu)
+                return False, "montant"
+        return True, "PAID"
+    except Exception as exc:
+        logger.error("SumUp verif: %s", exc)
+        return False, "erreur"
+
+
+@app.route("/api/pay/sumup_status", methods=["POST"])
+def api_pay_sumup_status():
+    """Dit à l'app si un checkout SumUp est payé (confort UX du bouton « J'ai
+    payé »). POST {initData, checkout_id}. La vérification qui FAIT FOI est
+    refaite à la création de la commande (finalize_order)."""
+    uid = _uid_authentifie(request)
+    if uid is None:
+        return jsonify({"ok": False, "error": "auth_failed"}), 401
+    if _rate_limited(f"sumupst:{uid}", 30, 60.0):
+        return jsonify({"ok": False, "error": "too_fast"}), 429
+    checkout_id = _texte(_corps(request).get("checkout_id"), 80)
+    paye, statut = _sumup_verifier_paiement(checkout_id)
+    return jsonify({"ok": True, "paid": paye, "status": statut})
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -1617,6 +1674,15 @@ def api_finalize_order():
             tot_q = sum(safe_cart.values())
             if tot_q < min_order["value"]:
                 return jsonify({"ok": False, "error": f"Minimum {min_order['value']} articles"}), 400
+
+    # Paiement carte : la commande n'est créée que si SumUp confirme l'encaissement
+    # du BON montant. C'est LA vérification qui fait foi — le bouton « J'ai payé »
+    # côté client n'est qu'un confort. On ne fait jamais confiance au client seul.
+    if methode == "link" and os.getenv("SUMUP_API_KEY", "").strip():
+        paye, statut = _sumup_verifier_paiement(payment.get("sumup_id", ""), total)
+        if not paye:
+            logger.warning("commande refusee : paiement SumUp non confirmé (%s)", statut)
+            return jsonify({"ok": False, "error": "paiement_non_confirme", "statut": statut}), 402
 
     # Génération order_id atomique
     with _pending_lock:  # réutilise le lock existant

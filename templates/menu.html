@@ -4542,7 +4542,7 @@ body.admin-clair .od2-loupe .fermer {
       Ouvrez la page de paiement, saisissez ce montant, puis payez par carte ou Apple Pay.
     </div>
     <a id="linkAnchor" class="next-btn" style="display:block; text-decoration:none; text-align:center;" target="_blank" rel="noopener" data-i18n="pay_link_open_btn">🔗 Ouvrir la page de paiement</a>
-    <button class="next-btn secondaire" onclick="afterPaymentMethodChosen()" data-i18n="i_paid">✅ J'ai payé</button>
+    <button class="next-btn secondaire" id="linkPaidBtn" onclick="confirmerPaiementLink()" data-i18n="i_paid">✅ J'ai payé</button>
   </div>
 </div>
 
@@ -5256,6 +5256,8 @@ const T = {
     pay_link_amount_ready: "Montant de la commande",
     pay_link_ready: "La page de paiement est prête, le montant est déjà rempli. Payez par carte, Apple Pay ou Google Pay.",
     pay_link_preparing: "Préparation du paiement…",
+    pay_link_checking: "Vérification…",
+    pay_link_not_paid: "Paiement pas encore reçu. Si vous venez de payer, patientez quelques secondes puis réessayez.",
     pay_link_amount_copied: "Montant copié",
     pay_crypto_title: "₿ Crypto",            pay_crypto_desc: "ETH ou USDT (ERC-20)",
     pay_cash_currency: "Choisissez votre devise",
@@ -5387,6 +5389,8 @@ const T = {
     pay_link_amount_ready: "Order amount",
     pay_link_ready: "The payment page is ready with the amount already filled in. Pay by card, Apple Pay or Google Pay.",
     pay_link_preparing: "Preparing payment…",
+    pay_link_checking: "Verifying…",
+    pay_link_not_paid: "Payment not received yet. If you just paid, wait a few seconds and try again.",
     pay_link_amount_copied: "Amount copied",
     pay_crypto_title: "₿ Crypto", pay_crypto_desc: "ETH or USDT (ERC-20)",
     pay_cash_currency: "Choose currency",
@@ -5514,6 +5518,8 @@ const T = {
     pay_link_amount_ready: "Importe del pedido",
     pay_link_ready: "La página de pago está lista con el importe ya introducido. Paga con tarjeta, Apple Pay o Google Pay.",
     pay_link_preparing: "Preparando el pago…",
+    pay_link_checking: "Verificando…",
+    pay_link_not_paid: "Pago aún no recibido. Si acabas de pagar, espera unos segundos y vuelve a intentarlo.",
     pay_link_amount_copied: "Importe copiado",
     pay_crypto_title: "₿ Cripto", pay_crypto_desc: "ETH o USDT (ERC-20)",
     pay_cash_currency: "Elige tu moneda",
@@ -5653,6 +5659,8 @@ const T = {
     pay_link_amount_ready: "Сумма заказа",
     pay_link_ready: "Страница оплаты готова, сумма уже заполнена. Оплатите картой, Apple Pay или Google Pay.",
     pay_link_preparing: "Подготовка оплаты…",
+    pay_link_checking: "Проверка…",
+    pay_link_not_paid: "Оплата ещё не получена. Если вы только что оплатили, подождите несколько секунд и попробуйте снова.",
     pay_link_amount_copied: "Сумма скопирована",
     pay_crypto_title: "₿ Криптовалюта",
     pay_crypto_desc: "ETH или USDT (ERC-20)",
@@ -7264,6 +7272,7 @@ async function creerLienSumup() {
     });
     const d = await r.json();
     if (!d.ok || !d.url) { showToast(t("pay_link_not_configured"), true); return; }
+    state.payment.sumup_id = d.checkout_id || "";   // servira à vérifier le paiement
     document.getElementById("linkAmount").textContent = fmtCur(d.amount != null ? d.amount : total);
     _poserLienPaiement(d.url);
     _majEcranLink(true);
@@ -7360,6 +7369,31 @@ function copyLinkAmount() {
   }
   showToast("✅ " + t("pay_link_amount_copied"));
   hapticSuccess();
+}
+
+// Bouton « J'ai payé » de l'écran carte : avec SumUp, on vérifie d'abord auprès
+// du serveur que le paiement est bien reçu. Sinon (lien statique de repli) on
+// laisse passer. Dans tous les cas, la commande est revérifiée à sa création.
+async function confirmerPaiementLink() {
+  const id = state.payment && state.payment.sumup_id;
+  if (!id) { afterPaymentMethodChosen(); return; }
+  const btn = document.getElementById("linkPaidBtn");
+  const libelle = btn ? btn.textContent : "";
+  if (btn) { btn.disabled = true; btn.textContent = t("pay_link_checking"); }
+  try {
+    const r = await apiFetch("/api/pay/sumup_status", {
+      method: "POST", timeout: 15000,
+      body: JSON.stringify({ initData: tg.initData || "", checkout_id: id }),
+    });
+    const d = await r.json();
+    if (d.ok && d.paid) { afterPaymentMethodChosen(); return; }
+    showToast(t("pay_link_not_paid"), true);
+    try { tg.HapticFeedback.notificationOccurred("error"); } catch {}
+  } catch {
+    showToast(t("err_network"), true);
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = libelle || t("i_paid"); }
+  }
 }
 
 function afterPaymentMethodChosen() {
@@ -7627,7 +7661,9 @@ async function finalizeOrder() {
       if (adminBtn) adminBtn.style.display = state.was_owner ? "block" : "none";
       setScreen("success");
     } else {
-      showToast(data.error || t("err_network"), true);
+      const msg = data.error === "paiement_non_confirme"
+                    ? t("pay_link_not_paid") : (data.error || t("err_network"));
+      showToast(msg, true);
       btn.disabled = false;
       btn.innerHTML = t("confirm_btn");
     }
