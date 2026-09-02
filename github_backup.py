@@ -29,7 +29,8 @@ _API    = "https://api.github.com"
 
 _DATA_DIR  = Path(os.getenv("DATA_DIR", str(Path(__file__).parent)))
 _FILES = ["orders.json", "blacklist.json", "blocked.json", "chats.json",
-          "livreurs.json", "parcours.json", "veilleurs.json", "catalogue.json"]
+          "livreurs.json", "parcours.json", "veilleurs.json", "catalogue.json",
+          "sumup_consomme.json"]
 
 _sha_cache: dict[str, str] = {}
 _lock = threading.Lock()

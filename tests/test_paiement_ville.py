@@ -21,6 +21,7 @@ github_backup.backup_binaire_async = lambda *a, **k: None
 import catalog
 import storage
 storage.save_order = lambda o: None
+webapp._rate_limited = lambda *a, **k: False   # anti-flood testé ailleurs
 
 uid = {"v": AUTRE}
 simuler_telegram(webapp, uid)
@@ -53,18 +54,20 @@ for pays, ville in CASH_SEUL:
     assert m == ["cash"], m
     assert d == ["€"], d
 
-titre(2, "Les autres villes gardent tous les moyens actifs")
-# « link » peut etre suspendu (stand-by) : l'attendu se derive du meme filtre
-# que le catalogue, donc le test reste juste qu'il soit actif ou non.
-attendu = [m for m in catalog.METHODES_PAIEMENT if m not in catalog._moyens_standby()]
+titre(2, "Les autres villes gardent leurs moyens actifs (carte seulement en euro)")
+# « link » peut etre suspendu (stand-by) ET n'est proposee que dans les villes
+# affichees en DEVISE_CARTE (euro) : l'attendu se derive des memes regles.
+base = [m for m in catalog.METHODES_PAIEMENT if m not in catalog._moyens_standby()]
 for pays, villes in catalog.CATALOG.items():
     for ville in villes:
         if (pays, ville) in CASH_SEUL:
             continue
+        attendu = list(base)
+        if "link" in attendu and catalog.DEVISE_CARTE not in catalog.get_currencies(pays, ville):
+            attendu = [x for x in attendu if x != "link"]
         m = catalog.get_payment_methods(pays, ville)
-        assert m == attendu, f"{ville} : {m}"
-print(f"   {sum(len(v) for v in catalog.CATALOG.values()) - 3} autres villes : "
-      f"{attendu}")
+        assert m == attendu, f"{ville} : {m} (attendu {attendu})"
+print("   villes euro -> cash/link/crypto ; villes non-euro -> pas de carte")
 
 titre(3, "Une commande en carte ou en crypto est REFUSEE sur ces villes")
 

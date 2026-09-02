@@ -21,6 +21,9 @@ github_backup.backup_binaire_async = lambda *a, **k: None
 import catalog
 import storage
 storage.save_order = lambda o: None
+# Ce test enchaîne beaucoup de commandes : on neutralise l'anti-flood (testé
+# ailleurs) pour ne pas déclencher de 429.
+webapp._rate_limited = lambda *a, **k: False
 
 uid = {"v": AUTRE}
 simuler_telegram(webapp, uid)

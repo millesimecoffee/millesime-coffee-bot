@@ -266,14 +266,16 @@ def _city_cache_dir():
     return _city_cache_dir_v
 
 
-def _slug_to_city_query(slug: str) -> str:
-    """Retrouve le nom de ville (+ pays) depuis le slug, via le catalogue."""
+def _slug_to_city_query(slug: str):
+    """Nom de ville (+ pays) depuis le slug, via le catalogue. None si le slug ne
+    correspond à AUCUNE ville réelle : on ne déclenche alors aucun fetch Pexels
+    (sinon un slug arbitraire épuiserait le quota Pexels)."""
     import unicodedata, re as _re
     def _sl(s):
         return _re.sub(r"[^a-z0-9]+", "", unicodedata.normalize("NFKD", s).encode("ascii", "ignore").decode().lower())
     try:
         import catalog as catalog_mod
-        importlib.reload(catalog_mod)
+        catalog_mod.rafraichir()
         for country, cities in catalog_mod.CATALOG.items():
             for city in cities:
                 if _sl(city) == slug:
@@ -281,7 +283,7 @@ def _slug_to_city_query(slug: str) -> str:
                     return f"{city} {cc}".strip()
     except Exception:
         pass
-    return slug
+    return None
 
 
 def _fetch_city_pexels(slug: str, dest_path: str) -> bool:
@@ -290,6 +292,8 @@ def _fetch_city_pexels(slug: str, dest_path: str) -> bool:
     if not key:
         return False
     query = _slug_to_city_query(slug)
+    if not query:                 # slug qui n'est pas une vraie ville : pas de fetch
+        return False
     import httpx as _httpx
     try:
         with _httpx.Client(timeout=15.0) as c:
@@ -353,6 +357,10 @@ def serve_city_image(slug):
     else:
         cached = os.path.join(_city_cache_dir(), slug + ".jpg")
         if not os.path.exists(cached):
+            # Défense en profondeur : ne pas laisser marmarteler le chemin fetch
+            # (les images déjà en cache/committées, elles, ne sont pas throttlées).
+            if _rate_limited(f"cityimg:{_client_ip(request)}", 20, 60.0):
+                return ("slow down", 429)
             # Éviter les fetch concurrents pour le même slug
             with _city_fetch_lock:
                 busy = slug in _city_fetching
@@ -555,7 +563,7 @@ def api_notify_city():
     city    = _texte(data.get("city"))
     try:
         import catalog as catalog_mod
-        importlib.reload(catalog_mod)
+        catalog_mod.rafraichir()
         if country not in catalog_mod.CATALOG:
             return jsonify({"ok": False, "error": "unknown_country"}), 400
         if city and city not in catalog_mod.CATALOG[country]:
@@ -753,7 +761,7 @@ def api_auth():
     # OK — recharger le catalogue (au cas où on l'aurait modifié)
     try:
         import catalog as catalog_mod
-        importlib.reload(catalog_mod)
+        catalog_mod.rafraichir()
         resp = {
             "ok":         True,
             "admin":      est_admin,   # la Mini App bascule direct sur le panel
@@ -825,7 +833,7 @@ def api_catalog():
     """Retourne le catalogue actuel (utile pour rafraîchir sans rechecker le mdp)."""
     try:
         import catalog as catalog_mod
-        importlib.reload(catalog_mod)
+        catalog_mod.rafraichir()
         return jsonify({
             "catalog":    catalog_mod.CATALOG,
             "min_orders": catalog_mod.MIN_ORDER,
@@ -950,7 +958,7 @@ def api_submit_cart():
     # Charger catalogue serveur pour valider
     try:
         import catalog as catalog_mod
-        importlib.reload(catalog_mod)
+        catalog_mod.rafraichir()
     except Exception as exc:
         logger.error("submit_cart catalog: %s", exc)
         return jsonify({"ok": False, "error": "catalog_failed"}), 500
@@ -1130,7 +1138,7 @@ def api_pay_sumup_link():
     cart    = data.get("cart", {}) or {}
     try:
         import catalog as catalog_mod
-        importlib.reload(catalog_mod)
+        catalog_mod.rafraichir()
     except Exception as exc:
         logger.error("sumup_link catalog: %s", exc)
         return jsonify({"ok": False, "error": "catalog_failed"}), 500
@@ -1288,6 +1296,15 @@ def api_check_face():
 @app.route("/api/geocode", methods=["POST"])
 def api_geocode():
     """Geocode une adresse via OpenStreetMap Nominatim. Retourne format court + lat/lon."""
+    # Auth + rate-limit obligatoires : sans eux, cet endpoint est un proxy
+    # Nominatim ouvert (chaque appel tape openstreetmap.org, politique 1 req/s),
+    # abusable pour faire bannir l'IP du serveur et casser le géocodage réel.
+    uid = _uid_authentifie(request)
+    if uid is None:
+        return jsonify({"ok": False, "error": "auth_failed"}), 401
+    if _rate_limited(f"geo:{uid}", 40, 60.0):
+        return jsonify({"ok": False, "error": "too_fast"}), 429
+
     data = _corps(request)
     if not data:
         return jsonify({"ok": False, "error": "bad_json"}), 400
@@ -1605,10 +1622,16 @@ def api_finalize_order():
     if not user_id:
         return jsonify({"ok": False, "error": "no_user"}), 400
 
+    # Anti-flood : passer commande est rare pour un client légitime. Sans plafond,
+    # un initData valide permet de scripter des commandes en boucle (spam
+    # owner/livreur/Pushover + gonflement d'orders.json).
+    if _rate_limited(f"order:{user_id}", 5, 60.0) or _rate_limited(f"orderj:{user_id}", 40, 3600.0):
+        return jsonify({"ok": False, "error": "too_fast"}), 429
+
     # Recharger catalogue
     try:
         import catalog as catalog_mod
-        importlib.reload(catalog_mod)
+        catalog_mod.rafraichir()
     except Exception as exc:
         logger.error("finalize catalog: %s", exc)
         return jsonify({"ok": False, "error": "catalog_failed"}), 500
@@ -1704,13 +1727,10 @@ def api_finalize_order():
                 return jsonify({"ok": False, "error": "paiement_non_confirme",
                                 "statut": paiement_statut}), 402
 
-    # Génération order_id atomique
-    with _pending_lock:  # réutilise le lock existant
-        order_id = _generate_miniapp_order_id()
-
-    # Construire l'ordre. On stocke les photos COMPRESSÉES en base64 (sans le
-    # préfixe data:) pour que le panel admin puisse les afficher plus tard,
-    # sans exploser la taille de orders.json.
+    # On stocke les photos COMPRESSÉES en base64 (sans le préfixe data:) pour que
+    # le panel admin puisse les afficher plus tard sans exploser orders.json. La
+    # compression (cv2) est LENTE : on la fait AVANT le verrou pour ne pas
+    # sérialiser les commandes ni élargir la fenêtre de course sur l'order_id.
     def _strip_data_url(b: str) -> str:
         if not b:
             return ""
@@ -1755,46 +1775,65 @@ def api_finalize_order():
             logger.warning("compress photo: %s", exc)
             return ""
 
-    pay_label = payment.get("label") or payment.get("method", "?")
-    order_dict = {
-        "order_id":  order_id,
-        "user_id":   user_id,
-        "user_name": user_first or user_name or "?",
-        "username":  user_name,
-        "lang":      lang,
-        "country":   country,
-        "city":      city,
-        "cart":      safe_cart,
-        "total":     total,
-        "payment":   pay_label,
-        "payment_method": payment.get("method", ""),
-        "payment_currency": payment.get("currency", ""),
-        "payment_crypto":   payment.get("crypto_name", ""),
-        # Statut d'encaissement carte (SumUp) : True = payé/vérifié, False = à
-        # vérifier, None = non concerné (cash/crypto).
-        "payment_verified": paiement_verifie,
-        "payment_status":   paiement_statut,
-        "display_currency": disp_cur,   # devise d'affichage choisie (symbole)
-        "address":   (address.get("short") or address.get("formatted") or address.get("text") or ""),
-        "address_verified": bool(address.get("verified")),
-        "address_lat": address.get("lat"),
-        "address_lon": address.get("lon"),
-        "phone":     "",
-        "maps_link": address.get("maps_link", ""),
-        "status":    "pending",
-        "source":    "miniapp",
-        # Photos COMPRESSÉES en base64 pour le panel admin (~50 KB au lieu de 500+)
-        "selfie_b64": _compress_photo_b64(selfie_b64, max_dim=720, quality=65),
-        "proof_b64":  _compress_photo_b64(payment.get("proof_b64", ""), max_dim=900, quality=70),
-    }
+    selfie_comp = _compress_photo_b64(selfie_b64, max_dim=720, quality=65)
+    proof_comp  = _compress_photo_b64(payment.get("proof_b64", ""), max_dim=900, quality=70)
+    sumup_id    = str(payment.get("sumup_id", "")).strip()
+    pay_label   = payment.get("label") or payment.get("method", "?")
 
-    # Sauvegarder
-    try:
-        from storage import save_order
-        save_order(order_dict)
-    except Exception as exc:
-        logger.error("finalize save_order: %s", exc)
-        # Continuer quand même — l'important c'est de notifier l'owner
+    # Génération de l'order_id, anti-rejeu du paiement carte, construction ET
+    # sauvegarde : TOUT sous le même verrou. Deux commandes simultanées ne
+    # peuvent plus recevoir le même numéro (l'id était généré sous verrou mais
+    # sauvegardé hors verrou), et un même checkout SumMp payé ne peut plus
+    # valider deux commandes.
+    from storage import save_order, sumup_deja_consomme, sumup_marquer_consomme
+    with _pending_lock:
+        if paiement_verifie and sumup_id and sumup_deja_consomme(sumup_id):
+            logger.warning("rejeu paiement SumUp id=%s déjà utilisé", sumup_id[:16])
+            return jsonify({"ok": False, "error": "paiement_deja_utilise"}), 409
+        order_id = _generate_miniapp_order_id()
+        order_dict = {
+            "order_id":  order_id,
+            "user_id":   user_id,
+            "user_name": user_first or user_name or "?",
+            "username":  user_name,
+            "lang":      lang,
+            "country":   country,
+            "city":      city,
+            "cart":      safe_cart,
+            "total":     total,
+            "payment":   pay_label,
+            "payment_method": payment.get("method", ""),
+            "payment_currency": payment.get("currency", ""),
+            "payment_crypto":   payment.get("crypto_name", ""),
+            # Statut d'encaissement carte (SumUp) : True = payé/vérifié, False = à
+            # vérifier, None = non concerné (cash/crypto).
+            "payment_verified": paiement_verifie,
+            "payment_status":   paiement_statut,
+            "sumup_id":  sumup_id,          # traçabilité + clé anti-rejeu
+            "display_currency": disp_cur,   # devise d'affichage choisie (symbole)
+            "address":   (address.get("short") or address.get("formatted") or address.get("text") or ""),
+            "address_verified": bool(address.get("verified")),
+            "address_lat": address.get("lat"),
+            "address_lon": address.get("lon"),
+            "phone":     "",
+            "maps_link": address.get("maps_link", ""),
+            "status":    "pending",
+            "source":    "miniapp",
+            "selfie_b64": selfie_comp,
+            "proof_b64":  proof_comp,
+        }
+        # La réponse doit refléter la réalité : si la sauvegarde échoue (insert
+        # Supabase refusé, disque…), on renvoie une erreur au lieu d'un faux
+        # succès, et on n'envoie aucune notification pour une commande fantôme.
+        try:
+            save_order(order_dict)
+        except Exception as exc:
+            logger.error("finalize save_order: %s", exc)
+            return jsonify({"ok": False, "error": "save_failed"}), 500
+        # Le paiement n'est consommé qu'APRÈS une sauvegarde réussie : un save
+        # raté ne doit pas « brûler » le checkout (le client pourra réessayer).
+        if paiement_verifie and sumup_id:
+            sumup_marquer_consomme(sumup_id)
 
     # Notification Pushover : envoi en arrière-plan, sans bloquer la réponse
     # au client. Inerte tant que les deux identifiants ne sont pas définis.
@@ -1974,7 +2013,7 @@ def api_finalize_order():
                     "text": (
                         f"🧾 *Bon de commande — N° {order_id}*\n\n"
                         f"🏙️ {city}\n"
-                        f"🛒 {sum(safe_cart.values())} article(s) — *{total:,.0f} €*\n"
+                        f"🛒 {sum(safe_cart.values())} article(s) — *{total:,.0f} {disp_cur}*\n"
                         f"💳 {pay_label}\n\n"
                         f"_Nous vous contactons très bientôt pour la livraison._ 🙏"
                     ),
@@ -3720,7 +3759,7 @@ def api_client_reorder():
     # Vérifier que la ville existe toujours + filtrer produits encore dispo
     try:
         import catalog as catalog_mod
-        importlib.reload(catalog_mod)
+        catalog_mod.rafraichir()
     except Exception:
         return jsonify({"ok": False, "error": "catalog_failed"}), 500
 
@@ -4554,7 +4593,7 @@ def api_admin_catalog():
         return refus
     try:
         import catalog as catalog_mod
-        importlib.reload(catalog_mod)
+        catalog_mod.rafraichir()
         return jsonify({"ok": True, "catalogue": catalog_mod.snapshot()})
     except Exception as exc:
         logger.error("api_admin_catalog: %s", exc)
@@ -4576,7 +4615,7 @@ def api_admin_catalog_save():
         return jsonify({"ok": False, "error": "bad_body"}), 400
     try:
         import catalog as catalog_mod
-        importlib.reload(catalog_mod)
+        catalog_mod.rafraichir()
     except Exception as exc:
         logger.error("api_admin_catalog_save reload: %s", exc)
         return jsonify({"ok": False, "error": "catalog_failed"}), 500
@@ -5058,6 +5097,13 @@ def api_chat_send():
             return jsonify({"ok": False, "error": "contact_interdit",
                             "motif": motif}), 400
 
+    # Rate-limit AVANT tout décodage/écriture de média : sinon une requête
+    # throttlée aurait déjà écrit le fichier sur disque et l'aurait poussé sur
+    # GitHub avant le 429, laissant un média orphelin (jamais rattaché à un
+    # message, donc jamais purgé).
+    if _rate_limited(f"chat:{role}:{client_id}", 30, 60.0):
+        return jsonify({"ok": False, "error": "too_fast"}), 429
+
     kind, media_id = "texte", ""
     photo_b64 = data.get("photo_b64")
     audio_b64 = data.get("audio_b64")
@@ -5121,9 +5167,6 @@ def api_chat_send():
 
     if kind != "location" and not texte and not media_id:
         return jsonify({"ok": False, "error": "empty"}), 400
-
-    if _rate_limited(f"chat:{role}:{client_id}", 30, 60.0):
-        return jsonify({"ok": False, "error": "too_fast"}), 429
 
     # Chacun lit dans sa langue : le client écrit en anglais, la boutique lit
     # en français ; la boutique répond en français, le client lit dans la

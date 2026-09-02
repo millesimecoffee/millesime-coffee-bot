@@ -27,6 +27,62 @@ _BLACKLIST_FILE = _DATA_DIR / "blacklist.json"
 _BACKUP_DIR     = _DATA_DIR / "backups"
 _lock = threading.Lock()
 
+
+# ── Registre des checkouts SumUp déjà consommés (anti-rejeu de paiement) ──────
+# Un checkout payé reste « PAID » côté SumUp indéfiniment : sans ce registre
+# PERSISTANT, rejouer /api/finalize_order avec le même sumup_id créerait N
+# commandes pour un seul encaissement. Persisté sur disque + sauvegardé GitHub
+# (le disque Render est éphémère : un simple set mémoire rouvrirait la faille
+# à chaque redémarrage).
+_SUMUP_FILE  = _DATA_DIR / "sumup_consomme.json"
+_sumup_liste = None      # list chronologique (bornée)
+_sumup_set   = None      # set pour lookup O(1)
+_sumup_lock  = threading.Lock()
+_SUMUP_MAX   = 20000
+
+
+def _sumup_charger():
+    global _sumup_liste, _sumup_set
+    if _sumup_liste is None:
+        try:
+            with _SUMUP_FILE.open(encoding="utf-8") as f:
+                _sumup_liste = [str(x) for x in json.load(f)]
+        except (OSError, json.JSONDecodeError, ValueError, TypeError):
+            _sumup_liste = []
+        _sumup_set = set(_sumup_liste)
+    return _sumup_liste
+
+
+def sumup_deja_consomme(checkout_id: str) -> bool:
+    if not checkout_id:
+        return False
+    with _sumup_lock:
+        _sumup_charger()
+        return checkout_id in _sumup_set
+
+
+def sumup_marquer_consomme(checkout_id: str) -> None:
+    if not checkout_id:
+        return
+    with _sumup_lock:
+        lst = _sumup_charger()
+        if checkout_id in _sumup_set:
+            return
+        lst.append(checkout_id)
+        _sumup_set.add(checkout_id)
+        if len(lst) > _SUMUP_MAX:                 # on oublie les plus anciens
+            for old in lst[:len(lst) - _SUMUP_MAX]:
+                _sumup_set.discard(old)
+            del lst[:len(lst) - _SUMUP_MAX]
+        try:
+            _ecrire_json_atomique(_SUMUP_FILE, lst)
+        except Exception as exc:
+            logger.warning("sumup_consomme write : %s", exc)
+    try:
+        _gh.backup_file_async("sumup_consomme.json")
+    except Exception:
+        pass
+
 # H3: Index en mémoire pour lookup O(1) par order_id
 _order_index: dict[str, dict] = {}
 
@@ -346,8 +402,16 @@ def save_order(order: dict) -> None:
                 "created_at": _to_tz(order["created_at"]),
                 "data":       order,
             }
-            _sb.insert("orders", row)
+            res = _sb.insert("orders", row)
             _invalidate_cache()
+            # _sb.insert avale les erreurs HTTP et renvoie [] ; avec
+            # Prefer: return=representation, un insert réussi renvoie la ligne.
+            # On LÈVE si rien n'est revenu, avant de peupler l'index mémoire :
+            # sinon la commande n'est nulle part en base mais get_order renverrait
+            # un faux positif tant que le process vit, puis disparaîtrait au
+            # redémarrage — et l'appelant croirait à un succès.
+            if not res:
+                raise RuntimeError(f"insert Supabase échoué (commande {order.get('order_id')})")
         else:
             # Les photos partent dans leurs propres fichiers : ce qui entre
             # dans orders.json n'en garde qu'une référence.

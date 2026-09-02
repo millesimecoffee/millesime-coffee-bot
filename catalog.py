@@ -539,6 +539,11 @@ def get_payment_methods(country: str, city: str = "") -> list[str]:
     standby = _moyens_standby()
     methodes = [m for m in (regle.get("methodes") or METHODES_PAIEMENT)
                 if m in METHODES_PAIEMENT and m not in standby]
+    # La carte (SumUp) encaisse en DEVISE_CARTE. Si la ville n'est pas affichée
+    # dans cette devise, on retire « link » : sinon le client verrait un prix
+    # dans une devise mais serait débité dans une autre (aucune conversion).
+    if "link" in methodes and DEVISE_CARTE not in get_currencies(country, city):
+        methodes = [m for m in methodes if m != "link"]
     # Une ville sans aucun moyen de paiement serait invendable : on retombe
     # sur le liquide, qui ne dépend d'aucune configuration extérieure.
     return methodes or ["cash"]
@@ -566,7 +571,17 @@ def get_currencies(country: str, city: str = "") -> list[str]:
 _logger = logging.getLogger(__name__)
 _DATA_DIR = Path(os.getenv("DATA_DIR", str(Path(__file__).parent)))
 _FICHIER_CATALOGUE = _DATA_DIR / "catalogue.json"
-_verrou_catalogue = threading.RLock()
+# Le verrou doit être UNIQUE et survivre à un éventuel rechargement du module :
+# sinon deux sauvegardes concurrentes prendraient deux verrous différents et
+# écriraient catalogue.json en même temps. On ne le (re)crée donc jamais s'il
+# existe déjà dans l'espace de noms du module.
+if "_verrou_catalogue" not in globals():
+    _verrou_catalogue = threading.RLock()
+
+# Devise du compte SumUp qui encaisse la carte. La carte (« link ») n'est
+# proposée que dans les villes affichées dans cette devise : sinon le client
+# verrait « 60 ฿ » mais serait débité « 60 € » (aucune conversion n'existe).
+DEVISE_CARTE = "€"
 
 # Plafonds de sûreté. Un catalogue reste petit ; ils bloquent surtout un envoi
 # aberrant qui ferait gonfler le fichier ou l'écran.
@@ -783,8 +798,11 @@ def _appliquer_donnees(data: dict) -> None:
                 regle["devises"] = list(v["devises"])
             if regle:
                 pv[(pays, ville)] = regle
-    CATALOG, MIN_ORDER, CURRENCIES = cat, mini_o, cur
-    COUNTRY_CURRENCIES, PAIEMENT_PAR_VILLE = cc, pv
+    # Publication ATOMIQUE : on construit tout en local puis on remplace les
+    # cinq tables en une seule affectation. Un lecteur concurrent ne voit jamais
+    # un mélange ancien/nouveau ni un catalogue à moitié vide.
+    CATALOG, MIN_ORDER, CURRENCIES, COUNTRY_CURRENCIES, PAIEMENT_PAR_VILLE = \
+        cat, mini_o, cur, cc, pv
 
 
 def _ecrire_overlay(data: dict) -> None:
@@ -805,10 +823,15 @@ def _ecrire_overlay(data: dict) -> None:
 def sauver_catalogue(data) -> dict:
     """Valide, applique EN MÉMOIRE puis persiste un catalogue édité. Renvoie le
     snapshot à jour. Lève CatalogueInvalide si les données sont inexploitables."""
+    global _mtime_overlay
     propre = valider(data)
     with _verrou_catalogue:
         _appliquer_donnees(propre)
         _ecrire_overlay(propre)
+        try:                    # noter ce qu'on vient d'écrire → pas de relecture inutile
+            _mtime_overlay = _FICHIER_CATALOGUE.stat().st_mtime_ns
+        except OSError:
+            _mtime_overlay = None
     try:
         import github_backup
         github_backup.backup_file_async("catalogue.json")
@@ -817,20 +840,39 @@ def sauver_catalogue(data) -> dict:
     return snapshot()
 
 
-def _charger_overlay() -> None:
-    """Au chargement du module : ré-applique catalogue.json s'il existe. Un
-    fichier illisible ou invalide est ignoré — on garde le socle par défaut
-    plutôt que de casser la boutique."""
-    try:
-        if not _FICHIER_CATALOGUE.exists():
+# Socle par défaut FIGÉ, capturé AVANT tout overlay : cible de repli si
+# catalogue.json disparaît. Immuable, jamais réexposé transitoirement.
+_SOCLE = snapshot()
+_mtime_overlay = "__jamais__"      # sentinelle : force le premier chargement
+
+
+def rafraichir() -> None:
+    """Ré-applique catalogue.json s'il a CHANGÉ depuis le dernier appel, sinon ne
+    fait rien. Remplace `importlib.reload(catalog)` : ne réexpose jamais le socle
+    par défaut à un lecteur concurrent (l'ancien reload rebindait CATALOG sur le
+    socle le temps de rejouer tout le module), et ne relit le fichier que s'il a
+    bougé. Thread-safe (sous _verrou_catalogue, unique et persistant)."""
+    global _mtime_overlay
+    with _verrou_catalogue:
+        try:
+            m = _FICHIER_CATALOGUE.stat().st_mtime_ns if _FICHIER_CATALOGUE.exists() else None
+        except OSError:
+            m = None
+        if m == _mtime_overlay:
             return
-        with _FICHIER_CATALOGUE.open(encoding="utf-8") as f:
-            data = json.load(f)
-        _appliquer_donnees(valider(data))
-    except CatalogueInvalide as exc:
-        _logger.error("catalogue.json ignoré (invalide) : %s", exc)
-    except (OSError, json.JSONDecodeError) as exc:
-        _logger.error("catalogue.json illisible : %s", exc)
+        if m is None:                     # overlay disparu → retour au socle figé
+            _appliquer_donnees(_SOCLE)
+            _mtime_overlay = None
+            return
+        try:
+            with _FICHIER_CATALOGUE.open(encoding="utf-8") as f:
+                _appliquer_donnees(valider(json.load(f)))
+            _mtime_overlay = m
+        except CatalogueInvalide as exc:
+            _logger.error("catalogue.json ignoré (invalide) : %s", exc)
+            _mtime_overlay = m            # ne pas boucler sur un fichier cassé
+        except (OSError, json.JSONDecodeError) as exc:
+            _logger.error("catalogue.json illisible : %s", exc)
 
 
-_charger_overlay()
+rafraichir()

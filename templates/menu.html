@@ -5814,7 +5814,10 @@ if (tg.initDataUnsafe && tg.initDataUnsafe.user && tg.initDataUnsafe.user.langua
 // ═══════════════════════════════════════════════════════════════════════════
 function t(key, vars) {
   let s = (T[state.lang] && T[state.lang][key]) || T.fr[key] || key;
-  if (vars) for (const k in vars) s = s.replace("{"+k+"}", vars[k]);
+  // .split().join() = remplacement de TOUTES les occurrences (certaines clés,
+  // ex. min_amount, contiennent {cur} deux fois ; .replace() n'aurait remplacé
+  // que la première, laissant « {cur} » brut à l'écran).
+  if (vars) for (const k in vars) s = s.split("{"+k+"}").join(vars[k]);
   return s;
 }
 function applyI18n() {
