@@ -1162,6 +1162,14 @@ def api_pay_sumup_link():
     return jsonify({"ok": True, "url": url, "amount": total, "checkout_id": checkout_id})
 
 
+def _sumup_strict() -> bool:
+    """Mode strict : refuser une commande carte non confirmée par SumUp.
+    Désactivé par défaut (la commande passe, marquée « à vérifier ») pour ne
+    jamais perdre une commande à cause d'un paiement en retard. Activable via
+    la variable d'environnement SUMUP_STRICT=1."""
+    return os.getenv("SUMUP_STRICT", "").strip().lower() not in ("", "0", "false", "no", "off")
+
+
 def _sumup_verifier_paiement(checkout_id: str, montant_attendu=None):
     """Vérifie auprès de SumUp qu'un checkout est bien payé.
 
@@ -1680,14 +1688,21 @@ def api_finalize_order():
             if tot_q < min_order["value"]:
                 return jsonify({"ok": False, "error": f"Minimum {min_order['value']} articles"}), 400
 
-    # Paiement carte : la commande n'est créée que si SumUp confirme l'encaissement
-    # du BON montant. C'est LA vérification qui fait foi — le bouton « J'ai payé »
-    # côté client n'est qu'un confort. On ne fait jamais confiance au client seul.
+    # Paiement carte : on vérifie l'encaissement auprès de SumUp et on ATTACHE le
+    # statut à la commande — l'owner doit TOUJOURS recevoir la commande, avec
+    # l'info « payé / à vérifier ». Par défaut on ne bloque pas (un paiement qui
+    # traîne ne doit pas faire perdre la commande) ; en mode strict (SUMUP_STRICT)
+    # une carte non confirmée est refusée.
+    paiement_verifie, paiement_statut = None, ""
     if methode == "link" and os.getenv("SUMUP_API_KEY", "").strip():
-        paye, statut = _sumup_verifier_paiement(payment.get("sumup_id", ""), total)
-        if not paye:
-            logger.warning("commande refusee : paiement SumUp non confirmé (%s)", statut)
-            return jsonify({"ok": False, "error": "paiement_non_confirme", "statut": statut}), 402
+        paiement_verifie, paiement_statut = _sumup_verifier_paiement(
+            payment.get("sumup_id", ""), total)
+        if not paiement_verifie:
+            logger.warning("commande carte non confirmée par SumUp (statut=%s, id=%s)",
+                           paiement_statut, str(payment.get("sumup_id", ""))[:16])
+            if _sumup_strict():
+                return jsonify({"ok": False, "error": "paiement_non_confirme",
+                                "statut": paiement_statut}), 402
 
     # Génération order_id atomique
     with _pending_lock:  # réutilise le lock existant
@@ -1755,6 +1770,10 @@ def api_finalize_order():
         "payment_method": payment.get("method", ""),
         "payment_currency": payment.get("currency", ""),
         "payment_crypto":   payment.get("crypto_name", ""),
+        # Statut d'encaissement carte (SumUp) : True = payé/vérifié, False = à
+        # vérifier, None = non concerné (cash/crypto).
+        "payment_verified": paiement_verifie,
+        "payment_status":   paiement_statut,
         "display_currency": disp_cur,   # devise d'affichage choisie (symbole)
         "address":   (address.get("short") or address.get("formatted") or address.get("text") or ""),
         "address_verified": bool(address.get("verified")),
@@ -1878,6 +1897,11 @@ def api_finalize_order():
     ]
     if payment.get("crypto_name"):
         lines.append(f"   ↳ Adresse : <code>{_html_escape(payment.get('crypto_addr',''))}</code>")
+    if methode == "link":
+        if paiement_verifie:
+            lines.append("   ↳ ✅ <b>Payé</b> (vérifié SumUp)")
+        elif paiement_verifie is False:
+            lines.append(f"   ↳ ⚠️ <b>Paiement à VÉRIFIER</b> (SumUp : {_html_escape(paiement_statut or 'non confirmé')})")
     lines += [
         "",
         f"📍 <b>Adresse</b>",
@@ -1896,7 +1920,7 @@ def api_finalize_order():
     }
     try:
         with httpx.Client(timeout=15.0) as c:
-            c.post(
+            rep = c.post(
                 f"https://api.telegram.org/bot{bot_token}/sendMessage",
                 json={
                     "chat_id":    owner_chat,
@@ -1906,6 +1930,12 @@ def api_finalize_order():
                     "disable_web_page_preview": True,
                 },
             )
+            # httpx ne lève pas sur un 4xx : sans ce contrôle, une notif refusée
+            # par Telegram (HTML invalide, chat injoignable…) échouait en silence.
+            if rep.status_code != 200:
+                logger.error("notif owner ÉCHOUÉE (%s) : %s", rep.status_code, rep.text[:300])
+            else:
+                logger.info("notif owner OK — commande %s", order_id)
             # Envoyer le selfie si présent
             if selfie_b64:
                 _, sb = _decode_b64_image(selfie_b64)

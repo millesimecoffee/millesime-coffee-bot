@@ -1,8 +1,10 @@
-"""Paiement carte via lien SumUp hébergé + vérification automatique.
+"""Paiement carte via lien SumUp + vérification NON bloquante (statut attaché).
 
-Le serveur recalcule le montant depuis le catalogue (jamais celui du client),
-crée un checkout SumUp, et — surtout — ne crée la commande que si SumUp confirme
-que le checkout est PAID pour le BON montant. L'API SumUp est simulée ici.
+Le serveur recalcule le montant depuis le catalogue, crée un checkout SumUp,
+puis — à la finalisation — vérifie l'encaissement et ATTACHE le statut à la
+commande sans jamais la perdre (l'owner reçoit toujours la commande). Un mode
+strict (SUMUP_STRICT) permet, si voulu, de refuser une carte non confirmée.
+L'API SumUp est simulée ici.
 """
 import os
 import sys
@@ -18,7 +20,8 @@ import github_backup
 github_backup.backup_file_async = lambda *a, **k: None
 github_backup.backup_binaire_async = lambda *a, **k: None
 import storage
-storage.save_order = lambda o: None
+saved = []
+storage.save_order = lambda o: saved.append(o)
 import catalog
 
 
@@ -32,28 +35,15 @@ class R:
         return self._d
 
 
-# État SumUp simulé, piloté par chaque test.
 etat = {"status": "PENDING", "amount": 0.0}
 envois = []
-
 import httpx
-
-
-def faux_post(url, **kw):
-    if "checkouts" in url:
-        envois.append(kw.get("json"))
-        return R(201, {"id": "chk_1", "status": "PENDING",
-                       "hosted_checkout_url": "https://checkout.sumup.com/pay/c-TEST"})
-    return R(200, {"ok": True, "result": {}})          # Telegram & co.
-
-
-def faux_get(url, **kw):
-    return R(200, {"status": etat["status"], "amount": etat["amount"],
-                   "currency": "EUR", "transactions": []})
-
-
-httpx.post = faux_post
-httpx.get = faux_get
+httpx.post = lambda url, **kw: (envois.append(kw.get("json")) or
+                                R(201, {"id": "chk_1", "status": "PENDING",
+                                        "hosted_checkout_url": "https://checkout.sumup.com/pay/c-TEST"})) \
+    if "checkouts" in url else R(200, {"ok": True, "result": {}})
+httpx.get = lambda url, **kw: R(200, {"status": etat["status"], "amount": etat["amount"],
+                                      "currency": "EUR", "transactions": []})
 
 uid = {"v": AUTRE}
 simuler_telegram(webapp, uid)
@@ -61,78 +51,77 @@ app = webapp.app.test_client()
 
 PROD = list(catalog.CATALOG["🇫🇷 France"]["Paris"])[0]
 PRIX = catalog.CATALOG["🇫🇷 France"]["Paris"][PROD]
-
-print("=" * 62)
-
-titre(1, "Le lien SumUp est créé au bon montant et renvoie un checkout_id")
-cart = {PROD: 2}
-attendu = round(PRIX * 2, 2)
-r = app.post("/api/pay/sumup_link",
-             json={"initData": "x", "country": "🇫🇷 France", "city": "Paris", "cart": cart})
-d = r.get_json()
-print(f"   montant {d.get('amount')} (attendu {attendu}) · id {d.get('checkout_id')}")
-assert d["ok"] and abs(d["amount"] - attendu) < 0.01 and d["checkout_id"] == "chk_1"
-assert abs(envois[-1]["amount"] - attendu) < 0.01 and envois[-1]["currency"] == "EUR"
+total = round(PRIX * 2, 2)
 
 
-def finalize_link(qte, sumup_id="chk_1"):
+def finalize_link(sumup_id="chk_1"):
     return app.post("/api/finalize_order", json={
         "initData": "x", "country": "🇫🇷 France", "city": "Paris",
-        "cart": {PROD: qte}, "display_currency": "€",
+        "cart": {PROD: 2}, "display_currency": "€",
         "payment": {"method": "link", "sumup_id": sumup_id, "label": "Carte"},
         "address": {"text": "12 rue Test", "short": "12 rue Test"}, "selfie_b64": "",
     })
 
 
-total = round(PRIX * 2, 2)
+print("=" * 62)
 
-titre(2, "Commande carte REFUSÉE tant que SumUp n'a pas confirmé (PENDING)")
+titre(1, "Le lien SumUp est créé au bon montant et renvoie un checkout_id")
+r = app.post("/api/pay/sumup_link",
+             json={"initData": "x", "country": "🇫🇷 France", "city": "Paris", "cart": {PROD: 2}})
+d = r.get_json()
+print(f"   montant {d.get('amount')} (attendu {total}) · id {d.get('checkout_id')}")
+assert d["ok"] and abs(d["amount"] - total) < 0.01 and d["checkout_id"] == "chk_1"
+
+titre(2, "Par défaut : commande carte NON payée → reçue quand même, marquée « à vérifier »")
 etat.update(status="PENDING", amount=total)
-r = finalize_link(2)
-print(f"   PENDING -> HTTP {r.status_code} ({r.get_json().get('error')} / {r.get_json().get('statut')})")
-assert r.status_code == 402 and r.get_json().get("error") == "paiement_non_confirme"
+saved.clear()
+r = finalize_link()
+d = r.get_json()
+print(f"   PENDING -> HTTP {r.status_code} ok={d.get('ok')} · verified={saved[-1]['payment_verified']} statut={saved[-1]['payment_status']}")
+assert r.status_code == 200 and d["ok"] is True
+assert saved[-1]["payment_verified"] is False and saved[-1]["payment_status"] == "PENDING"
 
-titre(3, "Commande carte ACCEPTÉE quand SumUp confirme PAID au bon montant")
+titre(3, "Par défaut : commande carte PAYÉE → reçue, marquée vérifiée")
 etat.update(status="PAID", amount=total)
-r = finalize_link(2)
-print(f"   PAID -> HTTP {r.status_code} ok={r.get_json().get('ok')} num={r.get_json().get('order_id')}")
-assert r.get_json().get("ok") is True
+saved.clear()
+r = finalize_link()
+print(f"   PAID -> HTTP {r.status_code} · verified={saved[-1]['payment_verified']}")
+assert r.get_json()["ok"] and saved[-1]["payment_verified"] is True
 
-titre(4, "PAID mais MAUVAIS montant → refusée")
+titre(4, "Par défaut : PAYÉE mais mauvais montant → reçue, marquée « à vérifier »")
 etat.update(status="PAID", amount=total + 50)
-r = finalize_link(2)
-print(f"   montant faux -> HTTP {r.status_code} statut={r.get_json().get('statut')}")
-assert r.status_code == 402 and r.get_json().get("statut") == "montant"
+saved.clear()
+r = finalize_link()
+print(f"   montant faux -> HTTP {r.status_code} · verified={saved[-1]['payment_verified']} statut={saved[-1]['payment_status']}")
+assert r.get_json()["ok"] and saved[-1]["payment_verified"] is False and saved[-1]["payment_status"] == "montant"
 
-titre(5, "Sans checkout_id → refusée (aucune preuve de paiement)")
+titre(5, "Mode strict (SUMUP_STRICT=1) : carte non confirmée → REFUSÉE")
+os.environ["SUMUP_STRICT"] = "1"
+etat.update(status="PENDING", amount=total)
+r = finalize_link()
+print(f"   strict + PENDING -> HTTP {r.status_code} ({r.get_json().get('error')})")
+assert r.status_code == 402 and r.get_json().get("error") == "paiement_non_confirme"
 etat.update(status="PAID", amount=total)
-r = finalize_link(2, sumup_id="")
-print(f"   sans id -> HTTP {r.status_code} statut={r.get_json().get('statut')}")
-assert r.status_code == 402 and r.get_json().get("statut") == "absent"
+r = finalize_link()
+print(f"   strict + PAID -> HTTP {r.status_code} ok={r.get_json().get('ok')}")
+assert r.get_json().get("ok") is True
+os.environ.pop("SUMUP_STRICT", None)
 
-titre(6, "L'endpoint de statut reflète l'état SumUp")
-etat.update(status="PAID", amount=total)
-r = app.post("/api/pay/sumup_status", json={"initData": "x", "checkout_id": "chk_1"})
-assert r.get_json().get("paid") is True
-etat.update(status="PENDING")
-r = app.post("/api/pay/sumup_status", json={"initData": "x", "checkout_id": "chk_1"})
-assert r.get_json().get("paid") is False
-print("   PAID -> paid=True ; PENDING -> paid=False")
-
-titre(7, "Le liquide n'est pas soumis à la vérification SumUp")
+titre(6, "Le liquide n'est jamais soumis à la vérification SumUp")
+saved.clear()
 r = app.post("/api/finalize_order", json={
     "initData": "x", "country": "🇫🇷 France", "city": "Paris",
     "cart": {PROD: 2}, "display_currency": "€",
     "payment": {"method": "cash", "currency": "EUR", "label": "Cash"},
     "address": {"text": "12 rue Test", "short": "12 rue Test"}, "selfie_b64": "",
 })
-print(f"   cash -> HTTP {r.status_code} ok={r.get_json().get('ok')}")
-assert r.get_json().get("ok") is True
+print(f"   cash -> HTTP {r.status_code} · verified={saved[-1]['payment_verified']}")
+assert r.get_json().get("ok") and saved[-1]["payment_verified"] is None
 
-titre(8, "Sans clé SumUp : paiement carte indisponible")
+titre(7, "Sans clé SumUp : paiement carte indisponible (création du lien)")
 os.environ.pop("SUMUP_API_KEY", None)
 r = app.post("/api/pay/sumup_link",
-             json={"initData": "x", "country": "🇫🇷 France", "city": "Paris", "cart": cart})
+             json={"initData": "x", "country": "🇫🇷 France", "city": "Paris", "cart": {PROD: 2}})
 print(f"   sans clé -> HTTP {r.status_code} ({r.get_json().get('error')})")
 assert r.status_code == 503 and r.get_json().get("error") == "indisponible"
 

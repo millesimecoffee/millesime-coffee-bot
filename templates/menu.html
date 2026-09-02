@@ -7374,29 +7374,12 @@ function copyLinkAmount() {
   hapticSuccess();
 }
 
-// Bouton « J'ai payé » de l'écran carte : avec SumUp, on vérifie d'abord auprès
-// du serveur que le paiement est bien reçu. Sinon (lien statique de repli) on
-// laisse passer. Dans tous les cas, la commande est revérifiée à sa création.
-async function confirmerPaiementLink() {
-  const id = state.payment && state.payment.sumup_id;
-  if (!id) { afterPaymentMethodChosen(); return; }
-  const btn = document.getElementById("linkPaidBtn");
-  const libelle = btn ? btn.textContent : "";
-  if (btn) { btn.disabled = true; btn.textContent = t("pay_link_checking"); }
-  try {
-    const r = await apiFetch("/api/pay/sumup_status", {
-      method: "POST", timeout: 15000,
-      body: JSON.stringify({ initData: tg.initData || "", checkout_id: id }),
-    });
-    const d = await r.json();
-    if (d.ok && d.paid) { afterPaymentMethodChosen(); return; }
-    showToast(t("pay_link_not_paid"), true);
-    try { tg.HapticFeedback.notificationOccurred("error"); } catch {}
-  } catch {
-    showToast(t("err_network"), true);
-  } finally {
-    if (btn) { btn.disabled = false; btn.textContent = libelle || t("i_paid"); }
-  }
+// Bouton « J'ai payé » : on laisse toujours continuer. La commande est ensuite
+// créée ET vérifiée côté serveur, qui attache le statut du paiement (payé / à
+// vérifier) et notifie l'owner dans TOUS les cas — on ne perd jamais une
+// commande à cause d'un paiement en retard. (Mode strict activable côté serveur.)
+function confirmerPaiementLink() {
+  afterPaymentMethodChosen();
 }
 
 function afterPaymentMethodChosen() {
