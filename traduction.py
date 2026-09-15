@@ -103,6 +103,44 @@ def _deepl(texte: str, vers: str, depuis: str = "") -> str:
         return ""
 
 
+def _mymemory(texte: str, vers: str, depuis: str = "") -> str:
+    """API MyMemory : gratuite, sans clé, documentée et stable (contrairement au
+    point d'entrée Google public, souvent bloqué en 429). ~5 000 mots/jour par IP
+    en anonyme ; on peut relever la limite en fixant TRADUCTION_EMAIL (l'email est
+    envoyé à MyMemory pour identifier le quota — ne le fais que si tu l'acceptes)."""
+    # Même verrou que le repli Google : TRADUCTION_REPLI=0 coupe TOUS les
+    # fournisseurs sans clé (utile en test, ou pour n'autoriser que DeepL).
+    if os.getenv("TRADUCTION_REPLI", "1").strip() in ("0", "", "non"):
+        return ""
+    if not depuis:            # MyMemory exige une langue source explicite
+        return ""
+    try:
+        import httpx
+        params = {"q": texte, "langpair": f"{depuis}|{vers}"}
+        email = os.getenv("TRADUCTION_EMAIL", "").strip()
+        if email:
+            params["de"] = email
+        r = httpx.get("https://api.mymemory.translated.net/get", timeout=10.0,
+                      params=params)
+        if r.status_code != 200:
+            logger.warning("MyMemory HTTP %s", r.status_code)
+            return ""
+        d = r.json() or {}
+        statut = d.get("responseStatus")
+        if statut not in (200, "200"):
+            logger.warning("MyMemory statut %s : %s", statut,
+                           str(d.get("responseDetails"))[:100])
+            return ""
+        trad = ((d.get("responseData") or {}).get("translatedText") or "").strip()
+        # En cas de quota atteint, MyMemory glisse un avertissement dans le texte.
+        if not trad or "MYMEMORY WARNING" in trad.upper():
+            return ""
+        return trad
+    except Exception as exc:
+        logger.warning("MyMemory : %s", exc)
+        return ""
+
+
 def _google_public(texte: str, vers: str, depuis: str = "") -> str:
     """Repli sans clé. Point d'entrée non documenté : on ne s'y fie pas."""
     if os.getenv("TRADUCTION_REPLI", "1").strip() in ("0", "", "non"):
@@ -139,7 +177,11 @@ def traduire(texte: str, vers: str, depuis: str = "") -> str:
         if cle in _cache:
             return _cache[cle]
 
-    resultat = _deepl(texte, vers, depuis) or _google_public(texte, vers, depuis)
+    # Ordre : DeepL (si clé, meilleure qualité) → MyMemory (gratuit, fiable) →
+    # point d'entrée Google public (dernier recours, souvent bloqué en 429).
+    resultat = (_deepl(texte, vers, depuis)
+                or _mymemory(texte, vers, depuis)
+                or _google_public(texte, vers, depuis))
     if resultat and resultat.strip().casefold() == texte.casefold():
         resultat = ""          # rien n'a changé : inutile de le stocker
 
