@@ -29,7 +29,7 @@ COMMANDE = {"order_id": "R1", "user_id": OWNER, "status": "pending", "total": 50
             "created_at": webapp._now_iso(), "username": "", "user_name": "Test"}
 storage._load = lambda: [dict(COMMANDE)]
 storage.get_order = lambda oid: dict(COMMANDE) if oid == "R1" else None
-storage.update_order = lambda oid, upd: True
+storage.update_order = lambda oid, upd, attendu=None: True
 storage.save_client_note = getattr(storage, "save_client_note", lambda *a, **k: True)
 
 
@@ -133,7 +133,7 @@ assert d["ok"] is not False
 
 titre(5, "Statut de commande inconnu -> refuse, rien n'est ecrit")
 ecrits = []
-storage.update_order = webapp.update_order = lambda oid, upd: (ecrits.append(upd), True)[1]
+storage.update_order = webapp.update_order = lambda oid, upd, attendu=None: (ecrits.append(upd), True)[1]
 for faux in ["livree", "", "DELETE", 42, None]:
     r = app.post("/api/admin/order/R1/status",
                  json={"initData": "x", "status": faux})

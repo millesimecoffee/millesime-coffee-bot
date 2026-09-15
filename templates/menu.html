@@ -9876,7 +9876,21 @@ async function majPastilleMessages() {
   } catch { /* sans importance */ }
 }
 
+let _majStatutEnCours = false;
 async function setOrderStatus(orderId, newStatus) {
+  // Garde-fou contre le double-clic : sans lui, deux appuis rapprochés lançaient
+  // deux requêtes /status concurrentes (le serveur tourne en threaded=True), ce
+  // qui pouvait écrire deux transitions et fausser les horodatages.
+  if (_majStatutEnCours) return;
+  _majStatutEnCours = true;
+  try {
+    await _setOrderStatusInterne(orderId, newStatus);
+  } finally {
+    _majStatutEnCours = false;
+  }
+}
+
+async function _setOrderStatusInterne(orderId, newStatus) {
   // Confirmation native Telegram pour annulation
   if (newStatus === "cancelled") {
     const confirmed = await new Promise((resolve) => {
@@ -9889,19 +9903,18 @@ async function setOrderStatus(orderId, newStatus) {
     if (!confirmed) return;
   }
 
-  // Désactiver tous les boutons d'action + spinner sur celui cliqué (le plus récent dans le DOM)
-  const allBtns = document.querySelectorAll("#ownerOrderDetail .btn-act");
+  // Désactiver tous les boutons d'action + spinner sur celui cliqué.
+  // La classe rendue est `od2-btn` (et non `.btn-act`, qui n'existe nulle part) :
+  // avec l'ancien sélecteur, allBtns était vide, aucun bouton n'était désactivé
+  // et le double-clic restait possible.
+  const allBtns = document.querySelectorAll("#ownerOrderDetail .od2-btn");
   allBtns.forEach(b => b.disabled = true);
-  // Cherche le bouton qui matche le statut pour mettre un loader visible dessus
-  const labelMap = {
-    confirmed:  "Confirmer",
-    delivering: "En livraison",
-    delivered:  "Livrée",
-    cancelled:  "Annuler",
-  };
+  // On repère le bouton cliqué par son onclick (qui contient le statut cible) —
+  // bien plus robuste que comparer le texte affiché.
   let activeBtn = null;
   allBtns.forEach(b => {
-    if (b.textContent.includes(labelMap[newStatus] || "")) activeBtn = b;
+    const oc = b.getAttribute("onclick") || "";
+    if (oc.includes(`'${newStatus}'`)) activeBtn = b;
   });
   const origText = activeBtn ? activeBtn.innerHTML : "";
   if (activeBtn) activeBtn.innerHTML = '<span class="loader"></span>';
@@ -9919,6 +9932,12 @@ async function setOrderStatus(orderId, newStatus) {
       // Recharger detail (qui reconstruit avec les nouveaux boutons selon nouveau status)
       await openOrderDetail(orderId);
       // Et la data principale en arrière-plan
+      loadOwnerData(false);
+    } else if (data.error === "conflict") {
+      // Une autre requête a déjà fait avancer la commande : on recharge le
+      // détail pour montrer l'état réel plutôt que de laisser un état périmé.
+      showToast("Commande déjà mise à jour", true);
+      await openOrderDetail(orderId);
       loadOwnerData(false);
     } else {
       showToast(data.error || "Erreur", true);

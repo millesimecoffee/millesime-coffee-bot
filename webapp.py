@@ -11,6 +11,13 @@ import os
 import threading
 import time
 
+# Plafond de pixels AVANT l'import de cv2 : OpenCV lit OPENCV_IO_MAX_IMAGE_PIXELS
+# au chargement du module. Sans lui, cv2.imdecode alloue l'image ENTIÈRE en
+# mémoire avant tout contrôle de taille — un PNG « bombe » de 50000×50000 (~10 Ko
+# compressés) réclame ~7 Go de RAM et tue le process. Avec le plafond, imdecode
+# refuse de décoder au-delà de la limite au lieu d'exploser la mémoire.
+os.environ.setdefault("OPENCV_IO_MAX_IMAGE_PIXELS", "5000000")
+
 import cv2
 import numpy as np
 from flask import Flask, jsonify, render_template, request
@@ -1255,7 +1262,13 @@ def _decode_b64_image(photo_b64: str):
     if len(photo_bytes) < 100:
         return None, None
     arr = np.frombuffer(photo_bytes, np.uint8)
-    img = cv2.imdecode(arr, cv2.IMREAD_COLOR)
+    # Avec OPENCV_IO_MAX_IMAGE_PIXELS posé, imdecode renvoie None (ou lève) sur
+    # une image trop grande AVANT d'allouer la mémoire : on l'entoure d'un
+    # try/except pour ne jamais laisser remonter une exception à l'appelant.
+    try:
+        img = cv2.imdecode(arr, cv2.IMREAD_COLOR)
+    except Exception:
+        return None, None
     if img is None:
         return None, None
     h, w = img.shape[:2]
@@ -1274,6 +1287,12 @@ def api_check_face():
     bot_token = os.getenv("BOT_TOKEN", "")
     if not _verify_init_data(data.get("initData", ""), bot_token):
         return jsonify({"ok": False, "error": "auth_failed"}), 401
+
+    # La détection de visage est coûteuse en CPU (décodage image + cascade
+    # Haar) : on plafonne les appels pour qu'un client ne puisse pas saturer le
+    # serveur en enchaînant les photos.
+    if _rate_limited(f"face:{_client_ip(request)}", 20, 60.0):
+        return jsonify({"ok": False, "error": "rate_limited"}), 429
 
     img, _ = _decode_b64_image(data.get("photo", ""))
     if img is None:
@@ -3254,11 +3273,52 @@ def _appliquer_statut(order_id, order, new_status, data, par="admin"):
     horodater les étapes et notifier de la même façon, sinon le suivi client
     afficherait des choses différentes selon qui a appuyé.
     """
-    from storage import update_order
+    from storage import update_order, StatutInattendu
 
-    # Idempotence
-    if (order.get("status") or "pending") == new_status:
+    # Idempotence (première barrière, sur le snapshot lu par l'appelant).
+    statut_actuel = order.get("status") or "pending"
+    if statut_actuel == new_status:
         return jsonify({"ok": True, "unchanged": True})
+
+    # Écriture EN PREMIER, en compare-and-swap : on n'applique la transition que
+    # si le statut n'a pas bougé depuis la lecture. Le serveur tourne en
+    # threaded=True — sans ce garde-fou, owner et livreur pourraient appliquer
+    # deux transitions concurrentes depuis le même point de départ. On journalise
+    # et on notifie SEULEMENT après une écriture réellement effectuée, pour ne
+    # jamais consigner ni annoncer une étape qui n'a pas eu lieu.
+    upd = {"status": new_status}
+    if new_status == "confirmed":
+        upd["_confirmed_at"] = _now_iso()
+    elif new_status == "delivering":
+        upd["_delivery_started_at"] = _now_iso()
+        # Owner peut préciser un temps de livraison en minutes
+        try:
+            eta_min = int(data.get("eta_minutes", 0))
+            if 1 <= eta_min <= 240:
+                upd["_eta_minutes"] = eta_min
+        except (ValueError, TypeError):
+            pass
+    elif new_status == "delivered":
+        upd["_delivered_at"] = _now_iso()
+    elif new_status == "cancelled":
+        upd["_cancelled_at"] = _now_iso()
+    try:
+        written = update_order(order_id, upd, attendu=statut_actuel)
+    except StatutInattendu as exc:
+        # Une autre requête a changé le statut entre-temps : on ne superpose pas
+        # une deuxième transition. Le panel rechargera l'état réel.
+        logger.info("admin_set_status: course perdue sur %s (%s)", order_id, exc)
+        return jsonify({"ok": False, "error": "conflict"}), 409
+    except Exception as exc:
+        logger.error("admin_set_status update: %s", exc)
+        return jsonify({"ok": False, "error": "update_failed"}), 500
+
+    # update_order renvoie False si la commande n'a pas été retrouvée à
+    # l'écriture : sans ce contrôle, le panel afficherait « ✅ Confirmée »
+    # alors que rien n'a changé en base.
+    if not written:
+        logger.error("admin_set_status: écriture sans effet sur %s", order_id)
+        return jsonify({"ok": False, "error": "update_failed"}), 500
 
     # L'écran de veille suit les étapes : lancée, confirmée, en route, livrée.
     # Ni le montant ni le contenu du panier n'entrent dans ce journal.
@@ -3279,37 +3339,6 @@ def _appliquer_statut(order_id, order, new_status, data, par="admin"):
                 f"n°…{_html_escape(str(order_id)[-4:])}")
     except Exception as exc:
         logger.warning("journal (etape) : %s", exc)
-
-    # Update + horodatage de chaque passage d'étape. Sans eux, la progression
-    # du panel ne peut afficher que « fait », jamais à quelle heure.
-    try:
-        upd = {"status": new_status}
-        if new_status == "confirmed":
-            upd["_confirmed_at"] = _now_iso()
-        elif new_status == "delivering":
-            upd["_delivery_started_at"] = _now_iso()
-            # Owner peut préciser un temps de livraison en minutes
-            try:
-                eta_min = int(data.get("eta_minutes", 0))
-                if 1 <= eta_min <= 240:
-                    upd["_eta_minutes"] = eta_min
-            except (ValueError, TypeError):
-                pass
-        elif new_status == "delivered":
-            upd["_delivered_at"] = _now_iso()
-        elif new_status == "cancelled":
-            upd["_cancelled_at"] = _now_iso()
-        written = update_order(order_id, upd)
-    except Exception as exc:
-        logger.error("admin_set_status update: %s", exc)
-        return jsonify({"ok": False, "error": "update_failed"}), 500
-
-    # update_order renvoie False si la commande n'a pas été retrouvée à
-    # l'écriture : sans ce contrôle, le panel afficherait « ✅ Confirmée »
-    # alors que rien n'a changé en base.
-    if not written:
-        logger.error("admin_set_status: écriture sans effet sur %s", order_id)
-        return jsonify({"ok": False, "error": "update_failed"}), 500
 
     # Notifier le client via Bot API
     notified = False
@@ -3714,11 +3743,22 @@ def api_client_cancel(order_id):
         except Exception as exc:
             logger.warning("client_cancel : owner non prévenu (%s)", exc)
 
-    # Le livreur aussi, s'il est concerné : c'est lui qui roule.
+    # Le livreur aussi, s'il est concerné : c'est lui qui roule. Mais il ne
+    # doit PAS recevoir le nom brut du client (qui peut être un pseudo Telegram
+    # ou un numéro saisi comme « nom ») : on lui construit un message distinct
+    # avec _prenom_seul, qui écarte @ et les identifiants déguisés en prénom.
     try:
         _pref = _prefixe_pour_commande(order)
         if _pref:
-            _prevenir_livreur(avis, prefixe=_pref)
+            prenom_livreur = _prenom_seul(order) or "Client"
+            avis_livreur = (
+                f"🚫 <b>ANNULÉE PAR LE CLIENT</b> · <code>{_html_escape(order_id)}</code>\n"
+                f"━━━━━━━━━━━━━━━━━━━━\n"
+                f"👤 {_html_escape(prenom_livreur)}\n"
+                f"📍 {ville}\n"
+                f"💸 {total:,.0f} {devise}\n"
+                f"⏱ Elle était <b>{_html_escape(etiquette)}</b>.")
+            _prevenir_livreur(avis_livreur, prefixe=_pref)
     except Exception as exc:
         logger.warning("client_cancel : livreur non prévenu (%s)", exc)
 
@@ -3995,7 +4035,14 @@ def api_order_track():
     distance_km = None
     route = None
 
-    live = get_driver_position() if status == "delivering" else None
+    # get_driver_position() est une position GLOBALE : celle que l'owner (zone
+    # principale) partage en direct. Une commande d'une autre zone ne doit PAS
+    # se voir servir cette position — ce serait montrer au client d'une ville un
+    # livreur qui roule dans une autre. On ne l'utilise donc que pour la zone
+    # principale (préfixe vide) ; les autres zones retombent sur la simulation.
+    _zone_principale = (_prefixe_pour_commande(order) == "")
+    live = (get_driver_position()
+            if (status == "delivering" and _zone_principale) else None)
     if live and dest_lat and dest_lon:
         driver_lat = live["lat"]
         driver_lon = live["lon"]

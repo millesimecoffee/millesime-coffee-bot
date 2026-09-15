@@ -73,27 +73,55 @@ def _file_url(path: str) -> str:
 # sauvegarde devenait ingérable en quelques mois.
 _empreintes: dict[str, str] = {}
 
+# Fichiers dont la restauration au démarrage a ÉCHOUÉ transitoirement (réseau,
+# 5xx, timeout) — par opposition à un 404 franc « le fichier n'existe pas encore
+# sur le dépôt ». Tant qu'un fichier est ici, on REFUSE de l'envoyer : le local
+# a probablement été reconstruit à vide (Render efface le disque au démarrage),
+# et l'écraser sur le dépôt détruirait la seule copie survivante. On ne lève le
+# blocage qu'après une restauration réussie (« ok ») ou un 404 confirmé.
+_restore_incomplet: set[str] = set()
+
 
 def _empreinte(donnees: bytes) -> str:
     return hashlib.sha256(donnees).hexdigest()
 
 
-def download_file(filename: str) -> bool:
-    """Télécharge un fichier depuis le repo. True si succès, False sinon."""
+def restauration_incomplete(filename: str) -> bool:
+    """True si la dernière restauration de ce fichier a échoué transitoirement
+    (donc le dépôt contient peut-être des données qu'on n'a pas pu récupérer).
+    storage.py s'en sert pour ne PAS repartir d'une liste vide et écraser la
+    sauvegarde. Vaut False si le backup est désactivé (pas de source distante)."""
     if not _TOKEN:
         return False
+    with _lock:
+        return filename in _restore_incomplet
+
+
+def _etat_download(filename: str) -> str:
+    """Télécharge un fichier depuis le repo. Renvoie l'un de :
+      « ok »     — écrit sur le disque local ;
+      « absent » — 404 franc : le fichier n'existe pas encore sur le dépôt ;
+      « erreur » — panne transitoire (réseau, 5xx, timeout) : le fichier existe
+                   peut-être, on n'a simplement pas pu le lire.
+    Confondre « absent » et « erreur » est exactement ce qui permettait
+    d'écraser une sauvegarde saine par un fichier reconstruit à vide.
+    """
+    if not _TOKEN:
+        return "erreur"
     try:
         r = httpx.get(_file_url(filename), headers=_headers(), timeout=15.0,
                       params={"ref": _BRANCH})
         if r.status_code == 404:
             logger.info("Github: %s n'existe pas encore sur le repo", filename)
-            return False
+            return "absent"
         r.raise_for_status()
         body = r.json()
         content_b64 = body.get("content", "")
         sha = body.get("sha", "")
         if not content_b64:
-            return False
+            # Réponse 200 mais vide : on ne sait pas l'interpréter sûrement.
+            # On la traite comme transitoire plutôt que d'affirmer « absent ».
+            return "erreur"
         raw = base64.b64decode(content_b64)
         dest = _DATA_DIR / filename
         dest.write_bytes(raw)
@@ -104,10 +132,17 @@ def download_file(filename: str) -> bool:
             # six fichiers inchangés.
             _empreintes[filename] = _empreinte(raw)
         logger.info("Github: %s restauré (%d bytes)", filename, len(raw))
-        return True
+        return "ok"
     except Exception as exc:
         logger.warning("Github download %s : %s", filename, exc)
-        return False
+        return "erreur"
+
+
+def download_file(filename: str) -> bool:
+    """Télécharge un fichier depuis le repo. True si succès, False sinon.
+    Conservé pour compatibilité — préférer _etat_download quand la distinction
+    404 / panne compte."""
+    return _etat_download(filename) == "ok"
 
 
 def upload_file(filename: str, forcer: bool = False) -> bool:
@@ -122,6 +157,21 @@ def upload_file(filename: str, forcer: bool = False) -> bool:
     src = _DATA_DIR / filename
     if not src.exists():
         return False
+
+    # Garde-fou anti-écrasement : si la restauration de ce fichier a échoué au
+    # démarrage (panne transitoire, PAS un 404), le local a pu être reconstruit
+    # à vide. L'envoyer maintenant remplacerait la sauvegarde par du vide. On
+    # refuse tant que le blocage n'est pas levé par une restauration réussie.
+    # `forcer` reste un échappatoire volontaire (sauvegarde manuelle explicite).
+    if not forcer:
+        with _lock:
+            bloque = filename in _restore_incomplet
+        if bloque:
+            logger.warning(
+                "Github upload %s : IGNORÉ — restauration incomplète, on ne "
+                "risque pas d'écraser la sauvegarde par un fichier reconstruit "
+                "à vide", filename)
+            return False
 
     upload_lock = _get_upload_lock(filename)
     with upload_lock:
@@ -298,6 +348,42 @@ def telecharger_binaire(chemin_repo: str) -> bytes:
         return b""
 
 
+def _restaurer_un(fn: str, essais: int = 3) -> str:
+    """Restaure un fichier avec quelques tentatives sur panne transitoire.
+    Met à jour _restore_incomplet en conséquence et renvoie l'état final."""
+    etat = "erreur"
+    for essai in range(essais):
+        etat = _etat_download(fn)
+        if etat in ("ok", "absent"):
+            break
+        if essai < essais - 1:
+            time.sleep(0.8 * (essai + 1))
+    with _lock:
+        if etat == "erreur":
+            _restore_incomplet.add(fn)
+        else:
+            _restore_incomplet.discard(fn)
+    return etat
+
+
+def _retenter_restaurations_incompletes() -> None:
+    """Réessaie en arrière-plan de restaurer les fichiers dont la récupération a
+    échoué transitoirement, tant qu'il en reste. Chaque succès (ou 404 confirmé)
+    lève le garde-fou et réautorise les envois de ce fichier."""
+    for _ in range(6):                       # ~ jusqu'à quelques minutes
+        with _lock:
+            restants = list(_restore_incomplet)
+        if not restants:
+            return
+        time.sleep(30)
+        for fn in restants:
+            etat = _restaurer_un(fn, essais=2)
+            if etat == "ok":
+                logger.info("Github: %s finalement restauré, envois réautorisés", fn)
+            elif etat == "absent":
+                logger.info("Github: %s confirmé absent du dépôt, envois réautorisés", fn)
+
+
 def restore_all() -> None:
     """Au démarrage : télécharge TOUJOURS depuis GitHub (source of truth).
     H15: avant on skippait si le fichier local existait — mais sur Render free
@@ -308,11 +394,22 @@ def restore_all() -> None:
         logger.info("Github backup désactivé (GITHUB_TOKEN absent)")
         return
     for fn in _FILES:
-        ok = download_file(fn)
-        if not ok:
+        etat = _restaurer_un(fn)
+        if etat == "absent":
             local = _DATA_DIR / fn
             if local.exists():
                 logger.info("Github: %s introuvable sur le repo, fichier local conservé", fn)
+        elif etat == "erreur":
+            logger.error(
+                "Github: échec de restauration de %s — envois de ce fichier "
+                "suspendus pour ne pas écraser la sauvegarde", fn)
+    # S'il reste des restaurations en échec, on retente en tâche de fond : dès
+    # qu'une réussit, le garde-fou anti-écrasement se lève tout seul.
+    with _lock:
+        reste = bool(_restore_incomplet)
+    if reste:
+        threading.Thread(target=_retenter_restaurations_incompletes,
+                         daemon=True).start()
 
 
 def backup_all() -> None:

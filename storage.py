@@ -179,6 +179,17 @@ def _load_from_file(pour_ecriture: bool = False) -> list:
     """Lit les commandes. `pour_ecriture` : lève au lieu de renvoyer une liste
     vide si le fichier est illisible — voir le commentaire dans le except."""
     if not _ORDERS_FILE.exists():
+        # Fichier absent alors qu'on s'apprête à écrire : distinguer deux cas.
+        # Si la restauration depuis le dépôt a échoué transitoirement (panne
+        # réseau au démarrage), le dépôt contient peut-être tout l'historique
+        # qu'on n'a pas pu récupérer. Repartir d'une liste vide, y ajouter la
+        # nouvelle commande puis réécrire écraserait cette sauvegarde. On échoue
+        # bruyamment. Un vrai 404 (fichier jamais créé) ne bloque pas : c'est un
+        # démarrage à neuf légitime.
+        if pour_ecriture and _gh.restauration_incomplete("orders.json"):
+            raise LectureImpossible(
+                "orders.json absent en local ET restauration du dépôt "
+                "incomplète : refus d'écrire pour ne pas écraser la sauvegarde")
         return []
     try:
         st = _ORDERS_FILE.stat()
@@ -459,8 +470,20 @@ def get_order(order_id: str) -> dict | None:
     return None
 
 
-def update_order(order_id: str, updates: dict) -> bool:
-    """Met à jour les champs d'une commande. Retourne True si trouvée."""
+class StatutInattendu(Exception):
+    """La commande n'était pas dans le statut attendu (course perdue)."""
+
+
+def update_order(order_id: str, updates: dict, attendu: str | None = None) -> bool:
+    """Met à jour les champs d'une commande. Retourne True si trouvée.
+
+    `attendu` : si fourni, l'écriture n'a lieu QUE si le statut courant vaut
+    encore cette valeur (compare-and-swap). Sert à sérialiser les changements
+    de statut : le serveur Flask tourne en threaded=True, deux requêtes
+    concurrentes (owner + livreur) pourraient sinon appliquer deux transitions
+    depuis le même point de départ. Lève StatutInattendu si le statut a changé
+    entre-temps — la relecture ET l'écriture se font sous le même verrou.
+    """
     with _lock:
         if _use_supabase():
             # Lire la commande actuelle, fusionner, ré-écrire le JSONB
@@ -469,8 +492,20 @@ def update_order(order_id: str, updates: dict) -> bool:
                 logger.warning("update_order: '%s' introuvable", order_id)
                 return False
             current = rows[0].get("data") or {}
+            if attendu is not None and (current.get("status") or "pending") != attendu:
+                raise StatutInattendu(
+                    f"{order_id}: statut {current.get('status')!r} ≠ attendu {attendu!r}")
             current.update(updates)
-            _sb.update("orders", {"data": current}, id=f"eq.{order_id}")
+            # _sb.update avale les erreurs HTTP et renvoie [] : sans ce contrôle,
+            # un échec d'écriture (réseau, RLS, 5xx) passait pour un succès. On
+            # mettait alors à jour le cache mémoire et on renvoyait True alors que
+            # Supabase n'avait rien enregistré — le changement de statut était
+            # perdu au prochain redémarrage. On vérifie que la ligne revient.
+            res = _sb.update("orders", {"data": current}, id=f"eq.{order_id}")
+            if not res:
+                logger.error("update_order: échec Supabase pour '%s' "
+                             "(aucune ligne renvoyée) — non enregistré", order_id)
+                return False
             if order_id in _order_index:
                 _order_index[order_id].update(updates)
             else:
@@ -482,6 +517,9 @@ def update_order(order_id: str, updates: dict) -> bool:
         orders = _load_from_file(pour_ecriture=True)
         for i, o in enumerate(orders):
             if o.get("order_id") == order_id:
+                if attendu is not None and (o.get("status") or "pending") != attendu:
+                    raise StatutInattendu(
+                        f"{order_id}: statut {o.get('status')!r} ≠ attendu {attendu!r}")
                 orders[i].update(updates)
                 _save_to_file(orders)
                 if order_id in _order_index:

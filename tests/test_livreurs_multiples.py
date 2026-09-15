@@ -108,7 +108,7 @@ COMMANDES = [
 ]
 storage._load = lambda: [dict(o) for o in COMMANDES]
 storage.get_order = lambda oid: next((dict(o) for o in COMMANDES if o["order_id"] == oid), None)
-storage.update_order = lambda oid, upd: True
+storage.update_order = lambda oid, upd, attendu=None: True
 
 envois = []
 

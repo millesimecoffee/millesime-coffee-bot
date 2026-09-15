@@ -75,7 +75,7 @@ assert jour.day == 3, "le decoupage doit suivre Paris"
 titre(7, "Chaque changement de statut est horodate")
 etat = {"o": {"order_id": "T1", "user_id": 1, "status": "pending", "total": 10, "cart": {}}}
 storage.get_order = lambda oid: dict(etat["o"])
-maj = lambda oid, upd: (etat["o"].update(upd), True)[1]
+maj = lambda oid, upd, attendu=None: (etat["o"].update(upd), True)[1]
 storage.update_order = webapp.update_order = maj
 for s in ["confirmed", "delivering", "delivered"]:
     app.post("/api/admin/order/T1/status", json={"initData": "x", "status": s})

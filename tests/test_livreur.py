@@ -45,9 +45,13 @@ storage._load = lambda: [dict(o) for o in BASE]
 storage.get_order = lambda oid: next((dict(o) for o in BASE if o["order_id"] == oid), None)
 
 
-def maj(oid, upd):
+def maj(oid, upd, attendu=None):
     for o in BASE:
         if o["order_id"] == oid:
+            # Reproduit le compare-and-swap de storage.update_order : si le
+            # statut a changé depuis la lecture, on lève au lieu d'écraser.
+            if attendu is not None and (o.get("status") or "pending") != attendu:
+                raise storage.StatutInattendu(oid)
             o.update(upd)
             return True
     return False

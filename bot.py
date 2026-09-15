@@ -46,7 +46,7 @@ from translations import t, LANGUES
 from storage import (
     save_order, update_order, get_order, get_stats, get_stats_period,
     get_orders_by_user, get_all_user_ids,
-    load_blacklist, save_blacklist,
+    load_blacklist, save_blacklist, delete_from_blacklist,
     backup_orders,
     _load as _load_orders,
 )
@@ -1790,8 +1790,6 @@ async def owner_status_update(update: Update, context: ContextTypes.DEFAULT_TYPE
         await query.answer("⛔ Action non autorisée.", show_alert=True)
         return
 
-    await query.answer()
-
     parts     = query.data.split(":")   # owner:STATUS:USER_ID:ORDER_ID
     status    = parts[1]
     client_id = int(parts[2])
@@ -1807,11 +1805,37 @@ async def owner_status_update(update: Update, context: ContextTypes.DEFAULT_TYPE
     else:
         client_lang = "fr"
 
-    # Marquer le nouveau statut en DB immédiatement (évite double-clic concurrent)
+    # Une seule réponse à la callback query par chemin : répondre en tête PUIS
+    # re-répondre dans la branche idempotence levait une BadRequest à chaque
+    # re-clic. On répond ici, après le contrôle d'idempotence.
+    await query.answer()
+
+    # Statut + HORODATAGE d'étape, comme _appliquer_statut côté webapp : sans ces
+    # timestamps, le suivi client n'a ni heures d'étape ni ETA (carte figée) et le
+    # journal de veille reste bloqué. On écrit les mêmes champs + noter_commande.
     try:
-        update_order(order_id, {"status": status})
+        maj = {"status": status}
+        _ts = datetime.now().astimezone().isoformat(timespec="seconds")
+        if status == "confirmed":
+            maj["_confirmed_at"] = _ts
+        elif status == "delivering":
+            maj["_delivery_started_at"] = _ts
+        elif status == "delivered":
+            maj["_delivered_at"] = _ts
+        elif status == "cancelled":
+            maj["_cancelled_at"] = _ts
+        update_order(order_id, maj)
     except Exception as exc:
         logger.warning("update_order(%s, status=%s): %s", order_id, status, exc)
+
+    try:
+        import parcours
+        _src = current_order or {}
+        parcours.noter_commande(order_id, _src.get("user_id") or client_id,
+                                _src.get("user_name") or "", _src.get("country") or "",
+                                _src.get("city") or "", status)
+    except Exception as exc:
+        logger.warning("parcours.noter_commande(%s, %s): %s", order_id, status, exc)
 
     # Texte du message selon le statut
     messages = {
@@ -2347,6 +2371,13 @@ async def cmd_unblock(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         await update.message.reply_text("❌ ID invalide.")
         return
     _blacklist.discard(uid)
+    # En mode Supabase, save_blacklist ne fait qu'un upsert : sans ce delete
+    # explicite la ligne resterait en base et l'utilisateur serait re-banni au
+    # prochain redémarrage. En mode fichier, delete_from_blacklist est un no-op.
+    try:
+        delete_from_blacklist(uid)
+    except Exception as exc:
+        logger.warning("delete_from_blacklist(%s): %s", uid, exc)
     save_blacklist(_blacklist)
     await update.message.reply_text(
         f"✅ Utilisateur <code>{uid}</code> débloqué.",
@@ -2920,7 +2951,10 @@ async def cmd_reload(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
     if not _is_owner(update):
         return
     try:
-        importlib.reload(catalog_mod)
+        # rafraichir() (et non importlib.reload) : recharge l'overlay de façon
+        # atomique sous verrou, sans réexposer le socle par défaut aux requêtes
+        # concurrentes du serveur Flask tournant dans le même process.
+        catalog_mod.rafraichir()
         await update.message.reply_text(
             f"✅ Catalogue rechargé !\n{len(catalog_mod.CATALOG)} pays.",
         )
