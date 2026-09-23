@@ -790,6 +790,9 @@ def api_auth():
                 for (pays, ville) in catalog_mod.PAIEMENT_PAR_VILLE
                 if ville in catalog_mod.CATALOG.get(pays, {})
             },
+            # Horaires d'ouverture par ville (clé « pays|ville ») : état courant
+            # `ouvert` + fuseau et minutes pour un recalcul en direct côté client.
+            "city_hours": catalog_mod.horaires_snapshot(),
             # Contact vendeur/support pour le bouton "Nous contacter" (tracking client)
             # Défaut = @millesimecoffee (username public), surchargeable via env.
             "support": {
@@ -858,6 +861,10 @@ def api_catalog():
                 for (pays, ville) in catalog_mod.PAIEMENT_PAR_VILLE
                 if ville in catalog_mod.CATALOG.get(pays, {})
             },
+            # Horaires d'ouverture par ville (clé « pays|ville »). Contient l'état
+            # courant `ouvert` calculé côté serveur ET le fuseau + minutes pour un
+            # recalcul en direct côté client.
+            "city_hours": catalog_mod.horaires_snapshot(),
         })
     except Exception as exc:
         logger.error("api_catalog: %s", exc)

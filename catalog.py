@@ -9,7 +9,13 @@ import json
 import logging
 import os
 import threading
+from datetime import datetime, timezone
 from pathlib import Path
+
+try:
+    from zoneinfo import ZoneInfo
+except Exception:                       # pragma: no cover
+    ZoneInfo = None
 
 CATALOG = {
     "🇫🇷 France": {
@@ -556,6 +562,139 @@ def get_currencies(country: str, city: str = "") -> list[str]:
     if regle.get("devises"):
         return list(regle["devises"])
     return COUNTRY_CURRENCIES.get(country, ALL_CURRENCIES)
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# HORAIRES D'OUVERTURE PAR VILLE
+#
+# On indique au client si la ville est « ouverte » ou « fermée » selon l'heure
+# LOCALE de la ville, pas celle du client : quelqu'un à Miami qui regarde
+# Barcelone doit voir l'état de Barcelone.
+#
+# Cette table est VOLONTAIREMENT indépendante du catalogue éditable
+# (catalogue.json) : l'overlay reconstruit CATALOG/MIN_ORDER/… à chaque
+# sauvegarde, et y greffer les horaires les ferait disparaître dès que l'owner
+# rééditerait le catalogue sans renvoyer ce champ. Ici, les horaires vivent
+# dans le code, s'appliquent quel que soit l'overlay, et se modifient d'un
+# déploiement. Clé = nom de ville (unique dans tout le catalogue, comme
+# MIN_ORDER). Une ville absente = pas d'horaires → toujours disponible, aucune
+# pastille affichée.
+#
+# Format : {"ouv": "HH:MM", "fer": "HH:MM", "tz": "<zone IANA>"}. Si l'heure de
+# fermeture est <= l'heure d'ouverture, le créneau passe minuit (ex. 10h→00h =
+# ouvert de 10h00 à minuit ; 22h→02h = ouvert la nuit).
+# ═══════════════════════════════════════════════════════════════════════════
+
+# Espagne, Italie et Allemagne partagent le même fuseau (CET/CEST, heure d'été
+# comprise) : une seule zone suffit pour ces six villes.
+_TZ_CET = "Europe/Paris"
+
+HORAIRES_PAR_VILLE: dict[str, dict] = {
+    # Ouvert tous les jours de 10h00 à minuit.
+    "Barcelone":         {"ouv": "10:00", "fer": "00:00", "tz": _TZ_CET},
+    "Malaga":            {"ouv": "10:00", "fer": "00:00", "tz": _TZ_CET},
+    "Palma De Majorque": {"ouv": "10:00", "fer": "00:00", "tz": _TZ_CET},
+    "Rome":              {"ouv": "10:00", "fer": "00:00", "tz": _TZ_CET},
+    "Milan":             {"ouv": "10:00", "fer": "00:00", "tz": _TZ_CET},
+    "Berlin":            {"ouv": "10:00", "fer": "00:00", "tz": _TZ_CET},
+}
+
+
+def _hm_en_minutes(hm) -> int | None:
+    """« HH:MM » → minutes depuis minuit, ou None si mal formé."""
+    if not isinstance(hm, str):
+        return None
+    parts = hm.split(":")
+    if len(parts) != 2:
+        return None
+    try:
+        h, m = int(parts[0]), int(parts[1])
+    except (TypeError, ValueError):
+        return None
+    if not (0 <= h <= 23 and 0 <= m <= 59):
+        return None
+    return h * 60 + m
+
+
+def _fmt_heure(hm: str) -> str:
+    """« 10:00 » → « 10h », « 22:30 » → « 22h30 », « 00:00 » → « minuit »."""
+    mn = _hm_en_minutes(hm)
+    if mn is None:
+        return str(hm)
+    if mn == 0:
+        return "minuit"
+    h, m = divmod(mn, 60)
+    return f"{h}h" if m == 0 else f"{h}h{m:02d}"
+
+
+def get_horaires(country: str, city: str = "") -> dict | None:
+    """Horaires normalisés de la ville, ou None si elle n'en a pas.
+
+    Renvoie {"ouv", "fer" (HH:MM), "tz", "ouv_min", "fer_min" (int),
+    "txt" (« 10h–minuit »)}. `country` est accepté pour symétrie d'API mais la
+    clé reste le nom de ville (unique globalement)."""
+    h = HORAIRES_PAR_VILLE.get(city)
+    if not h:
+        return None
+    ouv = _hm_en_minutes(h.get("ouv"))
+    fer = _hm_en_minutes(h.get("fer"))
+    if ouv is None or fer is None:
+        return None
+    return {
+        "ouv": h["ouv"], "fer": h["fer"],
+        "tz": h.get("tz", _TZ_CET),
+        "ouv_min": ouv, "fer_min": fer,
+        "txt": f"{_fmt_heure(h['ouv'])}–{_fmt_heure(h['fer'])}",
+    }
+
+
+def ville_ouverte(country: str, city: str = "", instant=None) -> bool | None:
+    """True/False si la ville a des horaires, None sinon.
+
+    Calcule sur l'heure LOCALE de la ville (via son fuseau), indépendamment du
+    lieu du client. `instant` : datetime aware pour les tests (défaut = l'instant
+    présent en UTC)."""
+    h = get_horaires(country, city)
+    if not h or ZoneInfo is None:
+        return None
+    try:
+        maintenant = instant or datetime.now(timezone.utc)
+        local = maintenant.astimezone(ZoneInfo(h["tz"]))
+    except Exception:
+        return None
+    t = local.hour * 60 + local.minute
+    ouv, fer = h["ouv_min"], h["fer_min"]
+    if ouv == fer:
+        return True                          # même heure = ouvert en continu
+    if ouv < fer:
+        return ouv <= t < fer
+    return t >= ouv or t < fer               # créneau qui passe minuit
+
+
+def horaires_snapshot(instant=None) -> dict:
+    """État des horaires pour toutes les villes concernées, prêt pour l'API et
+    le client. Clé = « pays|ville » quand on peut retrouver le pays, sinon la
+    ville seule. Chaque entrée porte l'état courant (`ouvert`) ET de quoi le
+    recalculer en direct côté client (tz + minutes)."""
+    # Retrouver le pays de chaque ville pour composer la même clé que city_payment.
+    pays_de = {}
+    for pays, villes in CATALOG.items():
+        for ville in villes:
+            pays_de.setdefault(ville, pays)
+    out = {}
+    for ville in HORAIRES_PAR_VILLE:
+        h = get_horaires("", ville)
+        if not h:
+            continue
+        pays = pays_de.get(ville, "")
+        cle = f"{pays}|{ville}" if pays else ville
+        out[cle] = {
+            "ouv": h["ouv"], "fer": h["fer"], "tz": h["tz"],
+            "ouv_min": h["ouv_min"], "fer_min": h["fer_min"],
+            "txt": h["txt"],
+            "ouvert": ville_ouverte("", ville, instant),
+        }
+    return out
 
 
 # ═══════════════════════════════════════════════════════════════════════════

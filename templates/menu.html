@@ -2535,6 +2535,28 @@
   .ct-count { font-size: 12px; color: var(--txt-secondary); margin-top: 2px; }
   .ct-go { font-size: 14px; font-weight: 800; color: var(--accent); opacity: 0.9; flex-shrink: 0; letter-spacing: 0.3px; }
   .city-tile:hover .ct-go { opacity: 1; text-shadow: 0 0 10px rgba(255,45,155,0.6); }
+  /* Ligne d'horaires sous le sous-titre du pied */
+  .ct-hours {
+    font-size: 11px; color: var(--txt-secondary); margin-top: 3px;
+    display: flex; align-items: center; gap: 5px; opacity: 0.92;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  /* Pastille Ouvert / Fermé posée en haut à droite de la photo */
+  .ct-status {
+    position: absolute; top: 10px; right: 10px; z-index: 6;
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 4px 9px; border-radius: 999px;
+    font-size: 11px; font-weight: 800; letter-spacing: 0.2px;
+    color: #fff; -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px);
+    background: rgba(8,6,16,0.55); border: 1px solid rgba(255,255,255,0.18);
+    box-shadow: 0 2px 10px rgba(0,0,0,0.35);
+  }
+  .ct-status .dot { width: 7px; height: 7px; border-radius: 50%; box-shadow: 0 0 8px currentColor; }
+  .ct-status.ct-open  { color: #eafff2; }
+  .ct-status.ct-open  .dot { background: #22c55e; color: #22c55e; animation: ctPulse 1.8s ease-in-out infinite; }
+  .ct-status.ct-closed { color: #ffe3e8; }
+  .ct-status.ct-closed .dot { background: #ff4d6a; color: #ff4d6a; }
+  @keyframes ctPulse { 0%,100%{ opacity: 1 } 50%{ opacity: 0.3 } }
 
   /* Photo réelle de la ville (par-dessus la scène synthwave = repli) */
   .ct-photo {
@@ -2561,7 +2583,7 @@
     text-shadow: 0 0 16px rgba(255,45,155,0.75), 0 2px 8px rgba(0,0,0,0.85);
   }
   @media (prefers-reduced-motion: reduce) {
-    .ct-sun, .ct-grid, .ct-landmark, .ct-stars, .ct-shine { animation: none; }
+    .ct-sun, .ct-grid, .ct-landmark, .ct-stars, .ct-shine, .ct-status .dot { animation: none; }
     .city-tile:hover .ct-photo { transform: none; }
   }
 
@@ -5351,6 +5373,9 @@ const T = {
     city_products: "{n} produits disponibles",
     country_cities: "{n} villes disponibles",
     order_cta: "Commander ›",
+    city_open: "Ouvert",
+    city_closed: "Fermé",
+    city_daily: "Tous les jours",
     search_city_ph: "Rechercher une ville…",
     search_results: "{n} résultats",
     search_none: "Aucune ville trouvée",
@@ -5480,6 +5505,9 @@ const T = {
     city_products: "{n} products available",
     country_cities: "{n} cities available",
     order_cta: "Order ›",
+    city_open: "Open",
+    city_closed: "Closed",
+    city_daily: "Every day",
     search_city_ph: "Search a city…",
     search_results: "{n} results",
     search_none: "No city found",
@@ -5609,6 +5637,9 @@ const T = {
     city_products: "{n} productos disponibles",
     country_cities: "{n} ciudades disponibles",
     order_cta: "Pedir ›",
+    city_open: "Abierto",
+    city_closed: "Cerrado",
+    city_daily: "Todos los días",
     search_city_ph: "Buscar una ciudad…",
     search_results: "{n} resultados",
     search_none: "Ninguna ciudad encontrada",
@@ -5755,6 +5786,9 @@ const T = {
     city_products: "{n} товаров в наличии",
     country_cities: "{n} городов",
     order_cta: "Заказать ›",
+    city_open: "Открыто",
+    city_closed: "Закрыто",
+    city_daily: "Каждый день",
     search_city_ph: "Поиск города…",
     search_results: "результатов: {n}",
     search_none: "Город не найден",
@@ -5788,6 +5822,8 @@ const state = {
   catalog: null,        // chargé via /api/catalog
   minOrders: null,
   countryCurrencies: {},// {pays: [devises autorisées]} — affichage
+  cityPayment: {},      // {"pays|ville": {methodes, devises}} — villes-exception
+  cityHours: {},        // {"pays|ville": {ouv_min, fer_min, tz, txt, ouvert}} — horaires
   allowedCurrencies: ["€"], // devises proposées pour le pays courant
   currency: "€",        // devise d'affichage active (symbole)
   payment_config: null, // {payment_link, crypto_eth, crypto_usdt}
@@ -6016,6 +6052,7 @@ async function checkPassword() {
       state.minOrders = data.min_orders;
       state.countryCurrencies = data.country_currencies || {};
       state.cityPayment = data.city_payment || {};
+      state.cityHours = data.city_hours || {};
       state.support = data.support || {};
       state.payment_config = data.payment_config || {};
       // Le mot de passe saisi décide du mode : le serveur répond admin=true
@@ -6370,6 +6407,62 @@ function signalerParcours(country, city) {
   } catch {}
 }
 
+// ─── Horaires d'ouverture par ville ─────────────────────────────────────
+// Le serveur envoie state.cityHours["pays|ville"] = {ouv_min, fer_min, tz,
+// txt, ouvert}. On recalcule ouvert/fermé à l'affichage, à l'heure LOCALE de
+// la ville (via son fuseau), pour que ce soit juste où que soit le client.
+function _cityHours(country, city) {
+  const m = state.cityHours || {};
+  return m[country + "|" + city] || null;
+}
+
+// « minutes depuis minuit » → « 10:00 ». La fermeture à 00:00 = fin de journée,
+// affichée « 24:00 » (« ouvert jusqu'à minuit », sans ambiguïté).
+function _fmtHM(min, estFermeture) {
+  if (estFermeture && min === 0) return "24:00";
+  const h = Math.floor(min / 60), m = min % 60;
+  return String(h).padStart(2, "0") + ":" + String(m).padStart(2, "0");
+}
+
+// Ouvert maintenant ? Calcul à l'heure locale de la ville. Repli sur la valeur
+// calculée par le serveur si le fuseau n'est pas exploitable côté navigateur.
+function _cityEstOuverte(h) {
+  try {
+    const parts = new Intl.DateTimeFormat("en-GB", {
+      timeZone: h.tz, hour: "2-digit", minute: "2-digit", hour12: false,
+    }).formatToParts(new Date());
+    let hh = 0, mm = 0;
+    for (const p of parts) {
+      if (p.type === "hour")   hh = parseInt(p.value, 10) % 24;
+      if (p.type === "minute") mm = parseInt(p.value, 10);
+    }
+    const t = hh * 60 + mm, o = h.ouv_min, f = h.fer_min;
+    if (o === f) return true;                 // même heure = ouvert en continu
+    if (o < f)   return t >= o && t < f;
+    return t >= o || t < f;                    // créneau qui passe minuit
+  } catch (e) {
+    return !!h.ouvert;
+  }
+}
+
+// Pastille Ouvert/Fermé posée sur la photo (coin haut-droit).
+function _cityStatusPill(country, city) {
+  const h = _cityHours(country, city);
+  if (!h) return "";
+  const ouvert = _cityEstOuverte(h);
+  const cls = ouvert ? "ct-open" : "ct-closed";
+  const lbl = ouvert ? t("city_open") : t("city_closed");
+  return `<span class="ct-status ${cls}"><i class="dot"></i>${escHtml(lbl)}</span>`;
+}
+
+// Ligne d'horaires dans le pied (« 🕒 Tous les jours · 10:00–24:00 »).
+function _cityHoursLine(country, city) {
+  const h = _cityHours(country, city);
+  if (!h) return "";
+  const plage = _fmtHM(h.ouv_min, false) + "–" + _fmtHM(h.fer_min, true);
+  return `<div class="ct-hours">🕒 ${escHtml(t("city_daily"))} · ${plage}</div>`;
+}
+
 // HTML d'une carte-ville (photo + nom). subtitle = texte du pied.
 function cityTileHTML(country, city, subtitle) {
   // Échappement en deux temps : d'abord pour la chaîne JavaScript, ensuite
@@ -6377,6 +6470,8 @@ function cityTileHTML(country, city, subtitle) {
   // referme l'attribut et le bouton devient inerte.
   const cAttr = country.replace(/\\/g,"\\\\").replace(/'/g,"\\'");
   const cyAttr = city.replace(/\\/g,"\\\\").replace(/'/g,"\\'");
+  const pill  = _cityStatusPill(country, city);
+  const hours = _cityHoursLine(country, city);
   return `
     <div class="city-tile" onclick="${escHtml(`pickCity('${cAttr}','${cyAttr}')`)}">
       <div class="ct-scene">
@@ -6388,10 +6483,14 @@ function cityTileHTML(country, city, subtitle) {
         <img class="ct-photo" src="/cityimg/${_citySlug(city)}.jpg?v=5" alt="" loading="lazy" onerror="this.remove()">
         <div class="ct-overlay"></div>
         <div class="ct-shine"></div>
+        ${pill}
         <div class="ct-city"><span class="ct-city-name">${escHtml(city)}</span></div>
       </div>
       <div class="ct-footer">
-        <div class="ct-count">${escHtml(subtitle)}</div>
+        <div class="ct-info">
+          <div class="ct-count">${escHtml(subtitle)}</div>
+          ${hours}
+        </div>
         <span class="ct-go">${t("order_cta")}</span>
       </div>
     </div>`;
